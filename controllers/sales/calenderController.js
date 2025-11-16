@@ -1,4 +1,5 @@
 import db from "../../config/dbconnect.js";
+import moment from "moment";
 
 //Fetch All
 export const getAll = (req, res) => {
@@ -92,7 +93,7 @@ export const getNotes = (req, res) => {
       const formatted = result.map((row) => ({
         ...row,
         created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-        date: moment(row.date).format("DD MMM YYYY"),
+        date: moment(row.date).format(date, "yyyy-MM-dd"),
       }));
 
       res.json(formatted);
