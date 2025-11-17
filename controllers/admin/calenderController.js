@@ -80,15 +80,15 @@ export const addNote = (req, res) => {
         .json({ message: "Unauthorized Access, Please Login Again!" });
     }
 
-    const { date, note } = req.body;
+    const { date, time, note } = req.body;
 
-    if (!date || !note) {
+    if (!date || !time || !note) {
       return res.status(400).json({ message: "Date and Note are required" });
     }
 
     db.query(
-      "INSERT INTO calenderNotes (date, note) VALUES (?, ?)",
-      [date, note],
+      "INSERT INTO calenderNotes (date, time, note) VALUES (?, ?, ?)",
+      [date, time, note],
       (err, result) => {
         if (err) {
           console.error("Error adding note:", err);
