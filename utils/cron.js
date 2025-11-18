@@ -44,8 +44,7 @@ const spApp = admin.initializeApp(
   "salespersonApp"
 );
 
-
-//PROJECT 
+//PROJECT
 const projectpartnerServiceAccount = JSON.parse(
   process.env.FIREBASE_SERVICE_ACCOUNT_PROJECT
 );
@@ -53,7 +52,10 @@ const projectApp = admin.initializeApp(
   {
     credential: admin.credential.cert({
       ...projectpartnerServiceAccount,
-      private_key: projectpartnerServiceAccount.private_key.replace(/\\n/g, "\n"),
+      private_key: projectpartnerServiceAccount.private_key.replace(
+        /\\n/g,
+        "\n"
+      ),
     }),
   },
   "projectpartner"
@@ -95,23 +97,56 @@ async function sendSPNotification(token, title, body) {
 }
 
 // Send notification to Salesperson
-async function sendPPNotification(token, title, body) {
-  if (!token) return; // safety check
+async function sendPPNotification(
+  token,
+  title,
+  body,
+  screenName = "Enquiries"
+) {
+  if (!token) return;
+
   const message = {
-    token,
-    notification: { title, body },
-    android: { priority: "high" },
-    apns: { headers: { "apns-priority": "10" } },
+    token: token,
+
+    // 👇 MUST include title + body for Android to show banner
+    notification: {
+      title: title,
+      body: body,
+    },
+
+    // 👇 Data payload — strings only!
+    data: {
+      screen: screenName || "Enquiries",
+      //  click_action: "FLUTTER_NOTIFICATION_CLICK",
+    },
+
+    android: {
+      priority: "high",
+      notification: {
+        sound: "notify",
+        channelId: "default", //  must match notifee channel
+        // clickAction: "DEFAULT", //  IMPORTANT
+      },
+    },
+
+    apns: {
+      headers: { "apns-priority": "10" },
+      payload: {
+        aps: {
+          sound: "notify",
+          category: "NEW_MESSAGE",
+        },
+      },
+    },
   };
 
   try {
     const response = await projectApp.messaging().send(message);
-    console.log(" Salesperson notification sent:", response);
+    console.log("📨 Project Partner Notification Sent:", response);
   } catch (err) {
-    console.error(" Error sending SP notification:", err);
+    console.error("❌ Error Sending PP Notification:", err);
   }
 }
-
 
 function formatTime(timeString) {
   if (!timeString) return "--:--";
@@ -130,7 +165,7 @@ function formatDate(dateString) {
   if (!dateString) return "";
 
   const date = new Date(dateString);
-  
+
   return date.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
@@ -267,7 +302,7 @@ async function notifySlot(timeSlot) {
     }
 
     if (!results.length) {
-      console.log(`ℹ️ No enquiries for slot ${timeSlot} on ${today}`);
+      console.log(`No enquiries for slot ${timeSlot} on ${today}`);
       return;
     }
 
@@ -544,7 +579,7 @@ const queryAsync = (sql, params = []) => {
 //     `);
 
 //     console.log(
-//       `📅 Found ${expiringSoon.length} subscriptions expiring in 7 days.`
+//       ⁠ 📅 Found ${expiringSoon.length} subscriptions expiring in 7 days. ⁠
 //     );
 
 //     // 3 Send notifications
@@ -555,7 +590,7 @@ const queryAsync = (sql, params = []) => {
 //           "⚠️ Subscription Expiry Reminder",
 //           `Hello ${sub.fullname}, 👋
 
-// We wanted to remind you that your *Reparv Sales Partner subscription* will expire in **7 days**.
+// We wanted to remind you that your Reparv Sales Partner subscription will expire in *7 days*.
 
 // 🗓️ Expiry Date: ${new Date(sub.end_date).toLocaleDateString()}
 // 💼 Current Plan: ${sub.plan}
@@ -573,11 +608,11 @@ const queryAsync = (sql, params = []) => {
 
 //         // 4️⃣ Mark as notified
 //         await queryAsync(
-//           `UPDATE subscriptions SET notified_7days = 1 WHERE id = ?`,
+//           ⁠ UPDATE subscriptions SET notified_7days = 1 WHERE id = ? ⁠,
 //           [sub.id]
 //         );
 
-//         console.log(`Sent 7-day expiry reminder to ${sub.fullname}`);
+//         console.log(⁠ Sent 7-day expiry reminder to ${sub.fullname} ⁠);
 //       }
 //     }
 
@@ -618,13 +653,20 @@ export const checkcalendernotes = () => {
 
     results.forEach(async (row) => {
       const title = "⏰ Upcoming Reminder";
-      const msg = `You have a scheduled note at ${formatTime(row.time)} on ${formatDate(row.date)}.
+      const msg = `You have a scheduled note at ${formatTime(
+        row.time
+      )} on ${formatDate(row.date)}.
 Note: ${row.note}`;
 
       // ---- SEND NOTIFICATION TO PROJECT PARTNER ----
       if (row.project_onesignal) {
         try {
-          await sendPPNotification(row.project_onesignal, title, msg);
+          await sendPPNotification(
+            row.project_onesignal,
+            title,
+            msg,
+            "Enquiries"
+          );
           console.log("PP notified:", row.project_onesignal);
         } catch (e) {
           console.error("PP notification error:", e);
@@ -664,9 +706,6 @@ Note: ${row.note}`;
     });
   });
 };
-
-
-
 
 cron.schedule("* * * * * ", checkcalendernotes);
 
@@ -713,7 +752,7 @@ function notifyProjectPartnerForNewEnquiry() {
 📍 Location: ${location}`;
 
           try {
-            await sendPPNotification(token, title, message);
+            await sendPPNotification(token, title, message, "Enquiries");
             console.log("Notification sent to:", token);
           } catch (notifyErr) {
             console.log("Error sending push notification:", notifyErr);
@@ -743,7 +782,5 @@ function notifyProjectPartnerForNewEnquiry() {
     console.log("Error sending new enquiry notifications:", error);
   }
 }
-
-
 
 cron.schedule("* * * * *", notifyProjectPartnerForNewEnquiry);

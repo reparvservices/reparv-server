@@ -5,8 +5,14 @@ import path from "path";
 
 // **Fetch All **
 export const getAll = (req, res) => {
-  const sql = "SELECT * FROM sliders WHERE projectpartnerid IS NULL ORDER BY id";
-  db.query(sql, (err, result) => {
+  const userId = req.projectPartnerUser.id;
+  if (!userId) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized Access, Please Login Again!" });
+  }
+  const sql = "SELECT * FROM sliders WHERE projectpartnerid = ? ORDER BY id";
+  db.query(sql, [userId], (err, result) => {
     if (err) {
       console.error("Error fetching :", err);
       return res.status(500).json({ message: "Database error", error: err });
@@ -17,6 +23,12 @@ export const getAll = (req, res) => {
 
 // **Add Slider Images **
 export const addImages = (req, res) => {
+  const userId = req.projectPartnerUser.id;
+  if (!userId) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized Access, Please Login Again!" });
+  }
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
   try {
@@ -24,10 +36,11 @@ export const addImages = (req, res) => {
     const imagePaths = files.map((file) => file.filename); // Get filenames
 
     // Insert each image as a separate row
-    const insertSQL = `INSERT INTO sliders (image, updated_at, created_at) 
+    const insertSQL = `INSERT INTO sliders (projectpartnerid, image, updated_at, created_at) 
                          VALUES ?`;
 
     const values = imagePaths.map((filename) => [
+      userId,
       filename,
       currentdate,
       currentdate,
@@ -50,6 +63,12 @@ export const addImages = (req, res) => {
 
 // **Add Slider Image **
 export const addSmallScreenImage = (req, res) => {
+  const userId = req.projectPartnerUser.id;
+  if (!userId) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized Access, Please Login Again!" });
+  }
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const Id = parseInt(req.params.id);
 

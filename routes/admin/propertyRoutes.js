@@ -23,6 +23,7 @@ import {
   addCsvFileForFlat,
   addCsvFileForPlot,
   uploadBrochureAndVideoLink,
+  deleteBrochureAndVideoLink,
   hotDeal,
 } from "../../controllers/admin/propertyController.js";
 import multer from "multer";
@@ -195,6 +196,11 @@ router.put(
   "/brochure/upload/:id",
   brochureUpload.single("brochureFile"),
   uploadBrochureAndVideoLink
+);
+
+router.delete(
+  "/brochure/delete/:id",
+  deleteBrochureAndVideoLink
 );
 
 // multer for Upload Property Additional Information

@@ -2,7 +2,8 @@ import db from "../../config/dbconnect.js";
 
 // **Fetch All **
 export const getAllActive = (req, res) => {
-  const sql = "SELECT * FROM sliders WHERE status = 'Active' ORDER BY id DESC";
+  const sql =
+    "SELECT * FROM sliders WHERE status = 'Active' AND projectpartnerid IS NULL ORDER BY id DESC";
   db.query(sql, (err, result) => {
     if (err) {
       console.error("Error fetching :", err);
@@ -14,7 +15,8 @@ export const getAllActive = (req, res) => {
 
 // **Fetch All **
 export const getForMobile = (req, res) => {
-  const sql = "SELECT * FROM sliders WHERE mobileimage IS NOT NULL LIMIT 1";
+  const sql =
+    "SELECT * FROM sliders WHERE projectpartnerid IS NULL AND mobileimage IS NOT NULL LIMIT 1";
   db.query(sql, (err, result) => {
     if (err) {
       console.error("Error fetching :", err);
@@ -23,4 +25,3 @@ export const getForMobile = (req, res) => {
     res.json(result[0]);
   });
 };
-

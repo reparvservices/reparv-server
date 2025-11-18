@@ -1174,6 +1174,68 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
   }
 };
 
+// * DELETE Brochure & Video Link *
+export const deleteBrochureAndVideoLink = async (req, res) => {
+  try {
+    const propertyId = req.params.id;
+
+    if (!propertyId) {
+      return res.status(400).json({ message: "Property Id is required" });
+    }
+
+    // Get existing brochure & video link
+    db.query(
+      "SELECT brochureFile, videoLink FROM properties WHERE propertyid = ?",
+      [propertyId],
+      async (err, result) => {
+        if (err) {
+          console.error("Database error:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        if (result.length === 0) {
+          return res.status(404).json({ message: "Property not found" });
+        }
+
+        const oldBrochure = result[0].brochureFile;
+
+        // Delete brochure file if exists
+        if (oldBrochure) {
+          try {
+            const filePath = path.join(process.cwd(), oldBrochure);
+            await fs.unlink(filePath);
+          } catch (error) {
+            console.warn("Failed to delete brochure:", error.message);
+          }
+        }
+
+        // Clear brochureFile & videoLink from DB
+        db.query(
+          "UPDATE properties SET brochureFile = NULL, videoLink = NULL WHERE propertyid = ?",
+          [propertyId],
+          (err) => {
+            if (err) {
+              console.error("Database update error:", err);
+              return res
+                .status(500)
+                .json({ message: "Database error", error: err });
+            }
+
+            res.status(200).json({
+              message: "Brochure and Video Link deleted successfully",
+            });
+          }
+        );
+      }
+    );
+  } catch (error) {
+    console.error("Unexpected error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 //* ADD Seo Details */
 export const seoDetails = (req, res) => {
   const { seoSlug, seoTittle, seoDescription, propertyDescription } = req.body;
