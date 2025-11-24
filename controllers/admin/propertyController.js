@@ -1174,8 +1174,8 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
   }
 };
 
-// * DELETE Brochure & Video Link *
-export const deleteBrochureAndVideoLink = async (req, res) => {
+// * DELETE Brochure File *
+export const deleteBrochureFile = async (req, res) => {
   try {
     const propertyId = req.params.id;
 
@@ -1185,7 +1185,7 @@ export const deleteBrochureAndVideoLink = async (req, res) => {
 
     // Get existing brochure & video link
     db.query(
-      "SELECT brochureFile, videoLink FROM properties WHERE propertyid = ?",
+      "SELECT brochureFile FROM properties WHERE propertyid = ?",
       [propertyId],
       async (err, result) => {
         if (err) {
@@ -1213,7 +1213,7 @@ export const deleteBrochureAndVideoLink = async (req, res) => {
 
         // Clear brochureFile & videoLink from DB
         db.query(
-          "UPDATE properties SET brochureFile = NULL, videoLink = NULL WHERE propertyid = ?",
+          "UPDATE properties SET brochureFile = NULL WHERE propertyid = ?",
           [propertyId],
           (err) => {
             if (err) {
