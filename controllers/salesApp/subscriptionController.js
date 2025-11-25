@@ -54,22 +54,27 @@ const razorpay = new Razorpay({
 //   }
 // };
 
-export const createSubscription = async (req, res) => {
+export const createSubscription = async (req, res) => { 
   try {
     const { user_id, plan, payment_id, amount } = req.body;
     console.log("Request Body:", req.body);
 
-     // Fetch payment details
+    // Fetch payment details
     const payment = await razorpay.payments.fetch(payment_id);
 
     // Capture payment only if not auto-captured
     if (!payment.captured) {
-      const captureResponse = await razorpay.payments.capture(payment_id, Math.round(amount * 100), "INR");
+      const captureResponse = await razorpay.payments.capture(
+        payment_id,
+        Math.round(amount * 100),
+        "INR"
+      );
       if (captureResponse.status !== "captured") {
         return res.status(400).json({ success: false, message: "Payment not captured" });
       }
     }
-    // 2️⃣ Continue your existing logic
+
+    //  Continue your existing logic
     const months = PLAN_MONTHS[plan];
     if (!months) return res.status(400).json({ message: "Invalid plan" });
 
@@ -90,7 +95,20 @@ export const createSubscription = async (req, res) => {
       ["Success", payment_id, amount, user_id]
     );
 
+   
+
+    if (months === 1) {
+      await db.query(
+        `UPDATE salespersons 
+         SET hasUsedTrial = 1 
+         WHERE salespersonsid = ?`,
+        [user_id]
+      );
+      console.log("Trial plan purchased → hasUsedTrial = 1 updated");
+    }
+
     res.json({ success: true, message: "Subscription created successfully" });
+
   } catch (error) {
     console.error("Create Subscription Error:", error);
     res.status(500).json({ success: false, message: "Server error" });

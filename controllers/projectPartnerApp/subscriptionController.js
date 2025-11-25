@@ -57,6 +57,20 @@ export const createSubscription = async (req, res) => {
       ["Success", payment_id, amount, user_id]
     );
 
+
+
+     // If plan is 1 month → it's a trial → mark trial as used
+    if (months === 1) {
+      await db.query(
+        `UPDATE projectpartner
+         SET hasUsedTrial = 1
+         WHERE id = ?`,
+        [user_id]
+      );
+
+      console.log("Trial plan purchased → hasUsedTrial = 1 updated");
+    }
+
     res.json({ success: true, message: "Subscription created successfully" });
   } catch (error) {
     console.error("Create Subscription Error:", error);

@@ -552,6 +552,106 @@ export const edit = (req, res) => {
   });
 };
 
+export const updateBusinessDetails = (req, res) => {
+  const partnerid = parseInt(req.params.id);
+  if (isNaN(partnerid)) {
+    return res.status(400).json({ message: "Invalid Partner ID" });
+  }
+
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+  const {
+    whatsappNumber,
+    businessHeading,
+    businessDescription,
+    businessAddress,
+    businessState,
+    businessCity,
+    businessPincode,
+  } = req.body;
+
+  // Validation
+  if (
+    !whatsappNumber ||
+    !businessHeading ||
+    !businessDescription ||
+    !businessAddress ||
+    !businessState ||
+    !businessCity ||
+    !businessPincode
+  ) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  // Uploaded image (optional)
+  const businessLogo = req.file || null;
+  const businessLogoPath = businessLogo
+    ? `/uploads/${businessLogo.filename}`
+    : null;
+
+  // Fetch Old Image First
+  const selectSql = `SELECT businessLogo FROM projectpartner WHERE id = ?`;
+
+  db.query(selectSql, [partnerid], (selectErr, rows) => {
+    if (selectErr) {
+      return res.status(500).json({
+        message: "Error fetching old image",
+        error: selectErr,
+      });
+    }
+
+    const oldLogoPath = rows[0]?.businessLogo;
+
+    // Delete old logo (only if new one uploaded)
+    if (businessLogoPath && oldLogoPath) {
+      const fullPath = path.join(process.cwd(), oldLogoPath);
+      if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+    }
+
+    // Build Update Query
+    let updateSql = `
+      UPDATE projectpartner 
+      SET whatsappNumber = ?, businessHeading = ?, businessDescription = ?, 
+          businessAddress = ?, businessState = ?, businessCity = ?, 
+          businessPincode = ?, updated_at = ?
+    `;
+
+    const updateValues = [
+      whatsappNumber,
+      businessHeading,
+      businessDescription,
+      businessAddress,
+      businessState,
+      businessCity,
+      businessPincode,
+      currentdate,
+    ];
+
+    // If new logo uploaded, update it
+    if (businessLogoPath) {
+      updateSql += `, businessLogo = ? `;
+      updateValues.push(businessLogoPath);
+    }
+
+    updateSql += ` WHERE id = ?`;
+    updateValues.push(partnerid);
+
+    // Execute Update Query
+    db.query(updateSql, updateValues, (updateErr) => {
+      if (updateErr) {
+        return res.status(500).json({
+          message: "Database error during update",
+          error: updateErr,
+        });
+      }
+
+      res.status(200).json({
+        message: "Business Details updated successfully",
+      });
+    });
+  });
+};
+
 // **Delete **
 export const del = (req, res) => {
   const Id = parseInt(req.params.id);

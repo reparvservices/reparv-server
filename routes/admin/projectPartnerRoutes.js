@@ -6,6 +6,7 @@ import {
   getAllActive,
   add,
   edit,
+  updateBusinessDetails,
   getById,
   status,
   del,
@@ -52,6 +53,11 @@ router.post(
     { name: "reraImage", maxCount: 2 },
   ]),
   add
+);
+router.put(
+  "/business-details/edit/:id",
+  upload.single("businessLogo"),
+  updateBusinessDetails
 );
 router.put(
   "/edit/:id",

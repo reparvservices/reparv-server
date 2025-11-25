@@ -665,7 +665,7 @@ Note: ${row.note}`;
             row.project_onesignal,
             title,
             msg,
-            "Enquiries"
+            "Calender"
           );
           console.log("PP notified:", row.project_onesignal);
         } catch (e) {
@@ -676,7 +676,7 @@ Note: ${row.note}`;
       // ---- SEND NOTIFICATION TO SALES PARTNER ----
       if (row.sales_onesignal) {
         try {
-          await sendSPNotification(row.sales_onesignal, title, msg);
+          await sendSPNotification(row.sales_onesignal, title, msg, "Calender");
           console.log("Sales notified:", row.sales_onesignal);
         } catch (e) {
           console.error("Sales notification error:", e);
@@ -686,7 +686,12 @@ Note: ${row.note}`;
       // ---- SEND NOTIFICATION TO TERRITORY PARTNER ----
       if (row.territory_onesignal) {
         try {
-          await sendTPNotification(row.territory_onesignal, title, msg);
+          await sendTPNotification(
+            row.territory_onesignal,
+            title,
+            msg,
+            "Calender"
+          );
           console.log("Territory notified:", row.territory_onesignal);
         } catch (e) {
           console.error("Territory notification error:", e);
