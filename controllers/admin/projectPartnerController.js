@@ -562,8 +562,6 @@ export const updateBusinessDetails = (req, res) => {
 
   const {
     whatsappNumber,
-    businessHeading,
-    businessDescription,
     businessAddress,
     businessState,
     businessCity,
@@ -573,8 +571,6 @@ export const updateBusinessDetails = (req, res) => {
   // Validation
   if (
     !whatsappNumber ||
-    !businessHeading ||
-    !businessDescription ||
     !businessAddress ||
     !businessState ||
     !businessCity ||
@@ -611,15 +607,13 @@ export const updateBusinessDetails = (req, res) => {
     // Build Update Query
     let updateSql = `
       UPDATE projectpartner 
-      SET whatsappNumber = ?, businessHeading = ?, businessDescription = ?, 
-          businessAddress = ?, businessState = ?, businessCity = ?, 
+      SET whatsappNumber = ?, businessAddress = ?, 
+          businessState = ?, businessCity = ?, 
           businessPincode = ?, updated_at = ?
     `;
 
     const updateValues = [
       whatsappNumber,
-      businessHeading,
-      businessDescription,
       businessAddress,
       businessState,
       businessCity,

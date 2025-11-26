@@ -9,24 +9,15 @@ export const add = async (req, res) => {
     propertyid,
     fullname,
     phone,
-    state,
-    city,
-    minbudget,
-    maxbudget,
-    visitdate, // <-- optional
   } = req.body;
   console.log(req.body);
 
-  // ✅ Required field validation (visitdate removed)
+  //  Required field validation (visitdate removed)
   if (
     !user_id ||
     !propertyid ||
     !fullname ||
-    !phone ||
-    !state ||
-    !city ||
-    !minbudget ||
-    !maxbudget
+    !phone
   ) {
     return res
       .status(400)
@@ -55,16 +46,11 @@ export const add = async (req, res) => {
         category,
         customer,
         contact,
-        state,
-        city,
-        minbudget,
-        maxbudget,
         source,
-        visitdate,
         updated_at,
         created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
     db.query(
@@ -74,12 +60,7 @@ export const add = async (req, res) => {
         propertyCategory,
         fullname,
         phone,
-        state,
-        city,
-        minbudget,
-        maxbudget,
         "Onsite",
-        visitdate || null, // ✅ optional (NULL if not provided)
         currentdate,
         currentdate,
       ],
@@ -103,7 +84,7 @@ export const add = async (req, res) => {
             // Don't block success if wishlist delete fails
           }
 
-          // ✅ Final success response
+          //  Final success response
           res.status(201).json({
             message: "Enquiry added successfully",
             Id: result.insertId,
