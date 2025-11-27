@@ -54,6 +54,8 @@ import frontendBlogRoutes from "./routes/frontend/blogRoutes.js";
 import sliderImagesRoutes from "./routes/frontend/sliderRoutes.js";
 import testimonialFeedbackRoutes from "./routes/frontend/testimonialRoutes.js";
 import frontendEmiRoutes from "./routes/frontend/emiRoutes.js";
+// frontend project-partner landing page
+import frontendProjectPartnerRoutes from "./routes/frontend/projectPartnerRoutes.js";
 
 // Payment Route
 import paymentRoutes from "./routes/paymentRoutes.js";
@@ -342,6 +344,7 @@ export const verifyToken = (req, res, next) => {
     "/frontend/slider",
     "/frontend/testimonial",
     "/frontend/emi",
+    "/frontend/project-partner",
     "/salesapp/enquiry",
     "/api/booking",
     "/salesapp/api/login",
@@ -457,6 +460,8 @@ app.use("/frontend/blog", frontendBlogRoutes);
 app.use("/frontend/slider", sliderImagesRoutes);
 app.use("/frontend/testimonial", testimonialFeedbackRoutes);
 app.use("/frontend/emi", frontendEmiRoutes);
+// frontend project-partner landing page
+app.use("/frontend/project-partner", frontendProjectPartnerRoutes);
 
 // Payment Call
 app.use("/api/payment", paymentRoutes);
