@@ -10,12 +10,14 @@ import {
   fetchFlatById,
   fetchPlotById,
   getAdditionalInfo,
+  getById,
 } from "../../controllers/frontend/propertiesController.js";
 
 const router = express.Router();
 
 router.get("/", getAll);
 router.get("/get-all-by-slug", getAllBySlug);
+router.get("/get/:id", getById);
 router.get("/cities", getAllCity);
 router.get("/location/all", getAllLocation);
 router.get("/location", getLocationsByCityAndCategory);
