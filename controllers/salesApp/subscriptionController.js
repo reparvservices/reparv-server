@@ -54,65 +54,110 @@ const razorpay = new Razorpay({
 //   }
 // };
 
-export const createSubscription = async (req, res) => { 
-  try {
-    const { user_id, plan, payment_id, amount } = req.body;
-    console.log("Request Body:", req.body);
+export const createSubscription = (req, res) => {
+  const { user_id, plan, payment_id, amount } = req.body;
+  console.log("Request Body:", req.body);
 
-    // Fetch payment details
-    const payment = await razorpay.payments.fetch(payment_id);
+  // 1️⃣ Fetch payment details
+  razorpay.payments.fetch(payment_id, (err, payment) => {
+    if (err) {
+      console.error("Fetch Payment Error:", err);
+      return res.status(500).json({ success: false, message: "Payment fetch failed" });
+    }
 
-    // Capture payment only if not auto-captured
-    if (!payment.captured) {
-      const captureResponse = await razorpay.payments.capture(
+    // 2️⃣ Capture payment if not captured already
+    const capturePayment = (callback) => {
+      if (payment.captured) return callback(null);
+
+      razorpay.payments.capture(
         payment_id,
         Math.round(amount * 100),
-        "INR"
+        "INR",
+        (err, captureResponse) => {
+          if (err || !captureResponse || captureResponse.status !== "captured") {
+            console.error("Payment Capture Error:", err || captureResponse);
+            return callback("Payment not captured");
+          }
+          callback(null);
+        }
       );
-      if (captureResponse.status !== "captured") {
-        return res.status(400).json({ success: false, message: "Payment not captured" });
+    };
+
+    capturePayment((captureErr) => {
+      if (captureErr) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment not captured",
+        });
       }
-    }
 
-    //  Continue your existing logic
-    const months = PLAN_MONTHS[plan];
-    if (!months) return res.status(400).json({ message: "Invalid plan" });
+      // 3️⃣ Plan validation
+      const months = PLAN_MONTHS[plan];
+      if (!months) {
+        return res.status(400).json({ message: "Invalid plan" });
+      }
 
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + months);
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + months);
 
-    await db.query(
-      `INSERT INTO subscriptions (salespersonid, plan, amount, start_date, end_date, payment_id, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [user_id, plan, amount, startDate, endDate, payment_id, "Active"]
-    );
+      // 4️⃣ Insert subscription
+      db.query(
+        `INSERT INTO subscriptions 
+         (salespersonid, plan, amount, start_date, end_date, payment_id, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [user_id, plan, amount, startDate, endDate, payment_id, "Active"],
+        (err) => {
+          if (err) {
+            console.error("Insert Subscription Error:", err);
+            return res.status(500).json({ success: false, message: "DB Insert Error" });
+          }
 
-    await db.query(
-      `UPDATE salespersons 
-       SET paymentstatus = ?, paymentid = ?, amount = ? 
-       WHERE salespersonsid = ?`,
-      ["Success", payment_id, amount, user_id]
-    );
+          // 5️⃣ Update salesperson
+          db.query(
+            `UPDATE salespersons 
+             SET paymentstatus = ?, paymentid = ?, amount = ? 
+             WHERE salespersonsid = ?`,
+            ["Success", payment_id, amount, user_id],
+            (err) => {
+              if (err) {
+                console.error("Update Salesperson Error:", err);
+                return res.status(500).json({ success: false, message: "DB Update Error" });
+              }
 
-   
+              // 6️⃣ Trial handling
+              if (months === 1) {
+                db.query(
+                  `UPDATE salespersons 
+                   SET hasUsedTrial = 1 
+                   WHERE salespersonsid = ?`,
+                  [user_id],
+                  (err) => {
+                    if (err) {
+                      console.error("Trial Update Error:", err);
+                    } else {
+                      console.log("Trial plan purchased → hasUsedTrial = 1 updated");
+                    }
 
-    if (months === 1) {
-      await db.query(
-        `UPDATE salespersons 
-         SET hasUsedTrial = 1 
-         WHERE salespersonsid = ?`,
-        [user_id]
+                    return res.json({
+                      success: true,
+                      message: "Subscription created successfully",
+                    });
+                  }
+                );
+              } else {
+                // No trial → finish response
+                return res.json({
+                  success: true,
+                  message: "Subscription created successfully",
+                });
+              }
+            }
+          );
+        }
       );
-      console.log("Trial plan purchased → hasUsedTrial = 1 updated");
-    }
-
-    res.json({ success: true, message: "Subscription created successfully" });
-
-  } catch (error) {
-    console.error("Create Subscription Error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
+    });
+  });
 };
 
 
@@ -268,3 +313,4 @@ export const markRedeemUsed = (req, res) => {
     }
   );
 };
+
