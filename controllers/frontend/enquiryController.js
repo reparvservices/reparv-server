@@ -4,8 +4,16 @@ import moment from "moment";
 export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-  const { propertyid, fullname, phone, state, city, minbudget, maxbudget } =
-    req.body;
+  const {
+    propertyid,
+    fullname,
+    phone,
+    state,
+    city,
+    minbudget,
+    maxbudget,
+    source,
+  } = req.body;
 
   if (
     !propertyid ||
@@ -14,17 +22,25 @@ export const add = async (req, res) => {
     !state ||
     !city ||
     !minbudget ||
-    !maxbudget
+    !maxbudget ||
+    !source
   ) {
     return res.status(400).json({ message: "All fields are required" });
   }
+  
+  const minBudget = parseFloat(minbudget);
+  const maxBudget = parseFloat(maxbudget);
 
-  // Step 1: Fetch propertyCategory from properties table
-  const categorySQL = `SELECT propertyCategory FROM properties WHERE propertyid = ?`;
+  // 1 Fetch projectpartnerid + propertyCategory
+  const propertySQL = `
+      SELECT projectpartnerid, propertyCategory 
+      FROM properties 
+      WHERE propertyid = ?
+  `;
 
-  db.query(categorySQL, [propertyid], (err, results) => {
+  db.query(propertySQL, [propertyid], (err, results) => {
     if (err) {
-      console.error("Error fetching property category:", err);
+      console.error("Error fetching property:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
 
@@ -33,40 +49,46 @@ export const add = async (req, res) => {
     }
 
     const propertyCategory = results[0].propertyCategory;
+    const projectpartnerid = results[0].projectpartnerid || null; // if empty → null
 
-    // Step 2: Insert enquiry
-    const insertSQL = `INSERT INTO enquirers (
-      propertyid, category, customer, contact, state, city, minbudget, maxbudget, source,
-      updated_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    // 2 Insert enquiry
+    const insertSQL = `
+      INSERT INTO enquirers (
+        projectpartnerid, propertyid, category, customer, contact, state, city,
+        minbudget, maxbudget, source, updated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
 
     db.query(
       insertSQL,
       [
+        projectpartnerid,
         propertyid,
         propertyCategory,
         fullname,
         phone,
         state,
         city,
-        minbudget,
-        maxbudget,
-        "Onsite",
+        minBudget,
+        maxBudget,
+        source,
         currentdate,
         currentdate,
       ],
       (err, result) => {
         if (err) {
-          console.error("Error inserting:", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
+          console.error("Error inserting enquiry:", err);
+          return res.status(500).json({
+            message: "Database error",
+            error: err,
+          });
         }
 
         res.status(201).json({
           message: "Enquiry added successfully",
           Id: result.insertId,
-          propertyCategory: propertyCategory, // returning the category if needed
+          projectpartnerid: projectpartnerid,
+          propertyCategory: propertyCategory,
         });
       }
     );

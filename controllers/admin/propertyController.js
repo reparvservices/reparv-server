@@ -69,7 +69,7 @@ export const getAll = (req, res) => {
     sql = `SELECT properties.*,
                       builders.company_name 
                FROM properties 
-               INNER JOIN builders ON properties.builderid = builders.builderid 
+               LEFT JOIN builders ON properties.builderid = builders.builderid 
                ORDER BY properties.created_at DESC;`;
   }
 
@@ -104,7 +104,7 @@ export const getById = (req, res) => {
       onboardingpartner.email,
       onboardingpartner.city AS partnerCity
     FROM properties
-    INNER JOIN builders ON builders.builderid = properties.builderid
+    LEFT JOIN builders ON builders.builderid = properties.builderid
     LEFT JOIN onboardingpartner ON properties.partnerid = onboardingpartner.partnerid
     WHERE properties.propertyid = ?
     ORDER BY properties.propertyid DESC;

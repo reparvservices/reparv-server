@@ -112,7 +112,31 @@ export const getAll = (req, res) => {
     `;
   }
 
-  // 4. OTHER SOURCES (default)
+  // 4. Project Partner Landing Page ENQUIRIES (from website)
+  else if (enquirySource === "Landing Page") {
+    sql = `
+      SELECT 
+        enquirers.*, 
+        properties.frontView, 
+        properties.seoSlug, 
+        properties.commissionAmount,
+        territorypartner.fullname AS territoryName, 
+        territorypartner.contact AS territoryContact,
+        projectpartner.fullname AS projectPartnerName, 
+        projectpartner.contact AS projectPartnerContact
+      FROM enquirers 
+      LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+      LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
+      LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid
+      WHERE properties.status = 'active' 
+        AND properties.approve = 'Approved' 
+        AND enquirers.source = 'Landing Page'
+        AND enquirers.status != 'Token'
+      ORDER BY enquirers.enquirersid DESC
+    `;
+  }
+
+  // 5. OTHER SOURCES (default)
   else {
     sql = `
       SELECT 
