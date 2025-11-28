@@ -21,60 +21,111 @@ const razorpay = new Razorpay({
 
 //  CREATE NEW SUBSCRIPTION
 //  CREATE NEW SUBSCRIPTION
-export const createSubscription = async (req, res) => {
-  try {
-    const { user_id, plan, payment_id, amount } = req.body;
-    console.log("Request Body:", req.body);
-//  Capture the payment first
-    // Fetch payment details
-    const payment = await razorpay.payments.fetch(payment_id);
+export const createSubscription = (req, res) => {
+  const { user_id, plan, payment_id, amount } = req.body;
+console.log(req.body);
 
-    // Capture payment only if not auto-captured
-    if (!payment.captured) {
-      const captureResponse = await razorpay.payments.capture(payment_id, Math.round(amount * 100), "INR");
-      if (captureResponse.status !== "captured") {
-        return res.status(400).json({ success: false, message: "Payment not captured" });
-      }
+  // 1️⃣ Fetch Razorpay payment
+  razorpay.payments.fetch(payment_id, (err, payment) => {
+    if (err) {
+      console.error("Fetch Payment Error:", err);
+      return res.status(500).json({ success: false, message: "Payment fetch failed" });
     }
-    const months = PLAN_MONTHS[plan];
-    if (!months) return res.status(400).json({ message: "Invalid plan" });
 
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + months);
+    // 2️⃣ Capture payment only if not captured
+    const capturePayment = (callback) => {
+      if (payment.captured) return callback(null);
 
-    // Insert into subscriptions
-    await db.query(
-      `INSERT INTO subscriptions (territorypartnerid, plan, amount, start_date, end_date, payment_id, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [user_id, plan, amount, startDate, endDate, payment_id, "Active"]
-    );
-
-    // Update Territory table
-    await db.query(
-      `UPDATE territorypartner
-       SET paymentstatus = ?, paymentid = ?, amount = ? 
-       WHERE id = ?`,
-      ["Success", payment_id, amount, user_id]
-    );
-
-
-     // If plan is 1 month → it's a trial → mark trial as used
-    if (months === 1) {
-      await db.query(
-        `UPDATE territorypartner
-         SET hasUsedTrial = 1
-         WHERE id = ?`,
-        [user_id]
+      razorpay.payments.capture(
+        payment_id,
+        Math.round(amount * 100),
+        "INR",
+        (err, captureResponse) => {
+          if (err || !captureResponse || captureResponse.status !== "captured") {
+            console.error("Payment Capture Error:", err || captureResponse);
+            return callback("Payment not captured");
+          }
+          callback(null);
+        }
       );
+    };
 
-      console.log("Trial plan purchased → hasUsedTrial = 1 updated");
-    }
-    res.json({ success: true, message: "Subscription created successfully" });
-  } catch (error) {
-    console.error("Create Subscription Error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
+    capturePayment((captureErr) => {
+      if (captureErr) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment not captured",
+        });
+      }
+
+      // 3️⃣ Validate plan
+      const months = PLAN_MONTHS[plan];
+      if (!months) {
+        return res.status(400).json({ message: "Invalid plan" });
+      }
+
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + months);
+
+      // 4️⃣ Insert subscription
+      db.query(
+        `INSERT INTO subscriptions 
+         (territorypartnerid, plan, amount, start_date, end_date, payment_id, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [user_id, plan, amount, startDate, endDate, payment_id, "Active"],
+        (err) => {
+          if (err) {
+            console.error("Insert Subscription Error:", err);
+            return res.status(500).json({ success: false, message: "DB Insert Error" });
+          }
+
+          // 5️⃣ Update territory partner
+          db.query(
+            `UPDATE territorypartner
+             SET paymentstatus = ?, paymentid = ?, amount = ?
+             WHERE id = ?`,
+            ["Success", payment_id, amount, user_id],
+            (err) => {
+              if (err) {
+                console.error("Territory Partner Update Error:", err);
+                return res.status(500).json({ success: false, message: "DB Update Error" });
+              }
+
+              // 6️⃣ Trial handling
+              if (months === 1) {
+                db.query(
+                  `UPDATE territorypartner
+                   SET hasUsedTrial = 1
+                   WHERE id = ?`,
+                  [user_id],
+                  (err) => {
+                    if (err) {
+                      console.error("Trial Update Error:", err);
+                    }
+
+                    console.log('Syuuuuuuu');
+                    
+                    return res.json({
+                      success: true,
+                      message: "Subscription created successfully",
+                    });
+                  }
+                );
+              } else {
+                console.log('sssssss');
+                
+                return res.json({
+                  success: true,
+                  message: "Subscription created successfully",
+                });
+              }
+            }
+          );
+        }
+      );
+    });
+  });
 };
 
 //  GET USER’S CURRENT SUBSCRIPTION
@@ -224,3 +275,4 @@ export const markRedeemUsed = (req, res) => {
     }
   );
 };
+
