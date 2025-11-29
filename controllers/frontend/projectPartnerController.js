@@ -203,3 +203,39 @@ export const getPremiumProperties = (req, res) => {
     res.json(formatted);
   });
 };
+
+export const addMessage = async (req, res) => {
+  const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
+  const Id = parseInt(req.params.id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid ID" });
+  }
+
+  const { fullname, contact, message } = req.body;
+
+  // Validate request fields
+  if (!fullname || !contact || !message) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  const sql = `
+    INSERT INTO messages (projectPartnerId, fullname, contact, message, updated_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `;
+
+  db.query(
+    sql,
+    [Id, fullname, contact, message, currentDate, currentDate],
+    (err, result) => {
+      if (err) {
+        console.error("Error inserting message:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+
+      return res.status(201).json({
+        message: "Message added successfully",
+        id: result.insertId,
+      });
+    }
+  );
+};
