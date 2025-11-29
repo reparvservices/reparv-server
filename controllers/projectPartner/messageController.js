@@ -10,7 +10,7 @@ export const getAll = (req, res) => {
       .json({ message: "Unauthorized Access, Please Login Again!" });
   }
   const sql =
-    "SELECT * FROM messages WHERE projectPartnerId = ? ORDER BY DESC id";
+    "SELECT * FROM messages WHERE projectPartnerId = ? ORDER BY id DESC";
   db.query(sql, [userId], (err, result) => {
     if (err) {
       console.error("Error fetching :", err);
