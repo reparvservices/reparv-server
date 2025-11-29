@@ -23,7 +23,7 @@ const razorpay = new Razorpay({
 //  CREATE NEW SUBSCRIPTION
 export const createSubscription = (req, res) => {
   const { user_id, plan, payment_id, amount } = req.body;
-console.log(req.body);
+  console.log("Request Body:", req.body);
 
   // 1️⃣ Fetch Razorpay payment
   razorpay.payments.fetch(payment_id, (err, payment) => {
@@ -102,10 +102,9 @@ console.log(req.body);
                   (err) => {
                     if (err) {
                       console.error("Trial Update Error:", err);
+                      // still return success even if trial update fails
                     }
 
-                    console.log('Syuuuuuuu');
-                    
                     return res.json({
                       success: true,
                       message: "Subscription created successfully",
@@ -113,8 +112,6 @@ console.log(req.body);
                   }
                 );
               } else {
-                console.log('sssssss');
-                
                 return res.json({
                   success: true,
                   message: "Subscription created successfully",
@@ -127,7 +124,6 @@ console.log(req.body);
     });
   });
 };
-
 //  GET USER’S CURRENT SUBSCRIPTION
 export const getUserSubscription = (req, res) => {
   const { userId } = req.params;
@@ -275,4 +271,5 @@ export const markRedeemUsed = (req, res) => {
     }
   );
 };
+
 
