@@ -21,6 +21,32 @@ export const getProjectPartnerByContact = (req, res) => {
   });
 };
 
+// Fetch Unique Cities of Properties by Project Partner Id
+export const getCities = (req, res) => {
+  const id = parseInt(req.params.id);
+
+  if (isNaN(id)) {
+    return res.status(400).json({ message: "Invalid or missing ID" });
+  }
+
+  const sql = `
+    SELECT DISTINCT city 
+    FROM properties 
+    WHERE projectpartnerid = ?
+    ORDER BY city ASC
+  `;
+
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      console.error("Error fetching cities:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    const cities = result.map((row) => row.city);
+    res.json(cities); // only array of cities
+  });
+};
+
 export const getAllProperties = (req, res) => {
   const { propertyCategory, projectPartnerId, selectedCity } = req.body;
 
