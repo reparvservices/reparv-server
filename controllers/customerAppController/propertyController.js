@@ -91,9 +91,12 @@ export const getUserWishlist = (req, res) => {
 // **Fetch All Properties**
 export const getAll = (req, res) => {
   const userContact= req.params.contact;
+  console.log(userContact,req.params.contact);
+  
   if (!userContact) {
     return res.status(401).json({ message: "Unauthorized Access" });
   }
+
   const sql = `SELECT properties.* FROM properties
                WHERE properties.contact = ?
                ORDER BY properties.propertyid DESC`;
@@ -108,7 +111,7 @@ export const getAll = (req, res) => {
       updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
     }));
 
-    console.log(formatted);
+   // console.log(formatted);
     
     res.json(formatted);
   });
@@ -122,18 +125,14 @@ export const addProperty = (req, res) => {
       price,
       contact,
       areas,
-      state,
-      city,
-      pincode,
-      address,
-      ownership
+      ofprice,
     } = req.body;
 
-    console.log(req.body);
+    console.log("Request Body:", req.body);
 
-    // -----------------------------------------
-    // 1️⃣ CHECK IF PROPERTY NAME ALREADY EXISTS
-    // -----------------------------------------
+    // -------------------------------------------------
+    // 1️⃣ CHECK IF PROPERTY NAME EXISTS
+    // -------------------------------------------------
     db.query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",
       [property_name],
@@ -143,14 +142,12 @@ export const addProperty = (req, res) => {
         }
 
         if (result.length > 0) {
-          return res.status(409).json({
-            message: "Property name already exists!",
-          });
+          return res.status(409).json({ message: "Property name already exists!" });
         }
 
-        // -----------------------------------------
+        // -------------------------------------------------
         // 2️⃣ PARSE AREAS
-        // -----------------------------------------
+        // -------------------------------------------------
         let parsedAreas = [];
 
         if (typeof areas === "string") parsedAreas = JSON.parse(areas);
@@ -164,10 +161,10 @@ export const addProperty = (req, res) => {
           parsedAreas.find(a => a.label.toLowerCase().includes("carpet"))
             ?.value || null;
 
-        // -----------------------------------------
+        // -------------------------------------------------
         // 3️⃣ MAP UPLOADED IMAGES
-        // -----------------------------------------
-        const mapUploadedFiles = (field) => {
+        // -------------------------------------------------
+        const mapFiles = (field) => {
           if (req.files[field]) {
             return JSON.stringify(
               req.files[field].map(f => `/uploads/${f.filename}`)
@@ -176,68 +173,79 @@ export const addProperty = (req, res) => {
           return null;
         };
 
-        const frontView = mapUploadedFiles("frontView");
-        const sideView = mapUploadedFiles("sideView");
-        const kitchenView = mapUploadedFiles("kitchenView");
-        const hallView = mapUploadedFiles("hallView");
-        const bedroomView = mapUploadedFiles("bedroomView");
-        const bathroomView = mapUploadedFiles("bathroomView");
-        const balconyView = mapUploadedFiles("balconyView");
-        const nearestLandmark = mapUploadedFiles("nearestLandmark");
-        const developedAmenities = mapUploadedFiles("developedAmenities");
+        const frontView = mapFiles("frontView");
+        const sideView = mapFiles("sideView");
+        const kitchenView = mapFiles("kitchenView");
+        const hallView = mapFiles("hallView");
+        const bedroomView = mapFiles("bedroomView");
+        const bathroomView = mapFiles("bathroomView");
+        const balconyView = mapFiles("balconyView");
+        const nearestLandmark = mapFiles("nearestLandmark");
+        const developedAmenities = mapFiles("developedAmenities");
 
-        // -----------------------------------------
+        // -------------------------------------------------
         // 4️⃣ SEO SLUG
-        // -----------------------------------------
+        // -------------------------------------------------
         const seoSlug = toSlug(property_name);
 
-        // -----------------------------------------
-        // 5️⃣ INSERT INTO DB
-        // -----------------------------------------
+        // -------------------------------------------------
+        // 5️⃣ CORRECTED INSERT QUERY (NO EXTRA PLACEHOLDER)
+        // -------------------------------------------------
         const insertSQL = `
           INSERT INTO properties
-          (propertyType,propertyCategory, propertyName, totalOfferPrice, contact, state, city, pincode, address, ownershipType,
-           builtUpArea, carpetArea, frontView, sideView, kitchenView, hallView, bedroomView, bathroomView, balconyView,
-           nearestLandmark, developedAmenities, seoSlug, created_at, updated_at)
-          VALUES (?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+          (
+            propertyType,
+            propertyCategory,
+            propertyName,
+            totalSalesPrice,
+            totalOfferPrice,
+            contact,
+            builtUpArea,
+            carpetArea,
+            frontView,
+            sideView,
+            kitchenView,
+            hallView,
+            bedroomView,
+            bathroomView,
+            balconyView,
+            nearestLandmark,
+            developedAmenities,
+            seoSlug,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         `;
 
+        // Must be EXACTLY 18 values
         const values = [
-          property_type,
-          property_type,
-          property_name,
-          price,
-          contact,
-          state,
-          city,
-          pincode,
-          address,
-          ownership,
-          builtUpArea,
-          carpetArea,
-          frontView,
-          sideView,
-          kitchenView,
-          hallView,
-          bedroomView,
-          bathroomView,
-          balconyView,
-          nearestLandmark,
-          developedAmenities,
-          seoSlug,
+          property_type,        // propertyType (1)
+          property_type,        // propertyCategory (2)
+          property_name,        // (3)
+          price,                // (4)
+          ofprice,              // (5)
+          contact,              // (6)
+          builtUpArea,          // (7)
+          carpetArea,           // (8)
+          frontView,            // (9)
+          sideView,             // (10)
+          kitchenView,          // (11)
+          hallView,             // (12)
+          bedroomView,          // (13)
+          bathroomView,         // (14)
+          balconyView,          // (15)
+          nearestLandmark,      // (16)
+          developedAmenities,   // (17)
+          seoSlug               // (18)
         ];
 
+        // -------------------------------------------------
+        // 6️⃣ INSERT EXECUTION
+        // -------------------------------------------------
         db.query(insertSQL, values, (err, result) => {
           if (err) {
             console.error("Insert error:", err);
-
-            // Duplicate handling from DB constraint
-            if (err.code === "ER_DUP_ENTRY") {
-              return res.status(409).json({
-                message: "Property name already exists!",
-              });
-            }
-
             return res.status(500).json({ message: "Insert failed", error: err });
           }
 
