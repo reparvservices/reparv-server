@@ -19,18 +19,15 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-
-
-
 export const createSubscription = async (req, res) => {
   try {
     const { user_id, plan, payment_id, amount } = req.body;
     console.log("Request Body:", req.body);
 
-    // 1️⃣ Fetch payment details from Razorpay
+    // 1 Fetch payment details from Razorpay
     const payment = await razorpay.payments.fetch(payment_id);
 
-    // 2️⃣ Capture payment only if not auto-captured
+    // 2 Capture payment only if not auto-captured
     if (!payment.captured) {
       const captureResponse = await razorpay.payments.capture(
         payment_id,
@@ -39,19 +36,22 @@ export const createSubscription = async (req, res) => {
       );
 
       if (captureResponse.status !== "captured") {
-        return res.status(400).json({ success: false, message: "Payment not captured" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Payment not captured" });
       }
     }
 
-    // 3️⃣ Validate plan
+    // 3 Validate plan
     const months = PLAN_MONTHS[plan];
-    if (!months) return res.status(400).json({ success: false, message: "Invalid plan" });
+    if (!months)
+      return res.status(400).json({ success: false, message: "Invalid plan" });
 
     const startDate = new Date();
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + months);
 
-    // 4️⃣ Insert subscription
+    // 4 Insert subscription
     await db.promise().query(
       `INSERT INTO subscriptions 
        (territorypartnerid, plan, amount, start_date, end_date, payment_id, status)
@@ -59,7 +59,7 @@ export const createSubscription = async (req, res) => {
       [user_id, plan, amount, startDate, endDate, payment_id, "Active"]
     );
 
-    // 5️⃣ Update territory partner
+    // 5 Update territory partner
     await db.promise().query(
       `UPDATE territorypartner 
        SET paymentstatus = ?, paymentid = ?, amount = ? 
@@ -67,7 +67,7 @@ export const createSubscription = async (req, res) => {
       ["Success", payment_id, amount, user_id]
     );
 
-    // 6️⃣ Trial handling
+    // 6 Trial handling
     if (months === 1) {
       await db.promise().query(
         `UPDATE territorypartner 
@@ -78,7 +78,7 @@ export const createSubscription = async (req, res) => {
       console.log("Trial plan purchased → hasUsedTrial = 1 updated");
     }
 
-    // 7️⃣ Respond success
+    // 7 Respond success
     res.json({ success: true, message: "Subscription created successfully" });
   } catch (error) {
     console.error("Create Subscription Error:", error);
@@ -86,79 +86,87 @@ export const createSubscription = async (req, res) => {
   }
 };
 
-//  GET USER’S CURRENT SUBSCRIPTION
+// GET USER’S CURRENT SUBSCRIPTION
 export const getUserSubscription = (req, res) => {
   const { userId } = req.params;
 
-  db.query(
-    SELECT * FROM subscriptions WHERE territorypartnerid = ? ORDER BY created_at DESC LIMIT 1,
-    [userId],
-    (err, rows) => {
-      if (err) {
-        console.error("DB Error:", err);
-        return res
-          .status(500)
-          .json({ success: false, message: "Server error" });
-      }
+  const sql = `
+    SELECT * FROM subscriptions
+    WHERE territorypartnerid = ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
 
-      if (!rows.length) {
-        return res.json({
-          success: true,
-          active: false,
-          message: "No subscription found",
-        });
-      }
-
-      const sub = rows[0];
-      const now = new Date();
-      let status = sub.status;
-
-      // Expired Subscription
-      if (new Date(sub.end_date) < now && sub.status !== "Expired") {
-        db.query(
-          UPDATE subscriptions SET status = 'Expired' WHERE id = ?,
-          [sub.id],
-          (err) => {
-            if (err) console.error("Error updating subscription:", err);
-          }
-        );
-
-        db.query(
-          `UPDATE territorypartner
-           SET paymentstatus = ?, paymentid = ?, amount = ? 
-           WHERE id = ?`,
-          ["Expired", null, 0, userId],
-          (err) => {
-            if (err) console.error("Error updating Territory:", err);
-          }
-        );
-
-        status = "Expired";
-      }
-      // Active Subscription
-      else if (status === "Active") {
-        db.query(
-          `UPDATE territorypartner
-           SET paymentstatus = ?, paymentid = ?, amount = ? 
-           WHERE id = ?`,
-          ["Success", sub.payment_id, sub.amount, userId],
-          (err) => {
-            if (err) console.error("Error updating Territoryperson:", err);
-          }
-        );
-      }
-
-      res.json({
-        success: true,
-        active: status === "Active",
-        plan: sub.plan,
-        amount: sub.amount,
-        start_date: sub.start_date,
-        end_date: sub.end_date,
-        status,
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      console.error("DB Error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Server error",
       });
     }
-  );
+
+    if (!rows.length) {
+      return res.json({
+        success: true,
+        active: false,
+        message: "No subscription found",
+      });
+    }
+
+    const sub = rows[0];
+    const now = new Date();
+    let status = sub.status;
+
+    // EXPIRED SUBSCRIPTION
+    if (new Date(sub.end_date) < now && sub.status !== "Expired") {
+      const updateSubSql = `
+        UPDATE subscriptions
+        SET status = 'Expired'
+        WHERE id = ?
+      `;
+      db.query(updateSubSql, [sub.id], (err) => {
+        if (err) console.error("Error updating subscription:", err);
+      });
+
+      const updateTerritorySql = `
+        UPDATE territorypartner
+        SET paymentstatus = ?, paymentid = ?, amount = ?
+        WHERE id = ?
+      `;
+      db.query(updateTerritorySql, ["Expired", null, 0, userId], (err) => {
+        if (err) console.error("Error updating Territory:", err);
+      });
+
+      status = "Expired";
+    }
+
+    // ACTIVE SUBSCRIPTION
+    else if (status === "Active") {
+      const updateTerritorySql = `
+        UPDATE territorypartner
+        SET paymentstatus = ?, paymentid = ?, amount = ?
+        WHERE id = ?
+      `;
+      db.query(
+        updateTerritorySql,
+        ["Success", sub.payment_id, sub.amount, userId],
+        (err) => {
+          if (err) console.error("Error updating Territoryperson:", err);
+        }
+      );
+    }
+
+    res.json({
+      success: true,
+      active: status === "Active",
+      plan: sub.plan,
+      amount: sub.amount,
+      start_date: sub.start_date,
+      end_date: sub.end_date,
+      status,
+    });
+  });
 };
 
 export const validateRedeemCode = (req, res) => {
