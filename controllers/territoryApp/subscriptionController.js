@@ -19,117 +19,79 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-//  CREATE NEW SUBSCRIPTION
-//  CREATE NEW SUBSCRIPTION
-export const createSubscription = (req, res) => {
-  const { user_id, plan, payment_id, amount } = req.body;
-  console.log("Request Body:", req.body);
 
-  // 1️⃣ Fetch Razorpay payment
-  razorpay.payments.fetch(payment_id, (err, payment) => {
-    if (err) {
-      console.error("Fetch Payment Error:", err);
-      return res.status(500).json({ success: false, message: "Payment fetch failed" });
-    }
 
-    // 2️⃣ Capture payment only if not captured
-    const capturePayment = (callback) => {
-      if (payment.captured) return callback(null);
 
-      razorpay.payments.capture(
+export const createSubscription = async (req, res) => {
+  try {
+    const { user_id, plan, payment_id, amount } = req.body;
+    console.log("Request Body:", req.body);
+
+    // 1️⃣ Fetch payment details from Razorpay
+    const payment = await razorpay.payments.fetch(payment_id);
+
+    // 2️⃣ Capture payment only if not auto-captured
+    if (!payment.captured) {
+      const captureResponse = await razorpay.payments.capture(
         payment_id,
         Math.round(amount * 100),
-        "INR",
-        (err, captureResponse) => {
-          if (err || !captureResponse || captureResponse.status !== "captured") {
-            console.error("Payment Capture Error:", err || captureResponse);
-            return callback("Payment not captured");
-          }
-          callback(null);
-        }
+        "INR"
       );
-    };
 
-    capturePayment((captureErr) => {
-      if (captureErr) {
-        return res.status(400).json({
-          success: false,
-          message: "Payment not captured",
-        });
+      if (captureResponse.status !== "captured") {
+        return res.status(400).json({ success: false, message: "Payment not captured" });
       }
+    }
 
-      // 3️⃣ Validate plan
-      const months = PLAN_MONTHS[plan];
-      if (!months) {
-        return res.status(400).json({ message: "Invalid plan" });
-      }
+    // 3️⃣ Validate plan
+    const months = PLAN_MONTHS[plan];
+    if (!months) return res.status(400).json({ success: false, message: "Invalid plan" });
 
-      const startDate = new Date();
-      const endDate = new Date();
-      endDate.setMonth(endDate.getMonth() + months);
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + months);
 
-      // 4️⃣ Insert subscription
-      db.query(
-        `INSERT INTO subscriptions 
-         (territorypartnerid, plan, amount, start_date, end_date, payment_id, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [user_id, plan, amount, startDate, endDate, payment_id, "Active"],
-        (err) => {
-          if (err) {
-            console.error("Insert Subscription Error:", err);
-            return res.status(500).json({ success: false, message: "DB Insert Error" });
-          }
+    // 4️⃣ Insert subscription
+    await db.promise().query(
+      `INSERT INTO subscriptions 
+       (territorypartnerid, plan, amount, start_date, end_date, payment_id, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [user_id, plan, amount, startDate, endDate, payment_id, "Active"]
+    );
 
-          // 5️⃣ Update territory partner
-          db.query(
-            `UPDATE territorypartner
-             SET paymentstatus = ?, paymentid = ?, amount = ?
-             WHERE id = ?`,
-            ["Success", payment_id, amount, user_id],
-            (err) => {
-              if (err) {
-                console.error("Territory Partner Update Error:", err);
-                return res.status(500).json({ success: false, message: "DB Update Error" });
-              }
+    // 5️⃣ Update territory partner
+    await db.promise().query(
+      `UPDATE territorypartner 
+       SET paymentstatus = ?, paymentid = ?, amount = ? 
+       WHERE id = ?`,
+      ["Success", payment_id, amount, user_id]
+    );
 
-              // 6️⃣ Trial handling
-              if (months === 1) {
-                db.query(
-                  `UPDATE territorypartner
-                   SET hasUsedTrial = 1
-                   WHERE id = ?`,
-                  [user_id],
-                  (err) => {
-                    if (err) {
-                      console.error("Trial Update Error:", err);
-                      // still return success even if trial update fails
-                    }
-
-                    return res.json({
-                      success: true,
-                      message: "Subscription created successfully",
-                    });
-                  }
-                );
-              } else {
-                return res.json({
-                  success: true,
-                  message: "Subscription created successfully",
-                });
-              }
-            }
-          );
-        }
+    // 6️⃣ Trial handling
+    if (months === 1) {
+      await db.promise().query(
+        `UPDATE territorypartner 
+         SET hasUsedTrial = 1 
+         WHERE id = ?`,
+        [user_id]
       );
-    });
-  });
+      console.log("Trial plan purchased → hasUsedTrial = 1 updated");
+    }
+
+    // 7️⃣ Respond success
+    res.json({ success: true, message: "Subscription created successfully" });
+  } catch (error) {
+    console.error("Create Subscription Error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
 };
+
 //  GET USER’S CURRENT SUBSCRIPTION
 export const getUserSubscription = (req, res) => {
   const { userId } = req.params;
 
   db.query(
-    `SELECT * FROM subscriptions WHERE territorypartnerid = ? ORDER BY created_at DESC LIMIT 1`,
+    SELECT * FROM subscriptions WHERE territorypartnerid = ? ORDER BY created_at DESC LIMIT 1,
     [userId],
     (err, rows) => {
       if (err) {
@@ -154,7 +116,7 @@ export const getUserSubscription = (req, res) => {
       // Expired Subscription
       if (new Date(sub.end_date) < now && sub.status !== "Expired") {
         db.query(
-          `UPDATE subscriptions SET status = 'Expired' WHERE id = ?`,
+          UPDATE subscriptions SET status = 'Expired' WHERE id = ?,
           [sub.id],
           (err) => {
             if (err) console.error("Error updating subscription:", err);
@@ -271,5 +233,3 @@ export const markRedeemUsed = (req, res) => {
     }
   );
 };
-
-
