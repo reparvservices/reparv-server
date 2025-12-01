@@ -108,9 +108,11 @@ export const getHotDealProperties = (req, res) => {
 
   // Base SQL
   let sql = `
-    SELECT * FROM properties
-    WHERE projectpartnerid = ?
-    AND city = ? AND hotDeal = ?
+    SELECT properties.*,
+           builders.company_name 
+           FROM properties 
+           LEFT JOIN builders ON properties.builderid = builders.builderid 
+           WHERE projectpartnerid = ? AND city = ? AND hotDeal = ?
   `;
 
   const params = [projectPartnerId, selectedCity, "Active"];
