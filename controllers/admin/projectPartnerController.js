@@ -75,127 +75,6 @@ export const getAll = (req, res) => {
   });
 };
 
-export const getAllOld = (req, res) => {
-  const paymentStatus = req.params.paymentStatus;
-
-  if (!paymentStatus) {
-    return res.status(401).json({ message: "Payment Status Not Selected" });
-  }
-
-  let sql;
-
-  const followUpJoin = `
-    LEFT JOIN (
-      SELECT p1.*
-      FROM partnerFollowup p1
-      INNER JOIN (
-        SELECT partnerId, MAX(created_at) AS latest
-        FROM partnerFollowup
-        WHERE role = 'Project Partner'
-        GROUP BY partnerId
-      ) p2 ON p1.partnerId = p2.partnerId AND p1.created_at = p2.latest
-      WHERE p1.role = 'Project Partner'
-    ) pf ON projectpartner.id = pf.partnerId
-  `;
-
-  switch (paymentStatus) {
-    case "Success":
-      sql = `
-        SELECT projectpartner.*, pf.followUp, pf.created_at AS followUpDate
-        FROM projectpartner
-        ${followUpJoin}
-        WHERE projectpartner.paymentstatus = 'Success'
-        ORDER BY projectpartner.created_at DESC`;
-      break;
-
-    case "Follow Up":
-      sql = `
-        SELECT projectpartner.*, pf.followUp, pf.created_at AS followUpDate
-        FROM projectpartner
-        ${followUpJoin}
-        WHERE projectpartner.paymentstatus = 'Follow Up' AND projectpartner.loginstatus = 'Inactive'
-        ORDER BY projectpartner.updated_at DESC`;
-      break;
-
-    case "Pending":
-      sql = `
-        SELECT projectpartner.*, pf.followUp, pf.created_at AS followUpDate
-        FROM projectpartner
-        ${followUpJoin}
-        WHERE projectpartner.paymentstatus = 'Pending'
-        ORDER BY projectpartner.created_at DESC`;
-      break;
-
-    case "Free":
-      sql = `
-        SELECT projectpartner.*, pf.followUp, pf.created_at AS followUpDate
-        FROM projectpartner
-        ${followUpJoin}
-        WHERE projectpartner.paymentstatus != 'Success' 
-          AND projectpartner.loginstatus = 'Active'
-        ORDER BY projectpartner.created_at DESC`;
-      break;
-
-    default:
-      sql = `SELECT * FROM projectpartner ORDER BY id DESC`;
-  }
-
-  db.query(sql, (err, partners) => {
-    if (err) {
-      console.error("Error fetching project partners:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-
-    // Accurate count logic including "Free"
-    const countQuery = `
-      SELECT 'Success' AS status, COUNT(*) AS count
-      FROM projectpartner
-      WHERE paymentstatus = 'Success'
-      UNION ALL
-      SELECT 'Pending', COUNT(*)
-      FROM projectpartner
-      WHERE paymentstatus = 'Pending'
-      UNION ALL
-      SELECT 'Follow Up', COUNT(*)
-      FROM projectpartner
-      WHERE paymentstatus = 'Follow Up' AND loginstatus = 'Inactive'
-      UNION ALL
-      SELECT 'Free', COUNT(*)
-      FROM projectpartner
-      WHERE paymentstatus != 'Success' AND loginstatus = 'Active'
-    `;
-
-    db.query(countQuery, (countErr, counts) => {
-      if (countErr) {
-        console.error("Error fetching projectpartner status counts:", countErr);
-        return res
-          .status(500)
-          .json({ message: "Database error", error: countErr });
-      }
-
-      const formatted = (partners || []).map((row) => ({
-        ...row,
-        created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-        updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
-        followUp: row.followUp || null,
-        followUpDate: row.followUpDate
-          ? moment(row.followUpDate).format("DD MMM YYYY | hh:mm A")
-          : null,
-      }));
-
-      const paymentStatusCounts = {};
-      counts.forEach((item) => {
-        paymentStatusCounts[item.status] = item.count;
-      });
-
-      res.json({
-        data: formatted,
-        paymentStatusCounts,
-      });
-    });
-  });
-};
-
 // **Fetch All**
 export const getAllActive = (req, res) => {
   const sql =
@@ -310,7 +189,7 @@ export const add = (req, res) => {
 
   const checkSql = `SELECT * FROM projectpartner WHERE contact = ? OR email = ?`;
 
-  db.query(checkSql, [contact, email], (checkErr, checkResult) => {
+  db.query(checkSql, [contact, email.toLowerCase()], (checkErr, checkResult) => {
     if (checkErr) {
       console.error("Error checking existing Project Partner:", checkErr);
       return res.status(500).json({
@@ -345,7 +224,7 @@ export const add = (req, res) => {
         [
           fullname,
           contact,
-          email,
+          email.toLowerCase(),
           intrest,
           refrence,
           referralCode,
@@ -503,7 +382,7 @@ export const edit = (req, res) => {
     const updateValues = [
       fullname,
       contact,
-      email,
+      email.toLowerCase(),
       intrest,
       address,
       state,

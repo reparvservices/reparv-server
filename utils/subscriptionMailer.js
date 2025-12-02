@@ -17,7 +17,7 @@ const sendSubscriptionEmail = async (email, plan, planDuration, amount) => {
   try {
     const mailOptions = {
       from: `"Reparv" <${process.env.EMAIL_USER}>`,
-      to: email,
+      to: email.toLowerCase(),
       subject: `Subscription Purchased Successfully - ${plan}`,
       html: `
         <p>Hello,</p>

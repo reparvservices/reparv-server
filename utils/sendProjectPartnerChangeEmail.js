@@ -29,7 +29,7 @@ const sendProjectPartnerChangeEmail = async (
 
     const mailOptions = {
       from: `"Reparv Team" <${process.env.EMAIL_USER}>`,
-      to: email,
+      to: email.toLowerCase(),
       subject: `Your Project Partner Has Been Updated ✔`,
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px; background: #f8f9fa;">

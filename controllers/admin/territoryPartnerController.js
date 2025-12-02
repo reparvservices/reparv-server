@@ -220,7 +220,7 @@ export const add = (req, res) => {
   // Check for duplicates
   const checkSql = `SELECT * FROM territorypartner WHERE contact = ? OR email = ?`;
 
-  db.query(checkSql, [contact, email], (checkErr, checkResult) => {
+  db.query(checkSql, [contact, email.toLowerCase(),], (checkErr, checkResult) => {
     if (checkErr) {
       console.error("Error checking existing Territory Partner:", checkErr);
       return res.status(500).json({
@@ -259,7 +259,7 @@ export const add = (req, res) => {
           projectpartnerid || null,
           fullname,
           contact,
-          email,
+          email.toLowerCase(),
           intrest,
           refrence,
           referralCode,
@@ -412,7 +412,7 @@ export const edit = (req, res) => {
       const updateValues = [
         fullname,
         contact,
-        email,
+        email.toLowerCase(),
         intrest,
         address,
         state,

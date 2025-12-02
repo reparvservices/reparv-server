@@ -17,7 +17,7 @@ const sendEmail = async (email, username, password, role, url) => {
   try {
     const mailOptions = {
       from: `"Reparv" <${process.env.EMAIL_USER}>`,
-      to: email,
+      to: email.toLowerCase(),
       subject: `Your ${role} Account Details`,
       html: `
       <div style="font-family: Arial, sans-serif; background:#f5f5f7; padding:20px;">

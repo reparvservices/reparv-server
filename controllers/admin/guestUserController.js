@@ -88,7 +88,7 @@ export const add = (req, res) => {
 
   const checkSql = `SELECT * FROM guestUsers WHERE contact = ? OR email = ?`;
 
-  db.query(checkSql, [contact, email], (checkErr, checkResult) => {
+  db.query(checkSql, [contact, email.toLowerCase(),], (checkErr, checkResult) => {
     if (checkErr) {
       console.error("Error checking existing user:", checkErr);
       return res
@@ -111,7 +111,7 @@ export const add = (req, res) => {
       [
         fullname,
         contact,
-        email,
+        email.toLowerCase(),
         address,
         state,
         city,
@@ -201,7 +201,7 @@ export const edit = (req, res) => {
     const updateValues = [
       fullname,
       contact,
-      email,
+      email.toLowerCase(),
       address,
       state,
       city,
