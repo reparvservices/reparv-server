@@ -150,6 +150,186 @@ export const getById = (req, res) => {
 };
 
 // **Add New Sales Person **
+// export const add = (req, res) => {
+//   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+//   const {
+//     fullname,
+//     contact,
+//     email,
+//     intrest,
+//     refrence,
+//     address,
+//     state,
+//     city,
+//     projectpartnerid,
+//     pincode,
+//     experience,
+//     rerano,
+//     adharno,
+//     panno,
+//     bankname,
+//     accountholdername,
+//     accountnumber,
+//     ifsc,
+//   } = req.body;
+
+//   // Validate required fields
+//   if (!fullname || !contact || !email || !intrest) {
+//     return res.status(400).json({
+//       message: "FullName, Contact and Email Required!",
+//     });
+//   }
+
+//   // Function to generate referral code
+//   const createReferralCode = () => {
+//     const chars =
+//       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*";
+//     let code = "";
+//     for (let i = 0; i < 6; i++) {
+//       code += chars.charAt(Math.floor(Math.random() * chars.length));
+//     }
+//     return "REF-" + code; // Total 10 characters
+//   };
+
+//   // Check if referral is unique
+//   const generateUniqueReferralCode = (callback) => {
+//     const code = createReferralCode();
+//     db.query(
+//       "SELECT referral FROM salespersons WHERE referral = ?",
+//       [code],
+//       (err, results) => {
+//         if (err) return callback(err, null);
+//         if (results.length > 0) return generateUniqueReferralCode(callback);
+//         return callback(null, code);
+//       }
+//     );
+//   };
+
+//   // Handle uploaded files safely
+//   const adharImageFile = req.files?.["adharImage"]?.[0];
+//   const panImageFile = req.files?.["panImage"]?.[0];
+//   const reraImageFile = req.files?.["reraImage"]?.[0];
+
+//   const adharImageUrl = adharImageFile
+//     ? `/uploads/${adharImageFile.filename}`
+//     : null;
+//   const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
+//   const reraImageUrl = reraImageFile
+//     ? `/uploads/${reraImageFile.filename}`
+//     : null;
+
+//   // Check for duplicates
+//   const checkSql = `SELECT * FROM salespersons WHERE contact = ? OR email = ?`;
+
+//   db.query(checkSql, [contact, email.toLowerCase(),], (checkErr, checkResult) => {
+//     if (checkErr) {
+//       console.error("Error checking existing salespersons:", checkErr);
+//       return res.status(500).json({
+//         message: "Database error during validation",
+//         error: checkErr,
+//       });
+//     }
+
+//     if (checkResult.length > 0) {
+//       return res.status(409).json({
+//         message: "Sales person already exists with this Contact or Email Id.",
+//       });
+//     }
+
+//     // Generate unique referral code
+//     generateUniqueReferralCode((referralErr, referralCode) => {
+//       if (referralErr) {
+//         console.error("Referral code generation failed:", referralErr);
+//         return res.status(500).json({
+//           message: "Error generating referral code",
+//           error: referralErr,
+//         });
+//       }
+
+//       // Insert new salespersons
+//       const insertSql = `
+//         INSERT INTO salespersons 
+//         (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, rerano, adharno, panno, 
+//          bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
+//         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+//       `;
+
+//       db.query(
+//         insertSql,
+//         [
+//           projectpartnerid || null,
+//           fullname,
+//           contact,
+//           email.toLowerCase(),
+//           intrest,
+//           refrence,
+//           referralCode,
+//           address,
+//           state,
+//           city,
+//           pincode,
+//           experience,
+//           rerano,
+//           adharno,
+//           panno,
+//           bankname,
+//           accountholdername,
+//           accountnumber,
+//           ifsc,
+//           adharImageUrl,
+//           panImageUrl,
+//           reraImageUrl,
+//           currentdate,
+//           currentdate,
+//         ],
+//         (insertErr, insertResult) => {
+//           if (insertErr) {
+//             console.error("Error inserting Sales Person:", insertErr);
+//             return res.status(500).json({
+//               message: "Database error",
+//               error: insertErr,
+//             });
+//           }
+
+//           // Insert default follow-up entry
+//           const followupSql = `
+//             INSERT INTO partnerFollowup 
+//             (partnerId, role, followUp, followUpText, created_at, updated_at) 
+//             VALUES (?, ?, ?, ?, ?, ?)
+//           `;
+
+//           db.query(
+//             followupSql,
+//             [
+//               insertResult.insertId,
+//               "Sales Person",
+//               "New",
+//               "Newly Added Sales Person",
+//               currentdate,
+//               currentdate,
+//             ],
+//             (followupErr) => {
+//               if (followupErr) {
+//                 console.error("Error adding follow-up:", followupErr);
+//                 return res.status(500).json({
+//                   message: "Follow-up insert failed",
+//                   error: followupErr,
+//                 });
+//               }
+
+//               return res.status(201).json({
+//                 message: "Sales Person added successfully",
+//                 Id: insertResult.insertId,
+//               });
+//             }
+//           );
+//         }
+//       );
+//     });
+//   });
+// };
+
 export const add = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
@@ -157,6 +337,8 @@ export const add = (req, res) => {
     fullname,
     contact,
     email,
+    username,
+    password,
     intrest,
     refrence,
     address,
@@ -174,14 +356,15 @@ export const add = (req, res) => {
     ifsc,
   } = req.body;
 
-  // Validate required fields
   if (!fullname || !contact || !email || !intrest) {
     return res.status(400).json({
       message: "FullName, Contact and Email Required!",
     });
   }
+  //  Convert email to lowercase
+  email = email?.toLowerCase();
 
-  // Function to generate referral code
+  // Referral generator (unchanged)
   const createReferralCode = () => {
     const chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*";
@@ -189,10 +372,9 @@ export const add = (req, res) => {
     for (let i = 0; i < 6; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    return "REF-" + code; // Total 10 characters
+    return "REF-" + code;
   };
 
-  // Check if referral is unique
   const generateUniqueReferralCode = (callback) => {
     const code = createReferralCode();
     db.query(
@@ -206,7 +388,7 @@ export const add = (req, res) => {
     );
   };
 
-  // Handle uploaded files safely
+  // File uploads (unchanged)
   const adharImageFile = req.files?.["adharImage"]?.[0];
   const panImageFile = req.files?.["panImage"]?.[0];
   const reraImageFile = req.files?.["reraImage"]?.[0];
@@ -219,12 +401,10 @@ export const add = (req, res) => {
     ? `/uploads/${reraImageFile.filename}`
     : null;
 
-  // Check for duplicates
   const checkSql = `SELECT * FROM salespersons WHERE contact = ? OR email = ?`;
 
-  db.query(checkSql, [contact, email.toLowerCase(),], (checkErr, checkResult) => {
+  db.query(checkSql, [contact, email], async (checkErr, checkResult) => {
     if (checkErr) {
-      console.error("Error checking existing salespersons:", checkErr);
       return res.status(500).json({
         message: "Database error during validation",
         error: checkErr,
@@ -237,22 +417,31 @@ export const add = (req, res) => {
       });
     }
 
-    // Generate unique referral code
-    generateUniqueReferralCode((referralErr, referralCode) => {
+    generateUniqueReferralCode(async (referralErr, referralCode) => {
       if (referralErr) {
-        console.error("Referral code generation failed:", referralErr);
         return res.status(500).json({
           message: "Error generating referral code",
           error: referralErr,
         });
       }
 
-      // Insert new salespersons
+      // Password (ONLY WHEN password provided)
+
+      let hashedPassword = null;
+
+      let loginstatus = null;
+
+      if (password) {
+        hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        loginstatus = "Active";
+      }
+
       const insertSql = `
         INSERT INTO salespersons 
-        (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, rerano, adharno, panno, 
-         bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+        (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, rerano, adharno, panno,
+         bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, username, password, loginstatus, updated_at, created_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       db.query(
@@ -261,7 +450,7 @@ export const add = (req, res) => {
           projectpartnerid || null,
           fullname,
           contact,
-          email.toLowerCase(),
+          email,
           intrest,
           refrence,
           referralCode,
@@ -280,19 +469,36 @@ export const add = (req, res) => {
           adharImageUrl,
           panImageUrl,
           reraImageUrl,
+          username,
+          hashedPassword,
+          loginstatus,
           currentdate,
           currentdate,
         ],
         (insertErr, insertResult) => {
           if (insertErr) {
-            console.error("Error inserting Sales Person:", insertErr);
             return res.status(500).json({
               message: "Database error",
               error: insertErr,
             });
           }
 
-          // Insert default follow-up entry
+          const newId = insertResult.insertId;
+
+          // --------------------------------------------------
+          // 🆕 NEW: Make status ACTIVE after creating record
+          // --------------------------------------------------
+          db.query(
+            "UPDATE salespersons SET status = 'Active' WHERE salespersonsid = ?",
+            [newId],
+            (updateErr) => {
+              if (updateErr) {
+                console.error("Error updating status:", updateErr);
+              }
+            }
+          );
+
+          // existing follow-up insert
           const followupSql = `
             INSERT INTO partnerFollowup 
             (partnerId, role, followUp, followUpText, created_at, updated_at) 
@@ -302,25 +508,29 @@ export const add = (req, res) => {
           db.query(
             followupSql,
             [
-              insertResult.insertId,
+              newId,
               "Sales Person",
               "New",
               "Newly Added Sales Person",
               currentdate,
               currentdate,
             ],
-            (followupErr) => {
-              if (followupErr) {
-                console.error("Error adding follow-up:", followupErr);
-                return res.status(500).json({
-                  message: "Follow-up insert failed",
-                  error: followupErr,
-                });
+            () => {
+              if (password) {
+                sendEmail(
+                  email,
+                  username,
+                  password,
+                  "Sales Partner",
+                  "https://sales.reparv.in"
+                );
               }
 
               return res.status(201).json({
-                message: "Sales Person added successfully",
-                Id: insertResult.insertId,
+                message: password
+                  ? "Sales Person added & login assigned"
+                  : "Sales Person added successfully",
+                Id: newId,
               });
             }
           );
@@ -329,7 +539,6 @@ export const add = (req, res) => {
     });
   });
 };
-
 export const edit = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const {
@@ -955,3 +1164,4 @@ export const assignProjectPartner = async (req, res) => {
     res.status(500).json({ message: "Internal server error", error });
   }
 };
+
