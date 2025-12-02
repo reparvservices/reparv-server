@@ -151,13 +151,191 @@ export const getById = (req, res) => {
 };
 
 // **Add New Territory Partner **
-export const add = (req, res) => {
+// export const add = (req, res) => {
+//   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+//   const {
+//     fullname,
+//     contact,
+//     email,
+//     intrest,
+//     refrence,
+//     address,
+//     state,
+//     city,
+//     projectpartnerid,
+//     pincode,
+//     experience,
+//     adharno,
+//     panno,
+//     rerano,
+//     bankname,
+//     accountholdername,
+//     accountnumber,
+//     ifsc,
+//   } = req.body;
+
+//   // Validate required fields
+//   if (!fullname || !contact || !email || !intrest) {
+//     return res.status(400).json({ message: "All Fields required!" });
+//   }
+
+//   // Generate referral code
+//   const createReferralCode = () => {
+//     const chars =
+//       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*";
+//     let code = "";
+//     for (let i = 0; i < 6; i++) {
+//       code += chars.charAt(Math.floor(Math.random() * chars.length));
+//     }
+//     return "REF-" + code; // Total 10 characters
+//   };
+
+//   const generateUniqueReferralCode = (callback) => {
+//     const code = createReferralCode();
+//     db.query(
+//       "SELECT referral FROM territorypartner WHERE referral = ?",
+//       [code],
+//       (err, results) => {
+//         if (err) return callback(err, null);
+//         if (results.length > 0) return generateUniqueReferralCode(callback);
+//         return callback(null, code);
+//       }
+//     );
+//   };
+
+//   // Handle uploaded files safely
+//   const adharImageFile = req.files?.["adharImage"]?.[0];
+//   const panImageFile = req.files?.["panImage"]?.[0];
+//   const reraImageFile = req.files?.["reraImage"]?.[0];
+
+//   const adharImageUrl = adharImageFile
+//     ? `/uploads/${adharImageFile.filename}`
+//     : null;
+//   const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
+//   const reraImageUrl = reraImageFile
+//     ? `/uploads/${reraImageFile.filename}`
+//     : null;
+
+//   // Check for duplicates
+//   const checkSql = `SELECT * FROM territorypartner WHERE contact = ? OR email = ?`;
+
+//   db.query(checkSql, [contact, email.toLowerCase(),], (checkErr, checkResult) => {
+//     if (checkErr) {
+//       console.error("Error checking existing Territory Partner:", checkErr);
+//       return res.status(500).json({
+//         message: "Database error during validation",
+//         error: checkErr,
+//       });
+//     }
+
+//     if (checkResult.length > 0) {
+//       return res.status(409).json({
+//         message: "Territory Partner already exists with this Contact or Email.",
+//       });
+//     }
+
+//     // Generate unique referral code before inserting
+//     generateUniqueReferralCode((referralErr, referralCode) => {
+//       if (referralErr) {
+//         console.error("Error generating referral:", referralErr);
+//         return res.status(500).json({
+//           message: "Referral code generation failed",
+//           error: referralErr,
+//         });
+//       }
+
+//       // Insert new territory partner
+//       const insertSql = `
+//         INSERT INTO territorypartner 
+//         (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, adharno, panno, rerano, 
+//          bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
+//         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+//       `;
+
+//       db.query(
+//         insertSql,
+//         [
+//           projectpartnerid || null,
+//           fullname,
+//           contact,
+//           email.toLowerCase(),
+//           intrest,
+//           refrence,
+//           referralCode,
+//           address,
+//           state,
+//           city,
+//           pincode,
+//           experience,
+//           adharno,
+//           panno,
+//           rerano,
+//           bankname,
+//           accountholdername,
+//           accountnumber,
+//           ifsc,
+//           adharImageUrl,
+//           panImageUrl,
+//           reraImageUrl,
+//           currentdate,
+//           currentdate,
+//         ],
+//         (insertErr, insertResult) => {
+//           if (insertErr) {
+//             console.error("Error inserting Territory Partner:", insertErr);
+//             return res.status(500).json({
+//               message: "Database error during insertion",
+//               error: insertErr,
+//             });
+//           }
+
+//           // Insert follow-up for the new Territory Partner
+//           const followupSql = `
+//             INSERT INTO partnerFollowup 
+//             (partnerId, role, followUp, followUpText, created_at, updated_at)
+//             VALUES (?, ?, ?, ?, ?, ?)
+//           `;
+
+//           db.query(
+//             followupSql,
+//             [
+//               insertResult.insertId,
+//               "Territory Partner",
+//               "New",
+//               "Newly Added Territory Partner",
+//               currentdate,
+//               currentdate,
+//             ],
+//             (followupErr) => {
+//               if (followupErr) {
+//                 console.error("Error adding follow-up:", followupErr);
+//                 return res.status(500).json({
+//                   message: "Follow-up insert failed",
+//                   error: followupErr,
+//                 });
+//               }
+
+//               return res.status(201).json({
+//                 message: "Territory Partner added successfully",
+//                 Id: insertResult.insertId,
+//               });
+//             }
+//           );
+//         }
+//       );
+//     });
+//   });
+// };
+
+export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
   const {
     fullname,
     contact,
     email,
+    username,
     intrest,
     refrence,
     address,
@@ -173,14 +351,16 @@ export const add = (req, res) => {
     accountholdername,
     accountnumber,
     ifsc,
+    password, 
   } = req.body;
 
-  // Validate required fields
   if (!fullname || !contact || !email || !intrest) {
     return res.status(400).json({ message: "All Fields required!" });
   }
 
-  // Generate referral code
+  //  Convert email to lowercase
+  email = email?.toLowerCase();
+  // Referral code generator (same)
   const createReferralCode = () => {
     const chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*";
@@ -188,7 +368,7 @@ export const add = (req, res) => {
     for (let i = 0; i < 6; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    return "REF-" + code; // Total 10 characters
+    return "REF-" + code;
   };
 
   const generateUniqueReferralCode = (callback) => {
@@ -204,25 +384,24 @@ export const add = (req, res) => {
     );
   };
 
-  // Handle uploaded files safely
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
-
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
+  // Image upload (same)
+  const adharImageUrl = req.files?.["adharImage"]?.[0]
+    ? `/uploads/${req.files["adharImage"][0].filename}`
     : null;
 
-  // Check for duplicates
+  const panImageUrl = req.files?.["panImage"]?.[0]
+    ? `/uploads/${req.files["panImage"][0].filename}`
+    : null;
+
+  const reraImageUrl = req.files?.["reraImage"]?.[0]
+    ? `/uploads/${req.files["reraImage"][0].filename}`
+    : null;
+
+  // Duplicate check (same)
   const checkSql = `SELECT * FROM territorypartner WHERE contact = ? OR email = ?`;
 
-  db.query(checkSql, [contact, email.toLowerCase(),], (checkErr, checkResult) => {
+  db.query(checkSql, [contact, email], async (checkErr, checkResult) => {
     if (checkErr) {
-      console.error("Error checking existing Territory Partner:", checkErr);
       return res.status(500).json({
         message: "Database error during validation",
         error: checkErr,
@@ -235,22 +414,36 @@ export const add = (req, res) => {
       });
     }
 
-    // Generate unique referral code before inserting
-    generateUniqueReferralCode((referralErr, referralCode) => {
+    generateUniqueReferralCode(async (referralErr, referralCode) => {
       if (referralErr) {
-        console.error("Error generating referral:", referralErr);
         return res.status(500).json({
           message: "Referral code generation failed",
           error: referralErr,
         });
       }
 
-      // Insert new territory partner
+     
+      //  NEW : handle login if password exists
+     
+      let hashedPassword = null;
+      let loginstatus = null;
+
+      if (password) {
+        hashedPassword = await bcrypt.hash(password, 10);
+
+        loginstatus = "Active"; // active login user
+      }
+      // ---------------------------------------
+
       const insertSql = `
-        INSERT INTO territorypartner 
-        (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, adharno, panno, rerano, 
-         bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+        INSERT INTO territorypartner
+        (projectpartnerid, fullname, contact, email, intrest, refrence, referral,
+        address, state, city, pincode, experience, adharno, panno, rerano,
+        bankname, accountholdername, accountnumber, ifsc,
+        adharimage, panimage, reraimage,
+        username, password, loginstatus,
+        updated_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       db.query(
@@ -259,7 +452,7 @@ export const add = (req, res) => {
           projectpartnerid || null,
           fullname,
           contact,
-          email.toLowerCase(),
+          email,
           intrest,
           refrence,
           referralCode,
@@ -278,19 +471,37 @@ export const add = (req, res) => {
           adharImageUrl,
           panImageUrl,
           reraImageUrl,
+          username,
+          hashedPassword,
+          loginstatus,
           currentdate,
           currentdate,
         ],
-        (insertErr, insertResult) => {
+        async (insertErr, insertResult) => {
           if (insertErr) {
-            console.error("Error inserting Territory Partner:", insertErr);
+            console.log(insertErr);
+
             return res.status(500).json({
               message: "Database error during insertion",
               error: insertErr,
             });
           }
 
-          // Insert follow-up for the new Territory Partner
+          const partnerId = insertResult.insertId;
+
+         
+          //  Make status ACTIVE after creating record
+        
+          db.query(
+            "UPDATE territorypartner SET status = 'Active' WHERE id = ?",
+            [partnerId],
+            (updateErr) => {
+              if (updateErr) {
+                console.error("Error updating status:", updateErr);
+              }
+            }
+          );
+          // Follow-up insert (same)
           const followupSql = `
             INSERT INTO partnerFollowup 
             (partnerId, role, followUp, followUpText, created_at, updated_at)
@@ -300,25 +511,37 @@ export const add = (req, res) => {
           db.query(
             followupSql,
             [
-              insertResult.insertId,
+              partnerId,
               "Territory Partner",
               "New",
               "Newly Added Territory Partner",
               currentdate,
               currentdate,
             ],
-            (followupErr) => {
+            async (followupErr) => {
               if (followupErr) {
-                console.error("Error adding follow-up:", followupErr);
                 return res.status(500).json({
                   message: "Follow-up insert failed",
                   error: followupErr,
                 });
               }
 
+              // Send email (only if login assigned)
+              if (password) {
+                await sendEmail(
+                  email,
+                  username,
+                  password,
+                  "Territory Partner",
+                  "https://territory.reparv.in"
+                );
+              }
+
               return res.status(201).json({
-                message: "Territory Partner added successfully",
-                Id: insertResult.insertId,
+                message: password
+                  ? "Territory Partner added & login assigned"
+                  : "Territory Partner added successfully",
+                Id: partnerId,
               });
             }
           );
