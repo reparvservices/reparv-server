@@ -331,7 +331,7 @@ export const getById = (req, res) => {
 export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-  const {
+  let {
     fullname,
     contact,
     email,
@@ -351,7 +351,7 @@ export const add = async (req, res) => {
     accountholdername,
     accountnumber,
     ifsc,
-    password, 
+    password,
   } = req.body;
 
   if (!fullname || !contact || !email || !intrest) {
@@ -360,6 +360,11 @@ export const add = async (req, res) => {
 
   //  Convert email to lowercase
   email = email?.toLowerCase();
+
+  // If username not passed, set null
+  if (!username || username.trim() === "") {
+    username = null;
+  }
   // Referral code generator (same)
   const createReferralCode = () => {
     const chars =
@@ -398,44 +403,47 @@ export const add = async (req, res) => {
     : null;
 
   // Duplicate check (same)
-  const checkSql = `SELECT * FROM territorypartner WHERE contact = ? OR email = ?`;
+  const checkSql = `SELECT * FROM territorypartner WHERE contact = ? OR email = ? OR username = ?`;
 
-  db.query(checkSql, [contact, email], async (checkErr, checkResult) => {
-    if (checkErr) {
-      return res.status(500).json({
-        message: "Database error during validation",
-        error: checkErr,
-      });
-    }
-
-    if (checkResult.length > 0) {
-      return res.status(409).json({
-        message: "Territory Partner already exists with this Contact or Email.",
-      });
-    }
-
-    generateUniqueReferralCode(async (referralErr, referralCode) => {
-      if (referralErr) {
+  db.query(
+    checkSql,
+    [contact, email, username],
+    async (checkErr, checkResult) => {
+      if (checkErr) {
         return res.status(500).json({
-          message: "Referral code generation failed",
-          error: referralErr,
+          message: "Database error during validation",
+          error: checkErr,
         });
       }
 
-     
-      //  NEW : handle login if password exists
-     
-      let hashedPassword = null;
-      let loginstatus = null;
-
-      if (password) {
-        hashedPassword = await bcrypt.hash(password, 10);
-
-        loginstatus = "Active"; // active login user
+      if (checkResult.length > 0) {
+        return res.status(409).json({
+          message:
+            "Territory Partner already exists with this Contact or Email Or Username.",
+        });
       }
-      // ---------------------------------------
 
-      const insertSql = `
+      generateUniqueReferralCode(async (referralErr, referralCode) => {
+        if (referralErr) {
+          return res.status(500).json({
+            message: "Referral code generation failed",
+            error: referralErr,
+          });
+        }
+
+        // ---------------------------------------
+        // 🔐 NEW : handle login if password exists
+        // ---------------------------------------
+        let hashedPassword = null;
+        let loginstatus = "Inactive";
+        if (password) {
+          hashedPassword = await bcrypt.hash(password, 10);
+
+          loginstatus = "Active"; // active login user
+        }
+        // ---------------------------------------
+
+        const insertSql = `
         INSERT INTO territorypartner
         (projectpartnerid, fullname, contact, email, intrest, refrence, referral,
         address, state, city, pincode, experience, adharno, panno, rerano,
@@ -446,111 +454,111 @@ export const add = async (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
-      db.query(
-        insertSql,
-        [
-          projectpartnerid || null,
-          fullname,
-          contact,
-          email,
-          intrest,
-          refrence,
-          referralCode,
-          address,
-          state,
-          city,
-          pincode,
-          experience,
-          adharno,
-          panno,
-          rerano,
-          bankname,
-          accountholdername,
-          accountnumber,
-          ifsc,
-          adharImageUrl,
-          panImageUrl,
-          reraImageUrl,
-          username,
-          hashedPassword,
-          loginstatus,
-          currentdate,
-          currentdate,
-        ],
-        async (insertErr, insertResult) => {
-          if (insertErr) {
-            console.log(insertErr);
+        db.query(
+          insertSql,
+          [
+            projectpartnerid || null,
+            fullname,
+            contact,
+            email,
+            intrest,
+            refrence,
+            referralCode,
+            address,
+            state,
+            city,
+            pincode,
+            experience,
+            adharno,
+            panno,
+            rerano,
+            bankname,
+            accountholdername,
+            accountnumber,
+            ifsc,
+            adharImageUrl,
+            panImageUrl,
+            reraImageUrl,
+            username,
+            hashedPassword,
+            loginstatus,
+            currentdate,
+            currentdate,
+          ],
+          async (insertErr, insertResult) => {
+            if (insertErr) {
+              console.log(insertErr);
 
-            return res.status(500).json({
-              message: "Database error during insertion",
-              error: insertErr,
-            });
-          }
-
-          const partnerId = insertResult.insertId;
-
-         
-          //  Make status ACTIVE after creating record
-        
-          db.query(
-            "UPDATE territorypartner SET status = 'Active' WHERE id = ?",
-            [partnerId],
-            (updateErr) => {
-              if (updateErr) {
-                console.error("Error updating status:", updateErr);
-              }
+              return res.status(500).json({
+                message: "Database error during insertion",
+                error: insertErr,
+              });
             }
-          );
-          // Follow-up insert (same)
-          const followupSql = `
+
+            const partnerId = insertResult.insertId;
+
+            // --------------------------------------------------
+            // 🆕 NEW: Make status ACTIVE after creating record
+            // --------------------------------------------------
+            db.query(
+              "UPDATE territorypartner SET status = 'Active' WHERE id = ?",
+              [partnerId],
+              (updateErr) => {
+                if (updateErr) {
+                  console.error("Error updating status:", updateErr);
+                }
+              }
+            );
+            // Follow-up insert (same)
+            const followupSql = `
             INSERT INTO partnerFollowup 
             (partnerId, role, followUp, followUpText, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
           `;
 
-          db.query(
-            followupSql,
-            [
-              partnerId,
-              "Territory Partner",
-              "New",
-              "Newly Added Territory Partner",
-              currentdate,
-              currentdate,
-            ],
-            async (followupErr) => {
-              if (followupErr) {
-                return res.status(500).json({
-                  message: "Follow-up insert failed",
-                  error: followupErr,
+            db.query(
+              followupSql,
+              [
+                partnerId,
+                "Territory Partner",
+                "New",
+                "Newly Added Territory Partner",
+                currentdate,
+                currentdate,
+              ],
+              async (followupErr) => {
+                if (followupErr) {
+                  return res.status(500).json({
+                    message: "Follow-up insert failed",
+                    error: followupErr,
+                  });
+                }
+
+                // Send email (only if login assigned)
+                if (password) {
+                  await sendEmail(
+                    email,
+                    username,
+                    password,
+                    "Territory Partner",
+                    "https://territory.reparv.in"
+                  );
+                }
+
+                return res.status(201).json({
+                  message: password
+                    ? "Territory Partner added & login assigned"
+                    : "Territory Partner added successfully",
+                  Id: partnerId,
                 });
               }
-
-              // Send email (only if login assigned)
-              if (password) {
-                await sendEmail(
-                  email,
-                  username,
-                  password,
-                  "Territory Partner",
-                  "https://territory.reparv.in"
-                );
-              }
-
-              return res.status(201).json({
-                message: password
-                  ? "Territory Partner added & login assigned"
-                  : "Territory Partner added successfully",
-                Id: partnerId,
-              });
-            }
-          );
-        }
-      );
-    });
-  });
+            );
+          }
+        );
+      });
+    }
+  );
 };
-
 export const edit = (req, res) => {
   const partnerid = parseInt(req.params.id);
   if (isNaN(partnerid)) {
