@@ -295,7 +295,7 @@ export const getById = (req, res) => {
 export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-  const {
+  let {
     fullname,
     contact,
     email,
@@ -314,7 +314,7 @@ export const add = async (req, res) => {
     accountholdername,
     accountnumber,
     ifsc,
-    password, 
+    password, // ⭐ NEW (optional login creation)
   } = req.body;
 
   if (!fullname || !contact || !email || !intrest) {
@@ -323,6 +323,11 @@ export const add = async (req, res) => {
 
   //  Convert email to lowercase
   email = email?.toLowerCase();
+
+  // If username not passed, set null
+  if (!username || username.trim() === "") {
+    username = null;
+  }
   // ----------------------------------------------------
   // Referral Code Generator (same logic as before)
   // ----------------------------------------------------
@@ -349,9 +354,9 @@ export const add = async (req, res) => {
     );
   };
 
- 
-  // Image Upload Handling (same as old logic)
- 
+  // ----------------------------------------------------
+  // 📸 Image Upload Handling (same as old logic)
+  // ----------------------------------------------------
   const adharImageFile = req.files?.["adharImage"]?.[0];
   const panImageFile = req.files?.["panImage"]?.[0];
   const reraImageFile = req.files?.["reraImage"]?.[0];
@@ -367,39 +372,43 @@ export const add = async (req, res) => {
     : null;
 
   //  Check Duplicate (same)
-  const checkSql = `SELECT * FROM projectpartner WHERE contact = ? OR email = ?`;
+  const checkSql = `SELECT * FROM projectpartner WHERE contact = ? OR email = ? OR username = ?`;
 
-  db.query(checkSql, [contact, email], async (checkErr, checkResult) => {
-    if (checkErr) {
-      return res.status(500).json({
-        message: "Database error during validation",
-        error: checkErr,
-      });
-    }
-
-    if (checkResult.length > 0) {
-      return res.status(409).json({
-        message: "Project Partner already exists with this Contact or Email",
-      });
-    }
-
-    generateUniqueReferralCode(async (referralErr, referralCode) => {
-      if (referralErr) {
+  db.query(
+    checkSql,
+    [contact, email, username],
+    async (checkErr, checkResult) => {
+      if (checkErr) {
         return res.status(500).json({
-          message: "Error generating unique referral code",
-          error: referralErr,
+          message: "Database error during validation",
+          error: checkErr,
         });
       }
 
-      let hashedPassword = null;
-      let loginstatus = null;
-
-      if (password) {
-        hashedPassword = await bcrypt.hash(password, 10);
-        loginstatus = "Active";
+      if (checkResult.length > 0) {
+        return res.status(409).json({
+          message:
+            "Project Partner already exists with this Contact or Email Or Username",
+        });
       }
 
-      const insertSql = `
+      generateUniqueReferralCode(async (referralErr, referralCode) => {
+        if (referralErr) {
+          return res.status(500).json({
+            message: "Error generating unique referral code",
+            error: referralErr,
+          });
+        }
+
+        let hashedPassword = null;
+        let loginstatus = "Inactive";
+
+        if (password) {
+          hashedPassword = await bcrypt.hash(password, 10);
+          loginstatus = "Active";
+        }
+
+        const insertSql = `
         INSERT INTO projectpartner 
         (fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, adharno, panno, rerano,
          bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage,
@@ -407,112 +416,112 @@ export const add = async (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
-      db.query(
-        insertSql,
-        [
-          fullname,
-          contact,
-          email,
-          intrest,
-          refrence,
-          referralCode,
-          address,
-          state,
-          city,
-          pincode,
-          experience,
-          adharno,
-          panno,
-          rerano,
-          bankname,
-          accountholdername,
-          accountnumber,
-          ifsc,
-          adharImageUrl,
-          panImageUrl,
-          reraImageUrl,
-          username,
-          hashedPassword,
-          loginstatus,
-          currentdate,
-          currentdate,
-        ],
-        (insertErr, insertResult) => {
-          if (insertErr) {
-            return res.status(500).json({
-              message: "Database error during insert",
-              error: insertErr,
-            });
-          }
-
-          db.query(
-            "UPDATE projectpartner SET status = 'Active' WHERE id = ?",
-            [insertResult.insertId],
-            (updateErr) => {
-              if (updateErr) {
-                console.error("Error updating status:", updateErr);
-              }
+        db.query(
+          insertSql,
+          [
+            fullname,
+            contact,
+            email,
+            intrest,
+            refrence,
+            referralCode,
+            address,
+            state,
+            city,
+            pincode,
+            experience,
+            adharno,
+            panno,
+            rerano,
+            bankname,
+            accountholdername,
+            accountnumber,
+            ifsc,
+            adharImageUrl,
+            panImageUrl,
+            reraImageUrl,
+            username,
+            hashedPassword,
+            loginstatus,
+            currentdate,
+            currentdate,
+          ],
+          (insertErr, insertResult) => {
+            if (insertErr) {
+              return res.status(500).json({
+                message: "Database error during insert",
+                error: insertErr,
+              });
             }
-          );
 
-        
-          // Follow-up (same old logic)
-         
-          const followupSql = `
+            db.query(
+              "UPDATE projectpartner SET status = 'Active' WHERE id = ?",
+              [insertResult.insertId],
+              (updateErr) => {
+                if (updateErr) {
+                  console.error("Error updating status:", updateErr);
+                }
+              }
+            );
+
+            // ----------------------------------------------------
+            // 📝 Follow-up (same old logic)
+            // ----------------------------------------------------
+            const followupSql = `
             INSERT INTO partnerFollowup 
             (partnerId, role, followUp, followUpText, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
           `;
 
-          db.query(
-            followupSql,
-            [
-              insertResult.insertId,
-              "Project Partner",
-              "New",
-              "Newly Added Project Partner",
-              currentdate,
-              currentdate,
-            ],
-            async (followupErr) => {
-              if (followupErr) {
-                return res.status(500).json({
-                  message: "Follow-up insert failed",
-                  error: followupErr,
+            db.query(
+              followupSql,
+              [
+                insertResult.insertId,
+                "Project Partner",
+                "New",
+                "Newly Added Project Partner",
+                currentdate,
+                currentdate,
+              ],
+              async (followupErr) => {
+                if (followupErr) {
+                  return res.status(500).json({
+                    message: "Follow-up insert failed",
+                    error: followupErr,
+                  });
+                }
+
+                // ----------------------------------------------------
+                // ✉️ Send Login Email Only When Password Exists
+                // ----------------------------------------------------
+                if (password) {
+                  try {
+                    await sendEmail(
+                      email,
+                      username,
+                      password,
+                      "Project Partner",
+                      "https://projectpartner.reparv.in"
+                    );
+                  } catch (err) {
+                    console.error("Email send failed:", err);
+                  }
+                }
+
+                return res.status(201).json({
+                  message: password
+                    ? "Project Partner added & login assigned"
+                    : "Project Partner added successfully",
+                  Id: insertResult.insertId,
                 });
               }
-
-             
-              // Send Login Email Only When Password Exists
-             
-              if (password) {
-                try {
-                  await sendEmail(
-                    email,
-                    username,
-                    password,
-                    "Project Partner",
-                    "https://projectpartner.reparv.in"
-                  );
-                } catch (err) {
-                  console.error("Email send failed:", err);
-                }
-              }
-
-              return res.status(201).json({
-                message: password
-                  ? "Project Partner added & login assigned"
-                  : "Project Partner added successfully",
-                Id: insertResult.insertId,
-              });
-            }
-          );
-        }
-      );
-    });
-  });
+            );
+          }
+        );
+      });
+    }
+  );
 };
-
 export const edit = (req, res) => {
   const partnerid = parseInt(req.params.id);
   if (isNaN(partnerid)) {
