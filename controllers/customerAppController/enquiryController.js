@@ -224,3 +224,53 @@ export const getBookingOnly = (req, res) => {
     return res.json(formatted);
   });
 };
+
+
+export const addLeadNotification = (req, res) => {
+  try {
+    const { fullname, contact, message } = req.body;
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+    // Validation
+    if (!fullname || !contact || !message) {
+      return res.status(400).json({
+        message: "Full name, contact and message are required.",
+        status: false,
+      });
+    }
+
+    // Insert Query
+    const query = `
+      INSERT INTO userenquiry
+      (fullname, contact, message)
+      VALUES (?, ?, ?)
+    `;
+
+    db.query(
+      query,
+      [fullname, contact, message],
+      (err, result) => {
+        if (err) {
+          console.log("Lead Notify Insert Error:", err);
+          return res.status(500).json({
+            message: "Database Error",
+            status: false,
+            error: err,
+          });
+        }
+
+        return res.status(200).json({
+          message: "Notification request saved successfully!",
+          status: true,
+        });
+      }
+    );
+  } catch (error) {
+    console.log("Lead Notify Error:", error);
+    return res.status(500).json({
+      message: "Internal Server Error",
+      status: false,
+      error,
+    });
+  }
+};
