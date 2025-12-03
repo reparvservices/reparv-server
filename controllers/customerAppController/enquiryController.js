@@ -242,13 +242,13 @@ export const addLeadNotification = (req, res) => {
     // Insert Query
     const query = `
       INSERT INTO userenquiry
-      (fullname, contact, message)
-      VALUES (?, ?, ?)
+      (fullname, contact, message, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
     `;
 
     db.query(
       query,
-      [fullname, contact, message],
+      [fullname, contact, message, currentdate, currentdate],
       (err, result) => {
         if (err) {
           console.log("Lead Notify Insert Error:", err);
