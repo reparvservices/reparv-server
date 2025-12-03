@@ -333,7 +333,7 @@ export const getById = (req, res) => {
 export const add = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-  const {
+  let {
     fullname,
     contact,
     email,
@@ -364,6 +364,10 @@ export const add = (req, res) => {
   //  Convert email to lowercase
   email = email?.toLowerCase();
 
+  // If username not passed, set null
+  if (!username || username.trim() === "") {
+    username = null;
+  }
   // Referral generator (unchanged)
   const createReferralCode = () => {
     const chars =
@@ -401,144 +405,150 @@ export const add = (req, res) => {
     ? `/uploads/${reraImageFile.filename}`
     : null;
 
-  const checkSql = `SELECT * FROM salespersons WHERE contact = ? OR email = ?`;
+  const checkSql = `SELECT * FROM salespersons WHERE contact = ? OR email = ? OR username= ?`;
 
-  db.query(checkSql, [contact, email], async (checkErr, checkResult) => {
-    if (checkErr) {
-      return res.status(500).json({
-        message: "Database error during validation",
-        error: checkErr,
-      });
-    }
-
-    if (checkResult.length > 0) {
-      return res.status(409).json({
-        message: "Sales person already exists with this Contact or Email Id.",
-      });
-    }
-
-    generateUniqueReferralCode(async (referralErr, referralCode) => {
-      if (referralErr) {
+  db.query(
+    checkSql,
+    [contact, email, username],
+    async (checkErr, checkResult) => {
+      if (checkErr) {
         return res.status(500).json({
-          message: "Error generating referral code",
-          error: referralErr,
+          message: "Database error during validation",
+          error: checkErr,
         });
       }
 
-      // Password (ONLY WHEN password provided)
-
-      let hashedPassword = null;
-
-      let loginstatus = null;
-
-      if (password) {
-        hashedPassword = await bcrypt.hash(password, saltRounds);
-
-        loginstatus = "Active";
+      if (checkResult.length > 0) {
+        return res.status(409).json({
+          message:
+            "Sales person already exists with this Contact or Email Id Or Username.",
+        });
       }
 
-      const insertSql = `
+      generateUniqueReferralCode(async (referralErr, referralCode) => {
+        if (referralErr) {
+          return res.status(500).json({
+            message: "Error generating referral code",
+            error: referralErr,
+          });
+        }
+
+        // Password (ONLY WHEN password provided)
+
+        let hashedPassword = null;
+
+        let loginstatus = "Inactive";
+
+        if (password) {
+          hashedPassword = await bcrypt.hash(password, saltRounds);
+
+          loginstatus = "Active";
+        }
+
+        const insertSql = `
         INSERT INTO salespersons 
         (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, rerano, adharno, panno,
          bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, username, password, loginstatus, updated_at, created_at) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
-      db.query(
-        insertSql,
-        [
-          projectpartnerid || null,
-          fullname,
-          contact,
-          email,
-          intrest,
-          refrence,
-          referralCode,
-          address,
-          state,
-          city,
-          pincode,
-          experience,
-          rerano,
-          adharno,
-          panno,
-          bankname,
-          accountholdername,
-          accountnumber,
-          ifsc,
-          adharImageUrl,
-          panImageUrl,
-          reraImageUrl,
-          username,
-          hashedPassword,
-          loginstatus,
-          currentdate,
-          currentdate,
-        ],
-        (insertErr, insertResult) => {
-          if (insertErr) {
-            return res.status(500).json({
-              message: "Database error",
-              error: insertErr,
-            });
-          }
-
-          const newId = insertResult.insertId;
-
-          // --------------------------------------------------
-          // 🆕 NEW: Make status ACTIVE after creating record
-          // --------------------------------------------------
-          db.query(
-            "UPDATE salespersons SET status = 'Active' WHERE salespersonsid = ?",
-            [newId],
-            (updateErr) => {
-              if (updateErr) {
-                console.error("Error updating status:", updateErr);
-              }
+        db.query(
+          insertSql,
+          [
+            projectpartnerid || null,
+            fullname,
+            contact,
+            email,
+            intrest,
+            refrence,
+            referralCode,
+            address,
+            state,
+            city,
+            pincode,
+            experience,
+            rerano,
+            adharno,
+            panno,
+            bankname,
+            accountholdername,
+            accountnumber,
+            ifsc,
+            adharImageUrl,
+            panImageUrl,
+            reraImageUrl,
+            username,
+            hashedPassword,
+            loginstatus,
+            currentdate,
+            currentdate,
+          ],
+          (insertErr, insertResult) => {
+            if (insertErr) {
+              return res.status(500).json({
+                message: "Database error",
+                error: insertErr,
+              });
             }
-          );
 
-          // existing follow-up insert
-          const followupSql = `
+            const newId = insertResult.insertId;
+
+            // --------------------------------------------------
+            // 🆕 NEW: Make status ACTIVE after creating record
+            // --------------------------------------------------
+            db.query(
+              "UPDATE salespersons SET status = 'Active' WHERE salespersonsid = ?",
+              [newId],
+              (updateErr) => {
+                if (updateErr) {
+                  console.error("Error updating status:", updateErr);
+                }
+              }
+            );
+
+            // existing follow-up insert
+            const followupSql = `
             INSERT INTO partnerFollowup 
             (partnerId, role, followUp, followUpText, created_at, updated_at) 
             VALUES (?, ?, ?, ?, ?, ?)
           `;
 
-          db.query(
-            followupSql,
-            [
-              newId,
-              "Sales Person",
-              "New",
-              "Newly Added Sales Person",
-              currentdate,
-              currentdate,
-            ],
-            () => {
-              if (password) {
-                sendEmail(
-                  email,
-                  username,
-                  password,
-                  "Sales Partner",
-                  "https://sales.reparv.in"
-                );
-              }
+            db.query(
+              followupSql,
+              [
+                newId,
+                "Sales Person",
+                "New",
+                "Newly Added Sales Person",
+                currentdate,
+                currentdate,
+              ],
+              () => {
+                if (password) {
+                  sendEmail(
+                    email,
+                    username,
+                    password,
+                    "Sales Partner",
+                    "https://sales.reparv.in"
+                  );
+                }
 
-              return res.status(201).json({
-                message: password
-                  ? "Sales Person added & login assigned"
-                  : "Sales Person added successfully",
-                Id: newId,
-              });
-            }
-          );
-        }
-      );
-    });
-  });
+                return res.status(201).json({
+                  message: password
+                    ? "Sales Person added & login assigned"
+                    : "Sales Person added successfully",
+                  Id: newId,
+                });
+              }
+            );
+          }
+        );
+      });
+    }
+  );
 };
+
 export const edit = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const {
@@ -1164,4 +1174,5 @@ export const assignProjectPartner = async (req, res) => {
     res.status(500).json({ message: "Internal server error", error });
   }
 };
+
 
