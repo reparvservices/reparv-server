@@ -374,23 +374,31 @@ export const add = async (req, res) => {
   //  Check Duplicate (same)
   const checkSql = `SELECT * FROM projectpartner WHERE contact = ? OR email = ? OR username = ?`;
 
-  db.query(
-    checkSql,
-    [contact, email, username],
-    async (checkErr, checkResult) => {
-      if (checkErr) {
-        return res.status(500).json({
-          message: "Database error during validation",
-          error: checkErr,
-        });
-      }
+db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
+  if (checkErr) {
+    return res.status(500).json({
+      message: "Database error during validation",
+      error: checkErr,
+    });
+  }
 
-      if (checkResult.length > 0) {
-        return res.status(409).json({
-          message:
-            "Project Partner already exists with this Contact or Email Or Username",
-        });
-      }
+  if (rows.length > 0) {
+    const dup = rows[0];
+
+    let duplicateField = "";
+    if (dup.contact === contact) duplicateField = "Contact number already exists";
+    else if (dup.email === email) duplicateField = "Email already exists";
+    else if (dup.username === username) duplicateField = "Username already exists";
+
+    return res.status(409).json({
+      message: duplicateField,
+      field: duplicateField.includes("Contact")
+        ? "contact"
+        : duplicateField.includes("Email")
+        ? "email"
+        : "username",
+    });
+  }
 
       generateUniqueReferralCode(async (referralErr, referralCode) => {
         if (referralErr) {
