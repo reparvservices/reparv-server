@@ -530,6 +530,7 @@ db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
     }
   );
 };
+
 export const edit = (req, res) => {
   const partnerid = parseInt(req.params.id);
   if (isNaN(partnerid)) {
