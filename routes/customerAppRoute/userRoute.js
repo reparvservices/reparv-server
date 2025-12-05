@@ -30,3 +30,4 @@ router.post("/signup", add);
 router.put("/update",upload.single('userimage'),update);
 router.get("/profile",getProfile)
 export default router;
+
