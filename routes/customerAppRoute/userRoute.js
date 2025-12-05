@@ -1,5 +1,5 @@
 import express from "express";
-import { add, getProfile, login, update } from "../../controllers/customerAppController/userController.js";
+import { add, getProfile, update } from "../../controllers/customerAppController/userController.js";
 import multer from "multer";
 import path from 'path';
 
@@ -25,7 +25,7 @@ const upload = multer({
   },
 });
 router.post("/signup", add);
-router.post("/login",login)
+//router.post("/login",login)
 
 router.put("/update",upload.single('userimage'),update);
 router.get("/profile",getProfile)
