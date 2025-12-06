@@ -33,7 +33,8 @@ export const getAll = (req, res) => {
   const projectPartnerId = req.employeeUser?.projectpartnerid;
   if (!projectPartnerId) {
     return res.status(401).json({
-      message: "Unauthorized Access — Employee is not linked to any Project Partner.",
+      message:
+        "Unauthorized Access — Employee is not linked to any Project Partner.",
     });
   }
   const sql = `SELECT properties.*, builders.company_name FROM properties 
@@ -161,9 +162,11 @@ export const checkPropertyName = (req, res) => {
 export const addProperty = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const projectPartnerId = req.employeeUser?.projectpartnerid;
+
   if (!projectPartnerId) {
     return res.status(401).json({
-      message: "Unauthorized Access — Employee is not linked to any Project Partner.",
+      message:
+        "Unauthorized Access — Employee is not linked to any Project Partner.",
     });
   }
 
@@ -188,7 +191,6 @@ export const addProperty = async (req, res) => {
     totalSalesPrice,
     totalOfferPrice,
     stampDuty,
-    registrationFee,
     gst,
     advocateFee,
     msebWater,
@@ -266,64 +268,42 @@ export const addProperty = async (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Property Registration Fee is 1% or Maximum 30,000 Rs
+  // Registration Fee Logic
   let registrationFees;
   if (totalOfferPrice > 3000000) {
     registrationFees = (30000 / totalOfferPrice) * 100;
   } else {
-    if (
-      ["RentalFlat", "RentalShop", "RentalOffice"].includes(propertyCategory)
-    ) {
-      registrationFees = 0;
-    } else {
-      registrationFees = 1;
-    }
+    registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
+      propertyCategory
+    )
+      ? 0
+      : 1;
   }
 
   const seoSlug = toSlug(propertyName);
 
+  // EMI
   const calculateEMI = (price) => {
-    const interestRate = 0.08 / 12; // 8% annual
-    const tenureMonths = 240; // 20 years
+    const r = 0.08 / 12;
+    const n = 240;
     return Math.round(
-      (price * interestRate * Math.pow(1 + interestRate, tenureMonths)) /
-        (Math.pow(1 + interestRate, tenureMonths) - 1)
+      (price * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
     );
   };
-
   const emi = calculateEMI(Number(totalOfferPrice));
 
-  // Format dates to remove time portion
+  // Possession Date Format
   let formattedPossessionDate = null;
-
-  if (possessionDate && possessionDate.trim() !== "") {
-    // Check if it's a valid date
-    if (
-      moment(possessionDate, ["YYYY-MM-DD", moment.ISO_8601], true).isValid()
-    ) {
-      formattedPossessionDate = moment(possessionDate).format("YYYY-MM-DD");
-    } else {
-      formattedPossessionDate = null; // fallback instead of "Invalid date"
-    }
+  if (possessionDate && moment(possessionDate).isValid()) {
+    formattedPossessionDate = moment(possessionDate).format("YYYY-MM-DD");
   }
 
-  // Convert Property Type Into Array
-  let propertyTypeArray;
-
-  if (Array.isArray(propertyType)) {
-    // already an array
-    propertyTypeArray = propertyType;
-  } else if (typeof propertyType === "string") {
-    // convert comma-separated string into array
-    propertyTypeArray = propertyType
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item !== ""); // remove empty values
-  } else {
-    propertyTypeArray = [];
-  }
-
-  const propertyTypeJson = JSON.stringify(propertyTypeArray);
+  // Property Type JSON
+  const propertyTypeJson = JSON.stringify(
+    Array.isArray(propertyType)
+      ? propertyType
+      : propertyType?.split(",").map((i) => i.trim()) || []
+  );
 
   const getImagePaths = (field) =>
     files[field]
@@ -340,42 +320,45 @@ export const addProperty = async (req, res) => {
   const nearestLandmark = getImagePaths("nearestLandmark");
   const developedAmenities = getImagePaths("developedAmenities");
 
-  // Early check: is propertyName already taken?
+  // Check duplicate property name
   db.query(
     "SELECT propertyid FROM properties WHERE propertyName = ?",
     [propertyName],
     (err, result) => {
-      if (err) {
+      if (err)
         return res.status(500).json({ message: "Database error", error: err });
-      }
+
       if (result.length > 0) {
         return res
           .status(409)
           .json({ message: "Property name already exists!" });
       }
 
-      // Insert query
+      // Insert property
       const insertSQL = `
-        INSERT INTO properties ( projectpartnerid,
-          builderid, projectBy, possessionDate, propertyCategory, propertyApprovedBy, propertyName, address, state, city, pincode, location,
-          distanceFromCityCenter, latitude, longitude, totalSalesPrice, totalOfferPrice, emi, stampDuty, registrationFee, gst, advocateFee, 
-          msebWater, maintenance, other, tags, propertyType, builtYear, ownershipType, builtUpArea, carpetArea,
-          parkingAvailability, totalFloors, floorNo, loanAvailability, propertyFacing, reraRegistered, 
-          furnishing, waterSupply, powerBackup, locationFeature, sizeAreaFeature, parkingFeature, terraceFeature,
-          ageOfPropertyFeature, amenitiesFeature, propertyStatusFeature, smartHomeFeature,
-          securityBenefit, primeLocationBenefit, rentalIncomeBenefit, qualityBenefit, capitalAppreciationBenefit, ecofriendlyBenefit,
-          frontView, sideView, kitchenView, hallView, bedroomView, bathroomView, balconyView,
-          nearestLandmark, developedAmenities, seoSlug,
-          updated_at, created_at
+        INSERT INTO properties (
+          projectpartnerid, builderid, projectBy, possessionDate, propertyCategory,
+          propertyApprovedBy, propertyName, address, state, city, pincode, location,
+          distanceFromCityCenter, latitude, longitude, totalSalesPrice, totalOfferPrice,
+          emi, stampDuty, registrationFee, gst, advocateFee, msebWater, maintenance,
+          other, tags, propertyType, builtYear, ownershipType, builtUpArea, carpetArea,
+          parkingAvailability, totalFloors, floorNo, loanAvailability, propertyFacing,
+          reraRegistered, furnishing, waterSupply, powerBackup, locationFeature,
+          sizeAreaFeature, parkingFeature, terraceFeature, ageOfPropertyFeature,
+          amenitiesFeature, propertyStatusFeature, smartHomeFeature, securityBenefit,
+          primeLocationBenefit, rentalIncomeBenefit, qualityBenefit,
+          capitalAppreciationBenefit, ecofriendlyBenefit, frontView, sideView,
+          kitchenView, hallView, bedroomView, bathroomView, balconyView,
+          nearestLandmark, developedAmenities, seoSlug, updated_at, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
 
       const values = [
         projectPartnerId,
         builderid,
         sanitize(projectBy),
-        sanitize(formattedPossessionDate),
+        formattedPossessionDate,
         propertyCategory,
         propertyApprovedBy,
         propertyName,
@@ -440,21 +423,51 @@ export const addProperty = async (req, res) => {
         currentdate,
       ];
 
-      db.query(insertSQL, values, (err, result) => {
+      db.query(insertSQL, values, (err, insertResult) => {
         if (err) {
-          if (err.code === "ER_DUP_ENTRY") {
-            // DB caught duplicate propertyName
-            return res
-              .status(409)
-              .json({ message: "Property name already exists!" });
-          }
-          console.error("Error inserting property:", err);
           return res.status(500).json({ message: "Insert failed", error: err });
         }
-        res.status(201).json({
-          message: "Property added successfully",
-          id: result.insertId,
-        });
+
+        const newPropertyId = insertResult.insertId;
+
+        // STEP 1: Fetch cityNACL
+        db.query(
+          "SELECT cityNACL FROM cities WHERE city = ? LIMIT 1",
+          [city],
+          (err2, cityRes) => {
+            if (err2)
+              return res
+                .status(500)
+                .json({ message: "City lookup error", error: err2 });
+
+            if (cityRes.length === 0)
+              return res
+                .status(404)
+                .json({ message: "City not found in cities table" });
+
+            const cityNACL = cityRes[0].cityNACL;
+            const propertyCityId = `${cityNACL}-${newPropertyId}`;
+
+            // STEP 2: Update propertyCityId
+            db.query(
+              "UPDATE properties SET propertyCityId = ? WHERE propertyid = ?",
+              [propertyCityId, newPropertyId],
+              (err3) => {
+                if (err3)
+                  return res.status(500).json({
+                    message: "Failed to update propertyCityId",
+                    error: err3,
+                  });
+
+                return res.status(201).json({
+                  message: "Property added successfully",
+                  id: newPropertyId,
+                  propertyCityId,
+                });
+              }
+            );
+          }
+        );
       });
     }
   );

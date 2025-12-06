@@ -252,7 +252,7 @@ export const addProperty = async (req, res) => {
     ecofriendlyBenefit,
   } = req.body;
 
-  // Check required fields
+  // Required validation
   if (
     !builderid ||
     !propertyCategory ||
@@ -293,25 +293,24 @@ export const addProperty = async (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Property Registration Fee is 1% or Maximum 30,000 Rs
+  // Property Registration Fee logic
   let registrationFees;
   if (totalOfferPrice > 3000000) {
     registrationFees = (30000 / totalOfferPrice) * 100;
   } else {
-    if (
-      ["RentalFlat", "RentalShop", "RentalOffice"].includes(propertyCategory)
-    ) {
-      registrationFees = 0;
-    } else {
-      registrationFees = 1;
-    }
+    registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
+      propertyCategory
+    )
+      ? 0
+      : 1;
   }
 
   const seoSlug = toSlug(propertyName);
 
   const calculateEMI = (price) => {
-    const interestRate = 0.08 / 12; // 8% annual
-    const tenureMonths = 240; // 20 years
+    const interestRate = 0.08 / 12;
+    const tenureMonths = 240;
+
     return Math.round(
       (price * interestRate * Math.pow(1 + interestRate, tenureMonths)) /
         (Math.pow(1 + interestRate, tenureMonths) - 1)
@@ -320,36 +319,21 @@ export const addProperty = async (req, res) => {
 
   const emi = calculateEMI(Number(totalOfferPrice));
 
-  // Format dates to remove time portion
+  // Fix date
   let formattedPossessionDate = null;
-
   if (possessionDate && possessionDate.trim() !== "") {
-    // Check if it's a valid date
     if (
       moment(possessionDate, ["YYYY-MM-DD", moment.ISO_8601], true).isValid()
     ) {
       formattedPossessionDate = moment(possessionDate).format("YYYY-MM-DD");
-    } else {
-      formattedPossessionDate = null; // fallback instead of "Invalid date"
     }
   }
 
-  // Convert Property Type Into Array
-  let propertyTypeArray;
-
-  if (Array.isArray(propertyType)) {
-    // already an array
-    propertyTypeArray = propertyType;
-  } else if (typeof propertyType === "string") {
-    // convert comma-separated string into array
-    propertyTypeArray = propertyType
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item !== ""); // remove empty values
-  } else {
-    propertyTypeArray = [];
-  }
-
+  // Convert propertyType to array
+  let propertyTypeArray = [];
+  if (Array.isArray(propertyType)) propertyTypeArray = propertyType;
+  else if (typeof propertyType === "string")
+    propertyTypeArray = propertyType.split(",").map((i) => i.trim());
   const propertyTypeJson = JSON.stringify(propertyTypeArray);
 
   const getImagePaths = (field) =>
@@ -367,21 +351,19 @@ export const addProperty = async (req, res) => {
   const nearestLandmark = getImagePaths("nearestLandmark");
   const developedAmenities = getImagePaths("developedAmenities");
 
-  // Early check: is propertyName already taken?
+  // Check property exists
   db.query(
     "SELECT propertyid FROM properties WHERE propertyName = ?",
     [propertyName],
     (err, result) => {
-      if (err) {
+      if (err)
         return res.status(500).json({ message: "Database error", error: err });
-      }
-      if (result.length > 0) {
+
+      if (result.length > 0)
         return res
           .status(409)
           .json({ message: "Property name already exists!" });
-      }
 
-      // Insert query
       const insertSQL = `
         INSERT INTO properties (
           builderid, projectBy, possessionDate, propertyCategory, propertyApprovedBy, propertyName, address, state, city, pincode, location,
@@ -394,9 +376,10 @@ export const addProperty = async (req, res) => {
           frontView, sideView, kitchenView, hallView, bedroomView, bathroomView, balconyView,
           nearestLandmark, developedAmenities, seoSlug,
           updated_at, created_at
-        )
+        ) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
 
       const values = [
         builderid,
@@ -466,21 +449,52 @@ export const addProperty = async (req, res) => {
         currentdate,
       ];
 
+      // SINGLE INSERT (correct)
       db.query(insertSQL, values, (err, result) => {
         if (err) {
-          if (err.code === "ER_DUP_ENTRY") {
-            // DB caught duplicate propertyName
-            return res
-              .status(409)
-              .json({ message: "Property name already exists!" });
-          }
-          console.error("Error inserting property:", err);
           return res.status(500).json({ message: "Insert failed", error: err });
         }
-        res.status(201).json({
-          message: "Property added successfully",
-          id: result.insertId,
-        });
+
+        const newPropertyId = result.insertId;
+
+        // STEP 1 – Fetch cityNACL
+        db.query(
+          "SELECT cityNACL FROM cities WHERE city = ? LIMIT 1",
+          [city],
+          (err2, cityResult) => {
+            if (err2)
+              return res
+                .status(500)
+                .json({ message: "City lookup failed", error: err2 });
+
+            if (cityResult.length === 0)
+              return res
+                .status(404)
+                .json({ message: "City not found in database" });
+
+            const cityNACL = cityResult[0].cityNACL;
+            const propertyCityId = `${cityNACL}-${newPropertyId}`;
+
+            // STEP 2 – Update property with propertyCityId
+            db.query(
+              "UPDATE properties SET propertyCityId = ? WHERE propertyid = ?",
+              [propertyCityId, newPropertyId],
+              (err3) => {
+                if (err3)
+                  return res.status(500).json({
+                    message: "Failed to update propertyCityId",
+                    error: err3,
+                  });
+
+                return res.status(201).json({
+                  message: "Property added successfully",
+                  id: newPropertyId,
+                  propertyCityId,
+                });
+              }
+            );
+          }
+        );
       });
     }
   );
