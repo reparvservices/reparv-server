@@ -155,37 +155,6 @@ export const getAll = (req, res) => {
   });
 };
 
-// **Fetch All**
-export const getAllOld = (req, res) => {
-  const sql = `
-    SELECT 
-      p.*, 
-      pp.fullname AS projectPartnerName,
-      pp.contact AS projectPartnerContact
-    FROM properties p
-    LEFT JOIN projectpartner pp 
-      ON p.projectpartnerid = pp.id
-    ORDER BY p.created_at DESC
-  `;
-
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error("Error fetching:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-
-    const formatted = result.map((row) => ({
-      ...row,
-      startDate: moment(row.startDate).format("DD MMM YYYY | hh:mm A"),
-      endDate: moment(row.endDate).format("DD MMM YYYY | hh:mm A"),
-      created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
-    }));
-
-    res.json(formatted);
-  });
-};
-
 // **Fetch All Active**
 export const getAllActive = (req, res) => {
   const sql = `
@@ -336,6 +305,128 @@ export const fetchProjectPartnerData = (req, res) => {
 
       res.json(formatted);
     });
+  });
+};
+
+// **Fetch Unique Plan Names**
+export const getUniqueSubscriptionPlans = (req, res) => {
+  const sql = `
+    SELECT DISTINCT planName
+    FROM subscriptionPricing
+    WHERE planName IS NOT NULL AND planName != ''
+    ORDER BY planName ASC
+  `;
+
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error("Error fetching plan names:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    const plans = result.map((row) => row.planName);
+
+    res.json(plans);
+  });
+};
+
+// **Fetch Unique Cities**
+export const getCities = (req, res) => {
+  const sql = `
+    SELECT DISTINCT city
+    FROM properties
+    WHERE city IS NOT NULL AND city != ''
+    ORDER BY city ASC
+  `;
+
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error("Error fetching cities:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    const cities = result.map((row) => row.city);
+
+    res.json(cities);
+  });
+};
+
+// **Fetch Project Partner Based on City**
+export const getProjectPartnerByCity = (req, res) => {
+  const { city } = req.params;
+
+  let sql = `
+    SELECT DISTINCT 
+      pp.id,
+      pp.fullname,
+      pp.contact
+    FROM projectpartner pp
+    LEFT JOIN properties p 
+      ON pp.id = p.projectpartnerid
+  `;
+
+  const params = [];
+
+  if (city && city !== "All") {
+    sql += ` WHERE p.city = ? `;
+    params.push(city);
+  }
+
+  sql += ` ORDER BY pp.fullname ASC `;
+
+  db.query(sql, params, (err, result) => {
+    if (err) {
+      console.error("Error fetching project partners:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    res.json(result);
+  });
+};
+
+// **Fetch Properties Based on City + Project Partner (POST)**
+export const getPropertiesByProject = (req, res) => {
+  const { projectPartnerId, city } = req.body;
+
+  let sql = `
+    SELECT 
+      p.*,
+      pp.fullname,
+      pp.contact
+    FROM properties p
+    LEFT JOIN projectpartner pp 
+      ON p.projectpartnerid = pp.id
+    WHERE 1=1
+  `;
+
+  const params = [];
+
+  // Filter by city (if selected)
+  if (city && city !== "All") {
+    sql += ` AND p.city = ? `;
+    params.push(city);
+  }
+
+  // Filter by project partner (if selected)
+  if (projectPartnerId && projectPartnerId !== "All") {
+    sql += ` AND p.projectpartnerid = ? `;
+    params.push(projectPartnerId);
+  }
+
+  sql += ` ORDER BY p.created_at DESC `;
+
+  db.query(sql, params, (err, result) => {
+    if (err) {
+      console.error("Error fetching properties:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    const formatted = result.map((row) => ({
+      ...row,
+      created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+    }));
+
+    res.json(formatted);
   });
 };
 
