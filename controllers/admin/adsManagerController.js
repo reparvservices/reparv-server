@@ -5,7 +5,7 @@ export const getAll = (req, res) => {
   // STEP 1: Fetch properties + projectpartner
   const propertySql = `
     SELECT 
-      pr.*
+      pr.*,
       pr.propertycityid AS propertyCityId,
       pp.fullname AS projectPartnerName,
       pp.contact AS projectPartnerContact,
