@@ -21,7 +21,7 @@ const calculateEMI = (principal, rate = 9, years = 20) => {
 // **Fetch All Properties**
 export const getAll = (req, res) => {
   const sql = `SELECT properties.*, builders.company_name FROM properties 
-               INNER JOIN builders ON properties.builderid = builders.builderid 
+               LEFT JOIN builders ON properties.builderid = builders.builderid 
                WHERE properties.guestUserId = ? 
                ORDER BY properties.propertyid DESC`;
   db.query(sql, [req.guestUser?.id], (err, result) => {
@@ -40,7 +40,7 @@ export const getById = (req, res) => {
     return res.status(400).json({ message: "Invalid Property ID" });
 
   const sql = `SELECT properties.*, builders.company_name FROM properties 
-  INNER JOIN builders on builders.builderid = properties.builderid
+  LEFT JOIN builders on builders.builderid = properties.builderid
   WHERE properties.propertyid = ?`;
 
   db.query(sql, [Id], (err, result) => {
@@ -105,92 +105,17 @@ export const addProperty = async (req, res) => {
     return res.status(401).json({ message: "Unauthorized Access" });
   }
 
-  // Convert property type to array
-  let propertyTypeArray =
-    typeof req.body.propertyType === "string"
-      ? req.body.propertyType.split(",").map((i) => i.trim())
-      : Array.isArray(req.body.propertyType)
-      ? req.body.propertyType
-      : [];
-
-  const propertyTypeJson = JSON.stringify(propertyTypeArray);
-
   const {
-    builderid,
-    projectBy,
-    possessionDate,
     propertyCategory,
-    propertyApprovedBy,
     propertyName,
-    address,
-    state,
-    city,
-    pincode,
-    location,
-    distanceFromCityCenter,
-    latitude,
-    longitude,
+    contact,
     totalSalesPrice,
     totalOfferPrice,
-    stampDuty,
-    gst,
-    advocateFee,
-    msebWater,
-    maintenance,
-    other,
-    tags,
-    builtYear,
-    ownershipType,
     builtUpArea,
     carpetArea,
-    parkingAvailability,
-    totalFloors,
-    floorNo,
-    loanAvailability,
-    propertyFacing,
-    reraRegistered,
-    furnishing,
-    waterSupply,
-    powerBackup,
-    locationFeature,
-    sizeAreaFeature,
-    parkingFeature,
-    terraceFeature,
-    ageOfPropertyFeature,
-    amenitiesFeature,
-    propertyStatusFeature,
-    smartHomeFeature,
-    securityBenefit,
-    primeLocationBenefit,
-    rentalIncomeBenefit,
-    qualityBenefit,
-    capitalAppreciationBenefit,
-    ecofriendlyBenefit,
+    state,
+    city,
   } = req.body;
-
-  // Required field validation omitted for brevity...
-
-  // Registration fee
-  let registrationFees;
-  if (totalOfferPrice > 3000000) {
-    registrationFees = (30000 / totalOfferPrice) * 100;
-  } else {
-    registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
-      propertyCategory
-    )
-      ? 0
-      : 1;
-  }
-
-  const emi = calculateEMI(Number(totalOfferPrice));
-
-  let formattedPossessionDate = null;
-  if (
-    possessionDate &&
-    moment(possessionDate, ["YYYY-MM-DD", moment.ISO_8601], true).isValid()
-  ) {
-    formattedPossessionDate = moment(possessionDate).format("YYYY-MM-DD");
-  }
 
   const getImagePaths = (field) =>
     files[field]
@@ -222,82 +147,29 @@ export const addProperty = async (req, res) => {
       // Insert property (only ONCE)
       const insertSQL = `
         INSERT INTO properties (
-          guestUserId, builderid, projectBy, possessionDate, propertyCategory,
-          propertyApprovedBy, propertyName, address, state, city, pincode,
-          location, distanceFromCityCenter, latitude, longitude, totalSalesPrice,
-          totalOfferPrice, emi, stampDuty, registrationFee, gst, advocateFee,
-          msebWater, maintenance, other, tags, propertyType, builtYear,
-          ownershipType, builtUpArea, carpetArea, parkingAvailability,
-          totalFloors, floorNo, loanAvailability, propertyFacing, reraRegistered,
-          furnishing, waterSupply, powerBackup, locationFeature, sizeAreaFeature,
-          parkingFeature, terraceFeature, ageOfPropertyFeature, amenitiesFeature,
-          propertyStatusFeature, smartHomeFeature, securityBenefit,
-          primeLocationBenefit, rentalIncomeBenefit, qualityBenefit,
-          capitalAppreciationBenefit, ecofriendlyBenefit,
-          frontView, sideView, kitchenView, hallView, bedroomView,
-          bathroomView, balconyView, nearestLandmark, developedAmenities,
+          guestUserId, propertyCategory,
+          propertyName, contact, totalSalesPrice,
+          totalOfferPrice, builtUpArea, carpetArea,
+          state, city,
+          frontView, sideView, kitchenView, hallView, 
+          bedroomView, bathroomView, balconyView,
+          nearestLandmark, developedAmenities,
           updated_at, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       const values = [
         partnerId,
-        builderid,
-        sanitize(projectBy),
-        formattedPossessionDate,
         propertyCategory,
-        propertyApprovedBy,
         propertyName,
-        address,
-        state,
-        city,
-        pincode,
-        location,
-        distanceFromCityCenter,
-        latitude,
-        longitude,
+        contact,
         totalSalesPrice,
         totalOfferPrice,
-        emi,
-        stampDuty,
-        registrationFees,
-        gst,
-        advocateFee,
-        msebWater,
-        maintenance,
-        other,
-        tags,
-        propertyTypeJson,
-        builtYear,
-        ownershipType,
         builtUpArea,
         carpetArea,
-        parkingAvailability,
-        totalFloors,
-        floorNo,
-        loanAvailability,
-        propertyFacing,
-        reraRegistered,
-        furnishing,
-        waterSupply,
-        powerBackup,
-        locationFeature,
-        sizeAreaFeature,
-        parkingFeature,
-        terraceFeature,
-        ageOfPropertyFeature,
-        amenitiesFeature,
-        propertyStatusFeature,
-        smartHomeFeature,
-        securityBenefit,
-        primeLocationBenefit,
-        rentalIncomeBenefit,
-        qualityBenefit,
-        capitalAppreciationBenefit,
-        ecofriendlyBenefit,
+        state,
+        city,
         frontView,
         sideView,
         kitchenView,
