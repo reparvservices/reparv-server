@@ -226,6 +226,56 @@ export const getBookingOnly = (req, res) => {
 };
 
 
+// export const addLeadNotification = (req, res) => {
+//   try {
+//     const { fullname, contact, message } = req.body;
+//     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+//     // Validation
+//     if (!fullname || !contact || !message) {
+//       return res.status(400).json({
+//         message: "Full name, contact and message are required.",
+//         status: false,
+//       });
+//     }
+
+//     // Insert Query
+//     const query = `
+//       INSERT INTO userenquiry
+//       (fullname, contact, message)
+//       VALUES (?, ?, ?)
+//     `;
+
+//     db.query(
+//       query,
+//       [fullname, contact, message],
+//       (err, result) => {
+//         if (err) {
+//           console.log("Lead Notify Insert Error:", err);
+//           return res.status(500).json({
+//             message: "Database Error",
+//             status: false,
+//             error: err,
+//           });
+//         }
+
+//         return res.status(200).json({
+//           message: "Notification request saved successfully!",
+//           status: true,
+//         });
+//       }
+//     );
+//   } catch (error) {
+//     console.log("Lead Notify Error:", error);
+//     return res.status(500).json({
+//       message: "Internal Server Error",
+//       status: false,
+//       error,
+//     });
+//   }
+// };
+
+
 export const addLeadNotification = (req, res) => {
   try {
     const { fullname, contact, message } = req.body;
@@ -239,16 +289,16 @@ export const addLeadNotification = (req, res) => {
       });
     }
 
-    // Insert Query
+      // Insert Query
     const query = `
       INSERT INTO userenquiry
-      (fullname, contact, message, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      (fullname, contact, message, created_at,updated_at)
+      VALUES (?, ?, ?, ?,?)
     `;
 
     db.query(
       query,
-      [fullname, contact, message, currentdate, currentdate],
+      [fullname, contact, message, currentdate,currentdate],
       (err, result) => {
         if (err) {
           console.log("Lead Notify Insert Error:", err);
@@ -274,3 +324,64 @@ export const addLeadNotification = (req, res) => {
     });
   }
 };
+
+export const getTotalEnquiries = (req, res) => {
+  const { propertyid } = req.query;
+
+  if (!propertyid) {
+    return res.status(400).json({
+      message: "Property ID is required",
+    });
+  }
+
+  const sqlCount = `SELECT COUNT(*) AS totalEnquiries FROM enquirers WHERE propertyid = ?`;
+  const sqlList = `SELECT * FROM enquirers WHERE propertyid = ? ORDER BY enquirersid DESC`;
+
+  db.query(sqlCount, [propertyid], (err, countResult) => {
+    if (err) {
+      console.error("Database Count Error:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    db.query(sqlList, [propertyid], (err2, listResult) => {
+      if (err2) {
+        console.error("Database List Error:", err2);
+        return res.status(500).json({ message: "Database error" });
+      }
+
+      res.status(200).json({
+        message: "Fetched successfully",
+        totalEnquiries: countResult[0].totalEnquiries,
+        enquiries: listResult,  // returning full enquiry list
+      });
+    });
+  });
+};
+
+
+export const addVisitor = (req, res) => {
+  const { propertyid } = req.body;
+
+  const sql = `INSERT INTO property_visitors (propertyid) VALUES (?)`;
+
+  db.query(sql, [propertyid], (err) => {
+    if (err) return res.status(500).json({ message: "DB error" });
+
+    res.json({ message: "Visitor added" });
+  });
+};
+
+export const getTotalVisitors = (req, res) => {
+  const { propertyid } = req.query;
+
+  const sql = `SELECT COUNT(*) AS totalVisitors FROM property_visitors WHERE propertyid = ?`;
+
+  db.query(sql, [propertyid], (err, result) => {
+    if (err) return res.status(500).json({ message: "DB error" });
+
+    res.json({
+      totalVisitors: result[0].totalVisitors
+    });
+  });
+};
+
