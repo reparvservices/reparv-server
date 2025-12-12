@@ -1,5 +1,7 @@
 import moment from "moment";
 import db from "../../config/dbconnect.js";
+import fs from "fs";
+import path from "path";
 
 
 function toSlug(text) {
@@ -262,3 +264,118 @@ export const addProperty = (req, res) => {
   }
 };
 
+
+//**Change status */
+export const status = (req, res) => {
+  const Id = parseInt(req.params.id);
+  console.log(Id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid Property ID" });
+  }
+
+  db.query(
+    "SELECT * FROM properties WHERE propertyid = ?",
+    [Id],
+    (err, result) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+
+      let status = "";
+      if (result[0].status === "Active") {
+        status = "Inactive";
+      } else {
+        status = "Active";
+      }
+      console.log(status);
+      db.query(
+        "UPDATE properties SET status = ? WHERE propertyid = ?",
+        [status, Id],
+        (err, result) => {
+          if (err) {
+            console.error("Error deleting :", err);
+            return res
+              .status(500)
+              .json({ message: "Database error", error: err });
+          }
+          res
+            .status(200)
+            .json({ message: "Property status change successfully" });
+        }
+      );
+    }
+  );
+};
+export const del = (req, res) => {
+  const Id = parseInt(req.params.id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid Property ID" });
+  }
+console.log("ddd");
+
+  const imageFields = [
+    "frontView",
+    "sideView",
+    "kitchenView",
+    "hallView",
+    "bedroomView",
+    "bathroomView",
+    "balconyView",
+    "nearestLandmark",
+    "developedAmenities",
+  ];
+
+  // Fetch all image paths from DB
+  db.query(
+    `SELECT ${imageFields.join(", ")} FROM properties WHERE propertyid = ?`,
+    [Id],
+    (err, result) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+
+      if (result.length === 0) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      const property = result[0];
+
+      // Loop through image fields and delete each image
+      imageFields.forEach((field) => {
+        if (property[field]) {
+          try {
+            const paths = JSON.parse(property[field]);
+            if (Array.isArray(paths)) {
+              paths.forEach((imgPath) => {
+                const fullPath = path.join(process.cwd(), imgPath);
+                fs.unlink(fullPath, (err) => {
+                  if (err && err.code !== "ENOENT") {
+                    console.error(`Error deleting ${imgPath}:`, err);
+                  }
+                });
+              });
+            }
+          } catch (e) {
+            console.error(`Failed to parse ${field}:`, e);
+          }
+        }
+      });
+
+      // Delete the property from DB
+      db.query("DELETE FROM properties WHERE propertyid = ?", [Id], (err) => {
+        if (err) {
+          console.error("Error deleting property:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        res.status(200).json({
+          message: "Property and associated images deleted successfully",
+        });
+      });
+    }
+  );
+};
