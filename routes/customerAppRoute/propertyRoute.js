@@ -2,8 +2,10 @@ import express from "express";
 import {
   addInWishList,
   addProperty,
+  del,
   getAll,
   getUserWishlist,
+  status,
 } from "../../controllers/customerAppController/propertyController.js";
 
 import multer from "multer";
@@ -68,4 +70,6 @@ router.post(
   addProperty
 );
 router.get('/myproperty/:contact',getAll)
+router.delete("/delete/:id", del);
+router.put("/status/:id", status);
 export default router;
