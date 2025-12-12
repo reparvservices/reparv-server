@@ -1,5 +1,5 @@
 import express from "express";
-import { add, addLeadNotification, getAll, getBookingOnly, getVisitsOnly } from "../../controllers/customerAppController/enquiryController.js";
+import { add, addLeadNotification, addVisitor, getAll, getBookingOnly, getTotalEnquiries, getTotalVisitors, getVisitsOnly } from "../../controllers/customerAppController/enquiryController.js";
 import { getPaymentList } from "../../controllers/sales/customerController.js";
 
 const router = express.Router();
@@ -10,4 +10,8 @@ router.get('/getBookingProperty',getBookingOnly)
 router.get("/payment/get/:id", getPaymentList);
 router.post("/add/notify",addLeadNotification
 )
+router.get("/total/enquiries", getTotalEnquiries);
+router.post("/addvisits",addVisitor)
+router.get("/getvisits",getTotalVisitors)
+
 export default router;
