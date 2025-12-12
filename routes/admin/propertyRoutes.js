@@ -25,6 +25,7 @@ import {
   uploadBrochureAndVideoLink,
   deleteBrochureFile,
   hotDeal,
+  changeProjectPartner,
 } from "../../controllers/admin/propertyController.js";
 import multer from "multer";
 import path from "path";
@@ -126,6 +127,7 @@ router.put(
 router.put("/status/:id", status);
 router.put("/set/hotdeal/:id", hotDeal);
 router.put("/seo/:id", seoDetails);
+router.put("/assign/to/project-partner/:id", changeProjectPartner);
 router.put("/reject/:id", addRejectReason);
 router.put("/commission/:id", setPropertyCommission);
 router.put("/approve/:id", approve);

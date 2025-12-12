@@ -62,8 +62,18 @@ export const getAll = (req, res) => {
            guestUsers.contact,
            guestUsers.city AS partnerCity
         FROM properties 
-        INNER JOIN builders ON properties.builderid = builders.builderid 
+        LEFT JOIN builders ON properties.builderid = builders.builderid 
         INNER JOIN guestUsers ON properties.guestUserId = guestUsers.id 
+        ORDER BY properties.created_at DESC;`;
+  } else if (propertyLister === "Onboarding Partner") {
+    sql = `SELECT properties.*,
+           builders.company_name, 
+           onboardingpartner.fullname, 
+           onboardingpartner.contact,
+           onboardingpartner.city AS partnerCity
+        FROM properties 
+        INNER JOIN builders ON properties.builderid = builders.builderid 
+        INNER JOIN onboardingpartner ON properties.partnerid = onboardingpartner.partnerid 
         ORDER BY properties.created_at DESC;`;
   } else {
     sql = `SELECT properties.*,
@@ -1281,6 +1291,52 @@ export const seoDetails = (req, res) => {
               .json({ message: "Database error", error: err });
           }
           res.status(200).json({ message: "Seo Details Add successfully" });
+        }
+      );
+    }
+  );
+};
+
+// Change Project Partner
+export const changeProjectPartner = async (req, res) => {
+  const { projectPartnerId, projectPartner, projectPartnerContact } = req.body;
+  const Id = parseInt(req.params.id);
+
+  if (!projectPartnerId) {
+    return res.status(400).json({ message: "All Fields Required" });
+  }
+
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid Enquiry ID" });
+  }
+
+  db.query(
+    "SELECT * FROM properties WHERE propertyid = ?",
+    [Id],
+    (err, result) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+
+      if (result.length === 0) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      db.query(
+        "UPDATE properties SET projectpartnerid = ? WHERE propertyid = ?",
+        [projectPartnerId, Id],
+        async (err, result) => {
+          if (err) {
+            console.error("Error changing project partner:", err);
+            return res
+              .status(500)
+              .json({ message: "Database error", error: err });
+          }
+
+          return res.status(200).json({
+            message: `Property assigned successfully to ${projectPartner}`,
+          });
         }
       );
     }

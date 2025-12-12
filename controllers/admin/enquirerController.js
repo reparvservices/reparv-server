@@ -482,48 +482,6 @@ export const status = (req, res) => {
   );
 };
 
-// export const assignEnquiry = async (req, res) => {
-//   const { salespersonid, salesperson, salespersoncontact } = req.body;
-//   if (!salespersonid || !salesperson || !salespersoncontact) {
-//     return res.status(400).json({ message: "All Fields Required" });
-//   }
-//   const Id = parseInt(req.params.id);
-//   let salesInfo = salesperson + " - " + salespersoncontact;
-//   if (isNaN(Id)) {
-//     return res.status(400).json({ message: "Invalid Enquiry ID" });
-//   }
-
-//   db.query(
-//     "SELECT * FROM enquirers WHERE enquirersid = ?",
-//     [Id],
-//     (err, result) => {
-//       if (err) {
-//         console.error("Database error:", err);
-//         return res.status(500).json({ message: "Database error", error: err });
-//       }
-//       if (result.length === 0) {
-//         return res.status(404).json({ message: "Enquiry not found" });
-//       }
-
-//       db.query(
-//         "UPDATE enquirers SET salespersonid = ?, assign = ? WHERE enquirersid = ?",
-//         [salespersonid, salesInfo, Id],
-//         (err, result) => {
-//           if (err) {
-//             console.error("Error assigning sales person :", err);
-//             return res
-//               .status(500)
-//               .json({ message: "Database error", error: err });
-//           }
-//           res.status(200).json({
-//             message: "Enquiry assigned successfully to " + salesperson,
-//           });
-//         }
-//       );
-//     }
-//   );
-// };
-
 export const assignEnquiry = async (req, res) => {
   const { salespersonid, salesperson, salespersoncontact } = req.body;
   const Id = parseInt(req.params.id);

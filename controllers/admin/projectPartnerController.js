@@ -125,173 +125,6 @@ export const getById = (req, res) => {
   });
 };
 
-// **Add New Project Partner **
-// export const add = (req, res) => {
-//   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-//   const {
-//     fullname,
-//     contact,
-//     email,
-//     intrest,
-//     refrence,
-//     address,
-//     state,
-//     city,
-//     pincode,
-//     experience,
-//     adharno,
-//     panno,
-//     rerano,
-//     bankname,
-//     accountholdername,
-//     accountnumber,
-//     ifsc,
-//   } = req.body;
-
-//   if (!fullname || !contact || !email || !intrest) {
-//     return res.status(400).json({ message: "All fields are required!" });
-//   }
-
-//   const createReferralCode = () => {
-//     const chars =
-//       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*";
-//     let code = "";
-//     for (let i = 0; i < 6; i++) {
-//       code += chars.charAt(Math.floor(Math.random() * chars.length));
-//     }
-//     return "REF-" + code;
-//   };
-
-//   const generateUniqueReferralCode = (callback) => {
-//     const code = createReferralCode();
-//     db.query(
-//       "SELECT referral FROM projectpartner WHERE referral = ?",
-//       [code],
-//       (err, results) => {
-//         if (err) return callback(err, null);
-//         if (results.length > 0) return generateUniqueReferralCode(callback);
-//         return callback(null, code);
-//       }
-//     );
-//   };
-
-//   const adharImageFile = req.files?.["adharImage"]?.[0];
-//   const panImageFile = req.files?.["panImage"]?.[0];
-//   const reraImageFile = req.files?.["reraImage"]?.[0];
-
-//   const adharImageUrl = adharImageFile
-//     ? `/uploads/${adharImageFile.filename}`
-//     : null;
-//   const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-//   const reraImageUrl = reraImageFile
-//     ? `/uploads/${reraImageFile.filename}`
-//     : null;
-
-//   const checkSql = `SELECT * FROM projectpartner WHERE contact = ? OR email = ?`;
-
-//   db.query(checkSql, [contact, email.toLowerCase()], (checkErr, checkResult) => {
-//     if (checkErr) {
-//       console.error("Error checking existing Project Partner:", checkErr);
-//       return res.status(500).json({
-//         message: "Database error during validation",
-//         error: checkErr,
-//       });
-//     }
-
-//     if (checkResult.length > 0) {
-//       return res.status(409).json({
-//         message: "Project Partner already exists with this Contact or Email",
-//       });
-//     }
-
-//     generateUniqueReferralCode((referralErr, referralCode) => {
-//       if (referralErr) {
-//         console.error("Referral code generation failed:", referralErr);
-//         return res.status(500).json({
-//           message: "Error generating unique referral code",
-//           error: referralErr,
-//         });
-//       }
-
-//       const insertSql = `
-//         INSERT INTO projectpartner 
-//         (fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, adharno, panno, rerano, bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
-//         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-//       `;
-
-//       db.query(
-//         insertSql,
-//         [
-//           fullname,
-//           contact,
-//           email.toLowerCase(),
-//           intrest,
-//           refrence,
-//           referralCode,
-//           address,
-//           state,
-//           city,
-//           pincode,
-//           experience,
-//           adharno,
-//           panno,
-//           rerano,
-//           bankname,
-//           accountholdername,
-//           accountnumber,
-//           ifsc,
-//           adharImageUrl,
-//           panImageUrl,
-//           reraImageUrl,
-//           currentdate,
-//           currentdate,
-//         ],
-//         (insertErr, insertResult) => {
-//           if (insertErr) {
-//             console.error("Error inserting Project Partner:", insertErr);
-//             return res.status(500).json({
-//               message: "Database error during insert",
-//               error: insertErr,
-//             });
-//           }
-
-//           const followupSql = `
-//             INSERT INTO partnerFollowup 
-//             (partnerId, role, followUp, followUpText, created_at, updated_at) 
-//             VALUES (?, ?, ?, ?, ?, ?)
-//           `;
-
-//           db.query(
-//             followupSql,
-//             [
-//               insertResult.insertId,
-//               "Project Partner",
-//               "New",
-//               "Newly Added Project Partner",
-//               currentdate,
-//               currentdate,
-//             ],
-//             (followupErr) => {
-//               if (followupErr) {
-//                 console.error("Error adding follow-up:", followupErr);
-//                 return res.status(500).json({
-//                   message: "Follow-up insert failed",
-//                   error: followupErr,
-//                 });
-//               }
-
-//               return res.status(201).json({
-//                 message: "Project Partner added successfully",
-//                 Id: insertResult.insertId,
-//               });
-//             }
-//           );
-//         }
-//       );
-//     });
-//   });
-// };
-
 export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
@@ -762,6 +595,43 @@ export const updateBusinessDetails = (req, res) => {
       });
     });
   });
+};
+
+//* ADD Seo Details */
+export const seoDetails = (req, res) => {
+  const { seoSlug, seoTitle, seoDescription } = req.body;
+  if (!seoTitle || !seoDescription) {
+    return res.status(401).json({ message: "All Field Are Required" });
+  }
+  const Id = parseInt(req.params.id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid ID" });
+  }
+
+  db.query(
+    "SELECT * FROM projectpartner WHERE id = ?",
+    [Id],
+    (err, result) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+
+      db.query(
+        "UPDATE projectpartner SET seoSlug = ?, seoTitle = ?, seoDescription = ? WHERE id = ?",
+        [seoSlug, seoTitle, seoDescription, Id],
+        (err, result) => {
+          if (err) {
+            console.error("Error While Add Seo Details:", err);
+            return res
+              .status(500)
+              .json({ message: "Database error", error: err });
+          }
+          res.status(200).json({ message: "Seo Details Add successfully" });
+        }
+      );
+    }
+  );
 };
 
 // **Delete **

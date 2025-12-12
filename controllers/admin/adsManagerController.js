@@ -314,7 +314,7 @@ export const getUniqueSubscriptionPlans = (req, res) => {
   const sql = `
     SELECT DISTINCT planName
     FROM subscriptionPricing
-    WHERE planName IS NOT NULL AND planName != ''
+    WHERE partnerType = 'Project Partner' AND planName IS NOT NULL AND planName != ''
     ORDER BY planName ASC
   `;
 
