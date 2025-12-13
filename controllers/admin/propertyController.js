@@ -1324,7 +1324,7 @@ export const changeProjectPartner = async (req, res) => {
       }
 
       db.query(
-        "UPDATE properties SET projectpartnerid = ? WHERE propertyid = ?",
+        "UPDATE properties SET partnerid = NULL, employeeid = NULL, guestUserId = NULL, projectpartnerid = ? WHERE propertyid = ?",
         [projectPartnerId, Id],
         async (err, result) => {
           if (err) {
