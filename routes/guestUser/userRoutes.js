@@ -33,9 +33,9 @@ router.post("/register", async (req, res) => {
 
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-    const { fullname, contact, email } = req.body;
+    const { fullname, contact, email, password } = req.body;
 
-    if (!fullname || !contact || !email) {
+    if (!fullname || !contact || !email || !password) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
@@ -59,7 +59,7 @@ router.post("/register", async (req, res) => {
 
     // Generate username and password
     const username = extractNameFromEmail(email);
-    const rawPassword = generatePassword();
+    const rawPassword = password
     let hashedPassword;
 
     try {
