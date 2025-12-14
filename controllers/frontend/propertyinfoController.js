@@ -1,8 +1,76 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 
-// **Fetch Single by ID**
+/// Fetch Single Property by SEO Slug
 export const getById = (req, res) => {
+  const seoSlug = req.params.slug;
+
+  if (!seoSlug) {
+    return res.status(400).json({ message: "SEO slug is required" });
+  }
+
+  const sql = `
+    SELECT 
+      p.*,
+      pp.contact AS projectPartnerContact,
+      gu.contact AS guestUserContact,
+
+      COUNT(DISTINCT CASE 
+        WHEN pi.status = 'Available' THEN pi.propertyinfoid 
+      END) AS availableCount,
+
+      COUNT(DISTINCT CASE 
+        WHEN pi.status = 'Booked' THEN pi.propertyinfoid 
+      END) AS bookedCount
+
+    FROM properties p
+
+    LEFT JOIN propertiesinfo pi 
+      ON p.propertyid = pi.propertyid
+
+    LEFT JOIN projectpartner pp 
+      ON p.propertyid = pp.id
+
+    LEFT JOIN guestUsers gu 
+      ON p.propertyid = gu.id
+
+    WHERE p.seoSlug = ?
+    GROUP BY p.propertyid;
+  `;
+
+  db.query(sql, [seoSlug], (err, result) => {
+    if (err) {
+      console.error("Error fetching property:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (!result.length) {
+      return res.status(404).json({ message: "Property not found" });
+    }
+
+    const row = result[0];
+
+    // Safe JSON parse
+    let propertyType = [];
+    try {
+      propertyType = row.propertyType ? JSON.parse(row.propertyType) : [];
+    } catch (err) {
+      console.warn("Invalid JSON in propertyType:", row.propertyType);
+    }
+
+    const response = {
+      ...row,
+      propertyType,
+      possessionDate: row.possessionDate
+        ? moment.utc(row.possessionDate).format("DD MMM YYYY")
+        : null,
+    };
+
+    res.json(response);
+  });
+};
+
+export const getByIdu = (req, res) => {
   const seoSlug = req.params.slug;
   const sql = `
       SELECT 
