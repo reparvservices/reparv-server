@@ -108,7 +108,6 @@ export const addProperty = async (req, res) => {
   const {
     propertyCategory,
     propertyName,
-    contact,
     totalSalesPrice,
     totalOfferPrice,
     builtUpArea,
@@ -148,7 +147,7 @@ export const addProperty = async (req, res) => {
       const insertSQL = `
         INSERT INTO properties (
           guestUserId, propertyCategory,
-          propertyName, contact, totalSalesPrice,
+          propertyName, totalSalesPrice,
           totalOfferPrice, builtUpArea, carpetArea,
           state, city,
           frontView, sideView, kitchenView, hallView, 
@@ -156,14 +155,13 @@ export const addProperty = async (req, res) => {
           nearestLandmark, developedAmenities,
           updated_at, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       const values = [
         partnerId,
         propertyCategory,
         propertyName,
-        contact,
         totalSalesPrice,
         totalOfferPrice,
         builtUpArea,
