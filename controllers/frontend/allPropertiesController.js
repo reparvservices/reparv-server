@@ -4,7 +4,7 @@ import moment from "moment";
 // **Fetch All**
 export const getAll = (req, res) => {
   const sql =
-    "SELECT * FROM properties WHERE status='Active' AND approve='Approved' ORDER BY propertyid DESC";
+    "SELECT * FROM properties WHERE status='Active' AND approve='Approved' ORDER BY RAND()";
   db.query(sql, (err, result) => {
     if (err) {
       console.error("Error fetching:", err);
@@ -37,7 +37,7 @@ export const getAllByCity = (req, res) => {
   if (!city) {
     return res.status(401).json({ message: "City Not Selected!" });
   }
-  const sql = `SELECT * FROM properties WHERE status='Active' AND approve='Approved' AND city = ? `;
+  const sql = `SELECT * FROM properties WHERE status='Active' AND approve='Approved' AND city = ? ORDER BY RAND() `;
   db.query(sql, [city], (err, result) => {
     if (err) {
       console.error("Error fetching:", err);

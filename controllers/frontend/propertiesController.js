@@ -41,7 +41,7 @@ export const getAll = (req, res) => {
     params.push(parseInt(minBudget), parseInt(maxBudget));
   }
 
-  sql += ` ORDER BY p.propertyid DESC`;
+  sql += ` ORDER BY RAND()`;
 
   db.query(sql, params, (err, result) => {
     if (err) {
@@ -109,7 +109,7 @@ export const getAllBySlug = (req, res) => {
     params.push(city);
   }
 
-  sql += ` ORDER BY p.propertyid DESC`;
+  sql += ` ORDER BY RAND()`;
 
   db.query(sql, params, (err, result) => {
     if (err) {

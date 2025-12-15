@@ -58,6 +58,8 @@ export const verifyPayment = async (req, res) => {
     razorpay_payment_id,
     razorpay_signature,
     student_id,
+    username,
+    password,
     amount,
     role,
     url,
@@ -80,7 +82,7 @@ export const verifyPayment = async (req, res) => {
       const name = lettersOnly[0].toLowerCase();
       return name.charAt(0).toUpperCase() + name.slice(1);
     };
-    const username = extractNameFromEmail(student_id);
+    //const username = extractNameFromEmail(student_id);
 
     const generatePassword = () => {
       const chars =
@@ -91,7 +93,7 @@ export const verifyPayment = async (req, res) => {
       }
       return password;
     };
-    const password = generatePassword();
+    //const password = generatePassword();
     // Hash the password securely
     const hashedPassword = await bcrypt.hash(password, 10);
 
