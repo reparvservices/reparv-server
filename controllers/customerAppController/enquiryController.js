@@ -60,7 +60,7 @@ export const add = async (req, res) => {
         propertyCategory,
         fullname,
         phone,
-        "Onsite",
+        "App",
         currentdate,
         currentdate,
       ],
@@ -384,4 +384,5 @@ export const getTotalVisitors = (req, res) => {
     });
   });
 };
+
 
