@@ -171,7 +171,7 @@ export const addEnquiry = async (req, res) => {
       location,
       propertyid,
       message,
-      "App",
+      "Direct",
       currentdate,
       currentdate,
     ];
