@@ -171,7 +171,7 @@ export const addEnquiry = async (req, res) => {
       location,
       propertyid,
       message,
-      "Direct",
+      "App",
       currentdate,
       currentdate,
     ];
@@ -417,3 +417,4 @@ export const getAllDigitalEnquiry = (req, res) => {
     res.json({ data: formatted });
   });
 };
+
