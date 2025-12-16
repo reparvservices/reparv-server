@@ -116,4 +116,83 @@ router.post("/logout", (req, res) => {
   }
 });
 
+// Get Password
+router.post("/login/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Email required
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // Email regex validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+
+    // Fetch user
+    const user = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT * FROM projectpartner WHERE email = ?",
+        [email],
+        (err, results) => {
+          if (err) {
+            //reject({ status: 500, message: "Database error" });
+            reject({
+              status: 500,
+              message: err.message,
+              code: err.code,
+            });
+          } else if (results.length === 0) {
+            reject({
+              status: 404,
+              message: "Account not found with this email",
+            });
+          } else {
+            resolve(results[0]);
+          }
+        }
+      );
+    });
+
+    const newPassword = generatePassword();
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password in DB (awaited)
+    await new Promise((resolve, reject) => {
+      db.query(
+        "UPDATE projectpartner SET password = ? WHERE email = ?",
+        [hashedPassword, email],
+        (err, result) => {
+          if (err) {
+            reject({ status: 500, message: "Password update failed" });
+          } else {
+            resolve(result);
+          }
+        }
+      );
+    });
+
+    // Send password email (pass password)
+    await sendForgotPasswordMail(email, {
+      ...user,
+      password: newPassword,
+    });
+
+    // Success response
+    return res.status(200).json({
+      message: "New password sent successfully on your email",
+    });
+  } catch (error) {
+    console.error("Password Generation Failed:", error);
+    return res
+      .status(error.status || 500)
+      .json({ message: error.message || "Internal server error" });
+  }
+});
+
 export default router;
