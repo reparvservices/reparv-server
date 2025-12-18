@@ -40,3 +40,33 @@ export const getById = (req, res) => {
         res.json(formatted[0]);
   });
 };
+
+// **Add New **
+export const addFeedback = (req, res) => {
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+  const { feedbackType, fullname, contact, email, message } = req.body;
+  
+  if (!feedbackType || !fullname || !contact || !email || !message) {
+    return res.status(400).json({ message: "All Fields are Required" });
+  }
+
+  const sql = `INSERT INTO blogfeedback (type, fullname, contact, email, message, created_at, updated_at) 
+               VALUES (?, ?, ?, ?, ?, ?, ?)`;
+
+  db.query(
+    sql,
+    [feedbackType, fullname, contact, email, message, currentdate, currentdate],
+    (err, result) => {
+      if (err) {
+        console.error("Error inserting Feedback:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+
+      return res.status(201).json({
+        message: "Feedback added successfully",
+      });
+    }
+  );
+};
+
+
