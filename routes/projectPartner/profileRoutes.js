@@ -6,7 +6,7 @@ import {
   editProfile,
   changePassword,
 } from "../../controllers/projectPartner/profileController.js";
-import { submitContactForm } from "../../controllers/projectPartner/ContactController.js";
+import { createSchedule, submitContactForm } from "../../controllers/projectPartner/ContactController.js";
 
 const router = express.Router();
 
@@ -36,4 +36,6 @@ router.get("/", getProfile);
 router.put("/edit",upload.single("image"), editProfile);
 router.put("/changepassword", changePassword);
 router.post("/contact", submitContactForm);
+router.post("/schedule",createSchedule)
+
 export default router;
