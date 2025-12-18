@@ -6,6 +6,7 @@ import {
   editProfile,
   changePassword,
 } from "../../controllers/projectPartner/profileController.js";
+import { submitContactForm } from "../../controllers/projectPartner/ContactController.js";
 
 const router = express.Router();
 
@@ -34,4 +35,5 @@ const upload = multer({
 router.get("/", getProfile);
 router.put("/edit",upload.single("image"), editProfile);
 router.put("/changepassword", changePassword);
+router.post("/contact", submitContactForm);
 export default router;
