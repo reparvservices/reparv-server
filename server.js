@@ -44,6 +44,7 @@ import calenderRoutes from "./routes/admin/calenderRoutes.js";
 import emiRoutes from "./routes/admin/emiRoutes.js";
 import marketingContentRoutes from "./routes/admin/marketingContentRoutes.js";
 import brandAccessoriesRoutes from "./routes/admin/brandAccessoriesRoutes.js";
+import messageRoutes from "./routes/admin/messageRoutes.js";
 
 //frontend
 import allPropertiesRoutes from "./routes/frontend/allPropertiesRoutes.js";
@@ -105,6 +106,7 @@ import employeeMapRoutes from "./routes/employee/mapRoutes.js";
 import employeeCalenderRoutes from "./routes/employee/calenderRoutes.js";
 import employeeRoleRoutes from "./routes/employee/roleRoutes.js";
 import employeeDepartmentRoutes from "./routes/employee/departmentRoutes.js";
+import employeeMessageRoutes from "./routes/employee/messageRoutes.js";
 
 // import Promoter Routes
 import promoterLoginRoutes from "./routes/promoter/loginRoutes.js";
@@ -612,6 +614,7 @@ app.use("/admin/calender", calenderRoutes);
 app.use("/admin/emi", emiRoutes);
 app.use("/admin/marketing-content", marketingContentRoutes);
 app.use("/admin/brand-accessories", brandAccessoriesRoutes);
+app.use("/admin/messages", messageRoutes);
 
 // Guest User Routes
 app.use("/guest-user", guestUserLoginRoutes);
@@ -646,6 +649,7 @@ app.use("/employee/enquiry", employeeEnquiryRoutes);
 app.use("/employee/calender", employeeCalenderRoutes);
 app.use("/employee/roles", employeeRoleRoutes);
 app.use("/employee/departments", employeeDepartmentRoutes);
+app.use("/employee/messages", employeeMessageRoutes);
 
 // Promoter Partner Routes
 app.use("/promoter", promoterLoginRoutes);
