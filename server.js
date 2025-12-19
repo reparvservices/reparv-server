@@ -395,8 +395,8 @@ export const verifyToken = (req, res, next) => {
     "/projectpartner/enquiries/getdigitalenquiry/",
     "/projectpartner/departments",
     "/projectpartner/roles",
-  "/project-partner/profile/contact",
-    "/project-partner/profile/schedule"
+    "/project-partner/profile/contact",
+    "/project-partner/profile/schedule",
   ];
 
   // Skip verification for public routes
@@ -791,4 +791,3 @@ app.use("/builderapp/post", builderpostRoute);
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
-

@@ -36,6 +36,6 @@ router.get("/", getProfile);
 router.put("/edit",upload.single("image"), editProfile);
 router.put("/changepassword", changePassword);
 router.post("/contact", submitContactForm);
-router.post("/schedule",createSchedule)
+router.post("/schedule", createSchedule)
 
 export default router;
