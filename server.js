@@ -46,6 +46,7 @@ import marketingContentRoutes from "./routes/admin/marketingContentRoutes.js";
 import brandAccessoriesRoutes from "./routes/admin/brandAccessoriesRoutes.js";
 import messageRoutes from "./routes/admin/messageRoutes.js";
 import scheduledRequestRoutes from "./routes/admin/scheduledRequestRoutes.js";
+import FAQRoutes from "./routes/admin/FAQRoutes.js";
 
 //frontend
 import allPropertiesRoutes from "./routes/frontend/allPropertiesRoutes.js";
@@ -617,6 +618,7 @@ app.use("/admin/marketing-content", marketingContentRoutes);
 app.use("/admin/brand-accessories", brandAccessoriesRoutes);
 app.use("/admin/messages", messageRoutes);
 app.use("/admin/scheduled-requests", scheduledRequestRoutes);
+app.use("/admin/faq", FAQRoutes);
 
 // Guest User Routes
 app.use("/guest-user", guestUserLoginRoutes);
