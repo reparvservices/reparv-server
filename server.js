@@ -399,6 +399,7 @@ export const verifyToken = (req, res, next) => {
     "/projectpartner/roles",
     "/project-partner/profile/contact",
     "/project-partner/profile/schedule",
+    "/admin/faq",
   ];
 
   // Skip verification for public routes
