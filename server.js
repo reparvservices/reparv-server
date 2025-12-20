@@ -399,7 +399,7 @@ export const verifyToken = (req, res, next) => {
     "/projectpartner/roles",
     "/project-partner/profile/contact",
     "/project-partner/profile/schedule",
-    "/admin/faq",
+    "/admin/faqs/:location"
   ];
 
   // Skip verification for public routes
@@ -619,7 +619,7 @@ app.use("/admin/marketing-content", marketingContentRoutes);
 app.use("/admin/brand-accessories", brandAccessoriesRoutes);
 app.use("/admin/messages", messageRoutes);
 app.use("/admin/scheduled-requests", scheduledRequestRoutes);
-app.use("/admin/faq", FAQRoutes);
+app.use("/admin/faqs", FAQRoutes);
 
 // Guest User Routes
 app.use("/guest-user", guestUserLoginRoutes);

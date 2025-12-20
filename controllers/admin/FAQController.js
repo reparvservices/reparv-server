@@ -1,88 +1,117 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 
-// **Fetch All **
-export const getAll = (req, res) => {
-  const location = req.params.location;
+/* =======================
+   GET ALL BY LOCATION
+======================= */
+export const getAllWithLocation = (req, res) => {
+  const { location } = req.params;
+
   if (!location) {
-    return res.send(401).json({ message: "Location Not Found!" });
+    return res.status(400).json({ message: "Location not provided" });
   }
-  const sql = "SELECT * FROM faq WHERE location ORDER BY RAND()";
+
+  const sql = "SELECT * FROM faq WHERE location = ? ORDER BY RAND()";
+
   db.query(sql, [location], (err, result) => {
     if (err) {
-      console.error("Error fetching :", err);
+      console.error("Error fetching FAQs:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
-    res.json(result);
+
+    return res.status(200).json(result);
   });
 };
 
-// **Fetch All **
+/* =======================
+   GET ALL ACTIVE BY LOCATION
+======================= */
 export const getAllActive = (req, res) => {
-  const location = req.params.location;
+  const { location } = req.params;
+
   if (!location) {
-    return res.send(401).json({ message: "Location Not Found!" });
+    return res.status(400).json({ message: "Location not provided" });
   }
+
   const sql =
     "SELECT * FROM faq WHERE status = 'Active' AND location = ? ORDER BY RAND()";
+
   db.query(sql, [location], (err, result) => {
     if (err) {
-      console.error("Error fetching :", err);
+      console.error("Error fetching active FAQs:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
-    res.json(result);
+
+    return res.status(200).json(result);
   });
 };
 
-// **Fetch Single by ID**
-export const getById = (req, res) => {
-  const Id = parseInt(req.params.id);
-  const sql = "SELECT * FROM faq WHERE id = ?";
+/* =======================
+   GET ALL (ADMIN)
+======================= */
+export const getAll = (req, res) => {
+  const sql = "SELECT * FROM faq ORDER BY id DESC";
 
-  db.query(sql, [Id], (err, result) => {
+  db.query(sql, (err, result) => {
     if (err) {
-      console.error("Error fetching :", err);
+      console.error("Error fetching FAQs:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
+
+    return res.status(200).json(result);
+  });
+};
+
+/* =======================
+   GET BY ID
+======================= */
+export const getById = (req, res) => {
+  const id = Number(req.params.id);
+
+  if (isNaN(id)) {
+    return res.status(400).json({ message: "Invalid FAQ ID" });
+  }
+
+  db.query("SELECT * FROM faq WHERE id = ?", [id], (err, result) => {
+    if (err) {
+      console.error("Error fetching FAQ:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
     if (result.length === 0) {
       return res.status(404).json({ message: "FAQ not found" });
     }
-    res.json(result[0]);
+
+    return res.status(200).json(result[0]);
   });
 };
 
+/* =======================
+   ADD FAQ
+======================= */
 export const add = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const { location, type, question, answer } = req.body;
 
-  // Validation
   if (!location || !type || !question || !answer) {
     return res.status(400).json({
       message: "Location, type, question, and answer are required",
     });
   }
 
-  const insertSQL = `
-    INSERT INTO faq (
-      location,
-      type,
-      question,
-      answer,
-      created_at,
-      updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?)
+  const sql = `
+    INSERT INTO faq
+    (location, type, question, answer, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'Active', ?, ?)
   `;
 
   db.query(
-    insertSQL,
+    sql,
     [location, type, question, answer, currentdate, currentdate],
     (err, result) => {
       if (err) {
-        console.error("Error inserting FAQ:", err);
-        return res.status(500).json({
-          message: "Database error while adding FAQ",
-          error: err,
-        });
+        console.error("Error adding FAQ:", err);
+        return res.status(500).json({ message: "Database error", error: err });
       }
 
       return res.status(201).json({
@@ -93,19 +122,19 @@ export const add = (req, res) => {
   );
 };
 
+/* =======================
+   UPDATE FAQ
+======================= */
 export const update = (req, res) => {
-  const faqId = req.params.id;
+  const id = Number(req.params.id);
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const { location, type, question, answer } = req.body;
 
-  // Validation
-  if (!faqId || !location || !type || !question || !answer) {
-    return res.status(400).json({
-      message: "FAQ ID, location, type, question, and answer are required",
-    });
+  if (isNaN(id) || !location || !type || !question || !answer) {
+    return res.status(400).json({ message: "All fields are required" });
   }
 
-  const updateSQL = `
+  const sql = `
     UPDATE faq SET
       location = ?,
       type = ?,
@@ -116,88 +145,82 @@ export const update = (req, res) => {
   `;
 
   db.query(
-    updateSQL,
-    [location, type, question, answer, currentdate, faqId],
+    sql,
+    [location, type, question, answer, currentdate, id],
     (err, result) => {
       if (err) {
         console.error("Error updating FAQ:", err);
-        return res.status(500).json({
-          message: "Database error while updating FAQ",
-          error: err,
-        });
+        return res.status(500).json({ message: "Database error", error: err });
       }
 
       if (result.affectedRows === 0) {
         return res.status(404).json({ message: "FAQ not found" });
       }
 
-      return res.status(200).json({
-        message: "FAQ updated successfully",
-      });
+      return res.status(200).json({ message: "FAQ updated successfully" });
     }
   );
 };
 
-//**Change status */
+/* =======================
+   TOGGLE STATUS
+======================= */
 export const status = (req, res) => {
-  const Id = parseInt(req.params.id);
+  const id = Number(req.params.id);
 
-  if (isNaN(Id)) {
+  if (isNaN(id)) {
     return res.status(400).json({ message: "Invalid ID" });
   }
 
-  db.query("SELECT * FROM faq WHERE id = ?", [Id], (err, result) => {
+  db.query("SELECT status FROM faq WHERE id = ?", [id], (err, result) => {
     if (err) {
-      console.error("Database error:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
 
-    let status = "";
-    if (result[0].status === "Active") {
-      status = "Inactive";
-    } else {
-      status = "Active";
+    if (result.length === 0) {
+      return res.status(404).json({ message: "FAQ not found" });
     }
-    console.log(status);
+
+    const newStatus = result[0].status === "Active" ? "Inactive" : "Active";
+
     db.query(
       "UPDATE faq SET status = ? WHERE id = ?",
-      [status, Id],
-      (err, result) => {
+      [newStatus, id],
+      (err) => {
         if (err) {
-          console.error("Error status changing :", err);
           return res
             .status(500)
             .json({ message: "Database error", error: err });
         }
-        res.status(200).json({ message: "Status change successfully" });
+
+        return res.status(200).json({
+          message: "Status updated successfully",
+          status: newStatus,
+        });
       }
     );
   });
 };
 
-// **Delete **
+/* =======================
+   DELETE FAQ
+======================= */
 export const del = (req, res) => {
-  const Id = parseInt(req.params.id);
-  console.log(Id);
-  if (isNaN(Id)) {
+  const id = Number(req.params.id);
+
+  if (isNaN(id)) {
     return res.status(400).json({ message: "Invalid ID" });
   }
 
-  db.query("SELECT * FROM faq WHERE id = ?", [Id], (err, result) => {
+  db.query("DELETE FROM faq WHERE id = ?", [id], (err, result) => {
     if (err) {
-      console.error("Database error:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
-    if (result.length === 0) {
+
+    if (result.affectedRows === 0) {
       return res.status(404).json({ message: "FAQ not found" });
     }
 
-    db.query("DELETE FROM faq WHERE id = ?", [Id], (err) => {
-      if (err) {
-        console.error("Error deleting :", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
-      res.status(200).json({ message: "FAQ deleted successfully" });
-    });
+    return res.status(200).json({ message: "FAQ deleted successfully" });
   });
 };
