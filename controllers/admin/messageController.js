@@ -4,7 +4,7 @@ import moment from "moment";
 // **Fetch All **
 export const getAll = (req, res) => {
   const sql =
-    "SELECT * FROM messages WHERE projectPartnerId = NULL ORDER BY id DESC";
+    "SELECT * FROM messages WHERE projectPartnerId IS NULL ORDER BY id DESC";
   db.query(sql, (err, result) => {
     if (err) {
       console.error("Error fetching :", err);
