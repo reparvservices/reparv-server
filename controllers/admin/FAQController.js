@@ -11,7 +11,7 @@ export const getAllWithLocation = (req, res) => {
     return res.status(400).json({ message: "Location not provided" });
   }
 
-  const sql = "SELECT * FROM faq WHERE location = ? ORDER BY RAND()";
+  const sql = "SELECT * FROM faq WHERE location = ? ORDER BY type";
 
   db.query(sql, [location], (err, result) => {
     if (err) {
@@ -34,7 +34,7 @@ export const getAllActive = (req, res) => {
   }
 
   const sql =
-    "SELECT * FROM faq WHERE status = 'Active' AND location = ? ORDER BY RAND()";
+    "SELECT * FROM faq WHERE status = 'Active' AND location = ? ORDER BY type";
 
   db.query(sql, [location], (err, result) => {
     if (err) {
