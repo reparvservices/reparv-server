@@ -47,12 +47,55 @@ export const getAllActive = (req, res) => {
 };
 
 /* =======================
+   GET ALL ACTIVE For Blog BY By Id
+======================= */
+export const getAllActiveForBlog = (req, res) => {
+  const blogId = req.params.id;
+
+  if (!blogId) {
+    return res.status(400).json({ message: "Blog Id not provided" });
+  }
+
+  const sql =
+    "SELECT * FROM faq WHERE status = 'Active' AND blogId = ? ORDER BY type";
+
+  db.query(sql, [blogId], (err, result) => {
+    if (err) {
+      console.error("Error fetching active FAQs:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    return res.status(200).json(result);
+  });
+};
+
+/* =======================
    GET ALL (ADMIN)
 ======================= */
 export const getAll = (req, res) => {
-  const sql = "SELECT * FROM faq ORDER BY id DESC";
+  const sql = "SELECT * FROM faq WHERE blogId is NULL ORDER BY id DESC";
 
   db.query(sql, (err, result) => {
+    if (err) {
+      console.error("Error fetching FAQs:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    return res.status(200).json(result);
+  });
+};
+
+/* =======================
+   GET ALL For Blog (Admin Blogs)
+======================= */
+export const getAllForBlog = (req, res) => {
+  const blogId = req.params.id;
+  if (!blogId) {
+    return res.status(401).json({ message: "BlogId Not Provided!" });
+  }
+  const sql = "SELECT * FROM faq WHERE blogId = ? ORDER BY id DESC";
+
+  db.query(sql, [blogId], (err, result) => {
     if (err) {
       console.error("Error fetching FAQs:", err);
       return res.status(500).json({ message: "Database error", error: err });
@@ -91,9 +134,9 @@ export const getById = (req, res) => {
 ======================= */
 export const add = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { location, type, question, answer } = req.body;
+  const { blogId, location, type, question, answer } = req.body;
 
-  if (!location || !type || !question || !answer) {
+  if (!blogId || !location || !type || !question || !answer) {
     return res.status(400).json({
       message: "Location, type, question, and answer are required",
     });
@@ -101,13 +144,13 @@ export const add = (req, res) => {
 
   const sql = `
     INSERT INTO faq
-    (location, type, question, answer, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'Active', ?, ?)
+    (blogId, location, type, question, answer, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'Active', ?, ?)
   `;
 
   db.query(
     sql,
-    [location, type, question, answer, currentdate, currentdate],
+    [blogId, location, type, question, answer, currentdate, currentdate],
     (err, result) => {
       if (err) {
         console.error("Error adding FAQ:", err);
