@@ -2,95 +2,87 @@ import moment from "moment";
 import db from "../../config/dbconnect.js";
 
 export const addVisitor = (req, res) => {
-  const { propertyid, source } = req.body;
+  const { propertyid, source = "view" } = req.body;
 
   if (!propertyid) {
     return res.status(400).json({ message: "propertyid is required" });
   }
 
-  // Step 1: Check property exists
-  const checkPropertySql = `
-    SELECT propertyid FROM properties WHERE propertyid = ?
-  `;
+  const validSources = ["view", "whatsapp", "call", "share"];
+  if (!validSources.includes(source)) {
+    return res.status(400).json({ message: "Invalid source type" });
+  }
 
-  db.query(checkPropertySql, [propertyid], (err, propertyResult) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ message: "DB error" });
-    }
+  const isView = source === "view" ? 1 : 0;
+  const isWhatsapp = source === "whatsapp" ? 1 : 0;
+  const isCall = source === "call" ? 1 : 0;
+  const isShare = source === "share" ? 1 : 0;
 
-    if (propertyResult.length === 0) {
-      return res.status(404).json({ message: "Property does not exist" });
-    }
+  // 1 Check property exists
+  db.query(
+    `SELECT propertyid FROM properties WHERE propertyid = ?`,
+    [propertyid],
+    (err, propertyResult) => {
+      if (err) return res.status(500).json({ message: "DB error" });
+      if (propertyResult.length === 0)
+        return res.status(404).json({ message: "Property does not exist" });
 
-    // Step 2: Check analytics record
-    const checkAnalyticsSql = `
-      SELECT id FROM property_analytics WHERE property_id = ?
-    `;
+      // 2 Check analytics row
+      db.query(
+        `SELECT id FROM property_analytics WHERE property_id = ?`,
+        [propertyid],
+        (err2, results) => {
+          if (err2) return res.status(500).json({ message: "DB error" });
 
-    db.query(checkAnalyticsSql, [propertyid], (err2, results) => {
-      if (err2) {
-        console.error(err2);
-        return res.status(500).json({ message: "DB error" });
-      }
+          if (results.length > 0) {
+            // UPDATE
+            const updateSql = `
+              UPDATE property_analytics
+              SET
+                views = views + ?,
+                whatsapp_enquiry = whatsapp_enquiry + ?,
+                calls = calls + ?,
+                share = share + ?
+              WHERE property_id = ?
+            `;
 
-      const isWhatsapp = source === "whatsapp" ? 1 : 0;
-      const isCall = source === "call" ? 1 : 0;
-      const isShare = source === "share" ? 1 : 0;
+            db.query(
+              updateSql,
+              [isView, isWhatsapp, isCall, isShare, propertyid],
+              (err3) => {
+                if (err3) return res.status(500).json({ message: "DB error" });
 
-      if (results.length > 0) {
-        //  UPDATE ONLY (row already exists)
-        const updateSql = `
-          UPDATE property_analytics
-          SET
-            views = views + 1,
-            whatsapp_enquiry = whatsapp_enquiry + ?,
-            calls = calls + ? ,
-            share = share + ?
-          WHERE property_id = ?
-        `;
+                res.json({
+                  message: "Analytics updated",
+                  source,
+                });
+              }
+            );
+          } else {
+            // INSERT
+            const insertSql = `
+              INSERT INTO property_analytics
+              (property_id, views, whatsapp_enquiry, calls, share)
+              VALUES (?, ?, ?, ?, ?)
+            `;
 
-        db.query(
-          updateSql,
-          [isWhatsapp, isCall, isShare, propertyid],
-          (err3) => {
-            if (err3) {
-              console.error(err3);
-              return res.status(500).json({ message: "DB error" });
-            }
+            db.query(
+              insertSql,
+              [propertyid, isView, isWhatsapp, isCall, isShare],
+              (err4) => {
+                if (err4) return res.status(500).json({ message: "DB error" });
 
-            res.json({
-              message: "Analytics updated",
-              source: source || "direct",
-            });
+                res.json({
+                  message: "Analytics created",
+                  source,
+                });
+              }
+            );
           }
-        );
-      } else {
-        // INSERT ONLY ONCE (first visit)
-        const insertSql = `
-          INSERT INTO property_analytics
-            (property_id, views, whatsapp_enquiry, calls, share)
-          VALUES (?, 1, ?, ?, ?)
-        `;
-
-        db.query(
-          insertSql,
-          [propertyid, isWhatsapp, isCall, isShare],
-          (err4) => {
-            if (err4) {
-              console.error(err4);
-              return res.status(500).json({ message: "DB error" });
-            }
-
-            res.json({
-              message: "Analytics created",
-              source: source || "direct",
-            });
-          }
-        );
-      }
-    });
-  });
+        }
+      );
+    }
+  );
 };
 
 export const getTotalVisitors = (req, res) => {
