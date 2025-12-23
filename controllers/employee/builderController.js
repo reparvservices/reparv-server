@@ -143,12 +143,8 @@ export const add = (req, res) => {
     !contact_person ||
     !contact ||
     !email ||
-    !uid ||
-    !office_address ||
     !registration_no ||
-    !dor ||
-    !website ||
-    !notes
+    !dor
   ) {
     return res.status(400).json({ message: "All fields are required" });
   }
@@ -245,12 +241,8 @@ export const update = (req, res) => {
     !contact_person ||
     !contact ||
     !email ||
-    !uid ||
-    !office_address ||
     !registration_no ||
-    !dor ||
-    !website ||
-    !notes
+    !dor
   ) {
     return res.status(400).json({ message: "All fields are required" });
   }
