@@ -4,21 +4,11 @@ import db from "../../config/dbconnect.js";
 export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-  const {
-    user_id,
-    propertyid,
-    fullname,
-    phone,
-  } = req.body;
+  const { user_id, propertyid, fullname, phone } = req.body;
   console.log(req.body);
 
   //  Required field validation (visitdate removed)
-  if (
-    !user_id ||
-    !propertyid ||
-    !fullname ||
-    !phone
-  ) {
+  if (!user_id || !propertyid || !fullname || !phone) {
     return res
       .status(400)
       .json({ message: "All fields except visitdate are required" });
@@ -60,7 +50,7 @@ export const add = async (req, res) => {
         propertyCategory,
         fullname,
         phone,
-        "App",
+        "Onsite",
         currentdate,
         currentdate,
       ],
@@ -225,7 +215,6 @@ export const getBookingOnly = (req, res) => {
   });
 };
 
-
 // export const addLeadNotification = (req, res) => {
 //   try {
 //     const { fullname, contact, message } = req.body;
@@ -275,7 +264,6 @@ export const getBookingOnly = (req, res) => {
 //   }
 // };
 
-
 export const addLeadNotification = (req, res) => {
   try {
     const { fullname, contact, message } = req.body;
@@ -289,7 +277,7 @@ export const addLeadNotification = (req, res) => {
       });
     }
 
-      // Insert Query
+    // Insert Query
     const query = `
       INSERT INTO userenquiry
       (fullname, contact, message, created_at,updated_at)
@@ -298,7 +286,7 @@ export const addLeadNotification = (req, res) => {
 
     db.query(
       query,
-      [fullname, contact, message, currentdate,currentdate],
+      [fullname, contact, message, currentdate, currentdate],
       (err, result) => {
         if (err) {
           console.log("Lead Notify Insert Error:", err);
@@ -352,37 +340,110 @@ export const getTotalEnquiries = (req, res) => {
       res.status(200).json({
         message: "Fetched successfully",
         totalEnquiries: countResult[0].totalEnquiries,
-        enquiries: listResult,  // returning full enquiry list
+        enquiries: listResult, // returning full enquiry list
       });
     });
   });
 };
 
-
 export const addVisitor = (req, res) => {
   const { propertyid } = req.body;
 
-  const sql = `INSERT INTO property_visitors (propertyid) VALUES (?)`;
+  if (!propertyid) {
+    return res.status(400).json({ message: "propertyid is required" });
+  }
 
-  db.query(sql, [propertyid], (err) => {
-    if (err) return res.status(500).json({ message: "DB error" });
+  //  Step 1: Check property exists
+  const checkPropertySql = `
+    SELECT propertyid FROM properties WHERE propertyid = ?
+  `;
 
-    res.json({ message: "Visitor added" });
+  db.query(checkPropertySql, [propertyid], (err, propertyResult) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ message: "DB error" });
+    }
+
+    if (propertyResult.length === 0) {
+      return res.status(404).json({
+        message: "Property does not exist",
+      });
+    }
+
+    //  Step 2: Check analytics record
+    const checkAnalyticsSql = `
+      SELECT id FROM property_analytics WHERE property_id = ?
+    `;
+
+    db.query(checkAnalyticsSql, [propertyid], (err2, results) => {
+      if (err2) {
+        console.error(err2);
+        return res.status(500).json({ message: "DB error" });
+      }
+
+      if (results.length > 0) {
+        // Increment views
+        const updateSql = `
+          UPDATE property_analytics
+          SET views = views + 1
+          WHERE property_id = ?
+        `;
+
+        db.query(updateSql, [propertyid], (err3) => {
+          if (err3) {
+            console.error(err3);
+            return res.status(500).json({ message: "DB error" });
+          }
+
+          res.json({ message: "View incremented" });
+        });
+      } else {
+        // Insert first view
+        const insertSql = `
+          INSERT INTO property_analytics (property_id, views)
+          VALUES (?, 1)
+        `;
+
+        db.query(insertSql, [propertyid], (err4) => {
+          if (err4) {
+            console.error(err4);
+            return res.status(500).json({ message: "DB error" });
+          }
+
+          res.json({ message: "View added" });
+        });
+      }
+    });
   });
 };
 
 export const getTotalVisitors = (req, res) => {
   const { propertyid } = req.query;
 
-  const sql = `SELECT COUNT(*) AS totalVisitors FROM property_visitors WHERE propertyid = ?`;
+  if (!propertyid) {
+    return res.status(400).json({ message: "propertyid is required" });
+  }
+
+  const sql = `
+    SELECT 
+      p.propertyid,
+      COALESCE(pa.views, 0) AS totalVisitors
+    FROM properties p
+    LEFT JOIN property_analytics pa 
+      ON pa.property_id = p.propertyid
+    WHERE p.propertyid = ?
+  `;
 
   db.query(sql, [propertyid], (err, result) => {
-    if (err) return res.status(500).json({ message: "DB error" });
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ message: "DB error" });
+    }
 
-    res.json({
-      totalVisitors: result[0].totalVisitors
-    });
+    if (result.length === 0) {
+      return res.status(404).json({ message: "Property does not exist" });
+    }
+
+    res.json(result[0]);
   });
 };
-
-
