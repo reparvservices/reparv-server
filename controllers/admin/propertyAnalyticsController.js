@@ -36,7 +36,7 @@ export const addVisitor = (req, res) => {
 
       const isWhatsapp = source === "whatsapp" ? 1 : 0;
       const isCall = source === "call" ? 1 : 0;
-      const isShare=source==='share'?1 :0;
+      const isShare = source === "share" ? 1 : 0;
 
       if (results.length > 0) {
         //  UPDATE ONLY (row already exists)
@@ -52,7 +52,7 @@ export const addVisitor = (req, res) => {
 
         db.query(
           updateSql,
-          [isWhatsapp, isCall,isShare, propertyid],
+          [isWhatsapp, isCall, isShare, propertyid],
           (err3) => {
             if (err3) {
               console.error(err3);
@@ -69,13 +69,13 @@ export const addVisitor = (req, res) => {
         // INSERT ONLY ONCE (first visit)
         const insertSql = `
           INSERT INTO property_analytics
-            (property_id, views, whatsapp_enquiry, calls,share)
-          VALUES (?, 1, ?, ?,?)
+            (property_id, views, whatsapp_enquiry, calls, share)
+          VALUES (?, 1, ?, ?, ?)
         `;
 
         db.query(
           insertSql,
-          [propertyid, isWhatsapp, isCall,isShare],
+          [propertyid, isWhatsapp, isCall, isShare],
           (err4) => {
             if (err4) {
               console.error(err4);
@@ -92,8 +92,6 @@ export const addVisitor = (req, res) => {
     });
   });
 };
-
-
 
 export const getTotalVisitors = (req, res) => {
   const { propertyid } = req.query;
