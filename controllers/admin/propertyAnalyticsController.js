@@ -39,7 +39,7 @@ export const addVisitor = (req, res) => {
       const isShare=source==='share'?1 :0;
 
       if (results.length > 0) {
-        // ✅ UPDATE ONLY (row already exists)
+        //  UPDATE ONLY (row already exists)
         const updateSql = `
           UPDATE property_analytics
           SET
@@ -66,7 +66,7 @@ export const addVisitor = (req, res) => {
           }
         );
       } else {
-        // ✅ INSERT ONLY ONCE (first visit)
+        // INSERT ONLY ONCE (first visit)
         const insertSql = `
           INSERT INTO property_analytics
             (property_id, views, whatsapp_enquiry, calls,share)
