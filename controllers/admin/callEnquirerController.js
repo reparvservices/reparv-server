@@ -1,14 +1,12 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 
-import moment from "moment";
-
 export const add = (req, res) => {
   const createdAt = moment().format("YYYY-MM-DD HH:mm:ss");
 
   const {
     propertyid,
-    projectpartnerid = null,
+    projectpartnerid,
     type,
     category,
     contact,
@@ -26,60 +24,46 @@ export const add = (req, res) => {
     return res.status(400).json({ message: "Invalid contact number" });
   }
 
-  // Prevent duplicate enquiry (same contact + property)
-  const checkSQL = `
-    SELECT id FROM call_enquirers
-    WHERE contact = ? AND propertyid = ?
-  `;
-
-  db.query(checkSQL, [contact, propertyid], (err, exists) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ message: "Database error" });
-    }
-
-    if (exists.length > 0) {
-      return res.status(409).json({
-        message: "Enquiry already exists for this property",
-      });
-    }
-
-    // Insert enquiry
-    const insertSQL = `
+  // Insert enquiry
+  const insertSQL = `
       INSERT INTO call_enquirers
       (propertyid, projectpartnerid, type, category, contact, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
-    db.query(
-      insertSQL,
-      [
-        propertyid,
-        projectpartnerid,
-        type,
-        category,
-        contact,
-        createdAt,
-        createdAt,
-      ],
-      (err2, result) => {
-        if (err2) {
-          console.error("Insert error:", err2);
-          return res.status(500).json({ message: "Database error" });
-        }
-
-        res.status(201).json({
-          message: "Enquiry added successfully",
-          id: result.insertId,
-        });
+  db.query(
+    insertSQL,
+    [
+      propertyid || null,
+      projectpartnerid || null,
+      type,
+      category,
+      contact,
+      createdAt,
+      createdAt,
+    ],
+    (err2, result) => {
+      if (err2) {
+        console.error("Insert error:", err2);
+        return res.status(500).json({ message: "Database error" });
       }
-    );
-  });
+
+      res.status(201).json({
+        message: "Enquiry added successfully",
+        id: result.insertId,
+      });
+    }
+  );
 };
 
 // **Fetch All **
 export const getAll = (req, res) => {
-  const sql = "SELECT * FROM call_enquirers ORDER BY id DESC";
+  const sql = `SELECT call_enquirers.*,
+                      projectpartner.fullname AS projectPartnerName,
+                      projectpartner.contact AS projectPartnerContact
+                FROM call_enquirers
+                LEFT JOIN projectpartner ON projectpartner.id = call_enquirers.projectpartnerid
+                ORDER BY id DESC`;
   db.query(sql, (err, result) => {
     if (err) {
       console.error("Error fetching :", err);
@@ -96,7 +80,12 @@ export const getById = (req, res) => {
     return res.status(400).json({ message: "Invalid ID" });
   }
 
-  const sql = "SELECT * FROM call_enquirers WHERE id = ?";
+  const sql = `SELECT call_enquirers.*,
+                      projectpartner.fullname AS projectPartnerName,
+                      projectpartner.contact AS projectPartnerContact
+                FROM call_enquirers
+                LEFT JOIN projectpartner ON projectpartner.id = call_enquirers.projectpartnerid
+                WHERE id = ?`;
 
   db.query(sql, [Id], (err, result) => {
     if (err) {
