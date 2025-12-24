@@ -32,6 +32,8 @@ import subscriptionPricingRoutes from "./routes/admin/subscriptionPricingRoutes.
 import subscriptionDiscountRoutes from "./routes/admin/subscriptionDiscountRoutes.js";
 import propertytypeRoutes from "./routes/admin/propertytypeRoutes.js";
 import enquirerRoutes from "./routes/admin/enquirerRoutes.js";
+import callEnquirerRoutes from "./routes/admin/callEnquirerRoutes.js";
+import whatsappEnquirerRoutes from "./routes/admin/whatsappEnquirerRoutes.js";
 import addEnquiryRoutes from "./routes/admin/enquiryRoutes.js";
 import auctionmembersRoutes from "./routes/admin/auctionmemberRoutes.js";
 import ticketRoutes from "./routes/admin/ticketRoutes.js";
@@ -47,7 +49,7 @@ import brandAccessoriesRoutes from "./routes/admin/brandAccessoriesRoutes.js";
 import messageRoutes from "./routes/admin/messageRoutes.js";
 import scheduledRequestRoutes from "./routes/admin/scheduledRequestRoutes.js";
 import FAQRoutes from "./routes/admin/FAQRoutes.js";
-import propertyAnalyticsRoutes from "./routes/admin/propertyAnalyticsRoutes.js"
+import propertyAnalyticsRoutes from "./routes/admin/propertyAnalyticsRoutes.js";
 
 //frontend
 import allPropertiesRoutes from "./routes/frontend/allPropertiesRoutes.js";
@@ -401,7 +403,9 @@ export const verifyToken = (req, res, next) => {
     "/project-partner/profile/contact",
     "/project-partner/profile/schedule",
     "/admin/faqs/:location",
-    "/admin/propertyAnalytics"
+    "/admin/propertyAnalytics",
+    "/admin/call-enquirers/add",
+    "/admin/whatsapp-enquirers/add",
   ];
 
   // Skip verification for public routes
@@ -606,6 +610,8 @@ app.use("/admin/subscription/pricing", subscriptionPricingRoutes);
 app.use("/admin/subscription/discount", subscriptionDiscountRoutes);
 app.use("/admin/propertytypes", propertytypeRoutes);
 app.use("/admin/enquirers", enquirerRoutes);
+app.use("/admin/call-enquirers", callEnquirerRoutes);
+app.use("/admin/whatsapp-enquirers", whatsappEnquirerRoutes);
 // CSV File add Enquiries Route
 app.use("/admin/enquiries", verifyToken, addEnquiryRoutes);
 app.use("/admin/auctionmembers", auctionmembersRoutes);
@@ -622,7 +628,7 @@ app.use("/admin/brand-accessories", brandAccessoriesRoutes);
 app.use("/admin/messages", messageRoutes);
 app.use("/admin/scheduled-requests", scheduledRequestRoutes);
 app.use("/admin/faqs", FAQRoutes);
-app.use("/admin/propertyAnalytics",propertyAnalyticsRoutes)
+app.use("/admin/propertyAnalytics", propertyAnalyticsRoutes);
 
 // Guest User Routes
 app.use("/guest-user", guestUserLoginRoutes);
