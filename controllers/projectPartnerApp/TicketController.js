@@ -25,7 +25,10 @@ export const getAll = (req, res) => {
         salespersons.contact AS ticketadder_contact
       FROM tickets 
       INNER JOIN salespersons 
-        ON salespersons.adharno = tickets.ticketadder
+        ON (
+       salespersons.adharno = tickets.ticketadder
+       OR salespersons.email = tickets.ticketadder
+     )
       LEFT JOIN departments 
         ON tickets.departmentid = departments.departmentid
       LEFT JOIN employees 
@@ -45,7 +48,11 @@ export const getAll = (req, res) => {
         territorypartner.contact AS ticketadder_contact
       FROM tickets 
       INNER JOIN territorypartner 
-        ON territorypartner.adharno = tickets.ticketadder
+      ON (
+       territorypartner.adharno = tickets.ticketadder
+       OR territorypartner.email = tickets.ticketadder
+     )
+      
       LEFT JOIN users 
         ON tickets.adminid = users.id 
       LEFT JOIN departments 
@@ -58,21 +65,29 @@ export const getAll = (req, res) => {
   } else {
 
      sql = `
-      SELECT 
-        tickets.*, 
-        users.name AS admin_name, 
-        departments.department,
-        employees.name AS employee_name, 
-        employees.uid,
-        projectpartner.fullname AS ticketadder_name, 
-        projectpartner.contact AS ticketadder_contact
-      FROM tickets 
-      INNER JOIN projectpartner ON projectpartner.adharno = tickets.ticketadder
-      LEFT JOIN users ON tickets.adminid = users.id 
-      LEFT JOIN departments ON tickets.departmentid = departments.departmentid
-      LEFT JOIN employees ON tickets.employeeid = employees.id
-      WHERE tickets.ticketadder = ?
-      ORDER BY tickets.created_at DESC
+   SELECT 
+  tickets.*, 
+  users.name AS admin_name, 
+  departments.department,
+  employees.name AS employee_name, 
+  employees.uid,
+  projectpartner.fullname AS ticketadder_name, 
+  projectpartner.contact AS ticketadder_contact
+FROM tickets 
+INNER JOIN projectpartner 
+  ON (
+       projectpartner.adharno = tickets.ticketadder
+       OR projectpartner.email = tickets.ticketadder
+     )
+LEFT JOIN users 
+  ON tickets.adminid = users.id 
+LEFT JOIN departments 
+  ON tickets.departmentid = departments.departmentid
+LEFT JOIN employees 
+  ON tickets.employeeid = employees.id
+WHERE tickets.ticketadder = ?
+ORDER BY tickets.created_at DESC;
+
     `;
     params=[adharId]
   }
@@ -386,3 +401,4 @@ export const del = (req, res) => {
     });
   });
 };
+
