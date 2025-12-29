@@ -406,6 +406,7 @@ export const verifyToken = (req, res, next) => {
     "/admin/propertyAnalytics",
     "/admin/call-enquirers/add",
     "/admin/whatsapp-enquirers/add",
+    "/project-partner/properties/additionalinfo/"
   ];
 
   // Skip verification for public routes
@@ -805,3 +806,4 @@ app.use("/builderapp/post", builderpostRoute);
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
