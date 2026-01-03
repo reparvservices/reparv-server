@@ -189,7 +189,7 @@ export const getAllActive = (req, res) => {
 };
 
 export const getByPropertyId = (req, res) => {
-  const propertyid  = req.params.id;
+  const propertyid = req.params.id;
 
   if (!propertyid) {
     return res.status(400).json({ message: "Property ID is required" });
@@ -265,8 +265,12 @@ export const getByPropertyId = (req, res) => {
           startDate: null,
           endDate: null,
           subscriptionCreatedAt: null,
-          created_at: moment(property.created_at).format("DD MMM YYYY | hh:mm A"),
-          updated_at: moment(property.updated_at).format("DD MMM YYYY | hh:mm A"),
+          created_at: moment(property.created_at).format(
+            "DD MMM YYYY | hh:mm A"
+          ),
+          updated_at: moment(property.updated_at).format(
+            "DD MMM YYYY | hh:mm A"
+          ),
           partnerCreatedAt: property.partnerCreatedAt
             ? moment(property.partnerCreatedAt).format("DD MMM YYYY | hh:mm A")
             : null,
@@ -284,9 +288,7 @@ export const getByPropertyId = (req, res) => {
         [subscription.planId],
         (err3, planResult) => {
           const planName =
-            !err3 && planResult.length > 0
-              ? planResult[0].planName
-              : null;
+            !err3 && planResult.length > 0 ? planResult[0].planName : null;
 
           return res.json({
             ...property,
@@ -310,10 +312,14 @@ export const getByPropertyId = (req, res) => {
               "DD MMM YYYY | hh:mm A"
             ),
             partnerCreatedAt: property.partnerCreatedAt
-              ? moment(property.partnerCreatedAt).format("DD MMM YYYY | hh:mm A")
+              ? moment(property.partnerCreatedAt).format(
+                  "DD MMM YYYY | hh:mm A"
+                )
               : null,
             partnerUpdatedAt: property.partnerUpdatedAt
-              ? moment(property.partnerUpdatedAt).format("DD MMM YYYY | hh:mm A")
+              ? moment(property.partnerUpdatedAt).format(
+                  "DD MMM YYYY | hh:mm A"
+                )
               : null,
           });
         }
@@ -687,40 +693,44 @@ export const edit = (req, res) => {
   });
 };
 
-//**Change status */
-export const status = (req, res) => {
+//**Change Ads Status */
+export const adsStatus = (req, res) => {
   const Id = parseInt(req.params.id);
   if (isNaN(Id)) {
     return res.status(400).json({ message: "Invalid ID" });
   }
 
-  db.query("SELECT * FROM adsmanager WHERE id = ?", [Id], (err, result) => {
-    if (err) {
-      console.error("Database error:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-
-    let status = "";
-    if (result[0].status === "Active") {
-      status = "Inactive";
-    } else {
-      status = "Active";
-    }
-    console.log(status);
-    db.query(
-      "UPDATE adsmanager SET status = ? WHERE id = ?",
-      [status, Id],
-      (err, result) => {
-        if (err) {
-          console.error("Error deleting :", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-        }
-        res.status(200).json({ message: "status change successfully" });
+  db.query(
+    "SELECT * FROM properties WHERE propertyid = ?",
+    [Id],
+    (err, result) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res.status(500).json({ message: "Database error", error: err });
       }
-    );
-  });
+
+      let status = "";
+      if (result[0].adStatus === "Disabled") {
+        status = "Enabled";
+      } else {
+        status = "Disabled";
+      }
+      console.log(status);
+      db.query(
+        "UPDATE properties SET adStatus = ? WHERE propertyid = ?",
+        [status, Id],
+        (err, result) => {
+          if (err) {
+            console.error("Error deleting :", err);
+            return res
+              .status(500)
+              .json({ message: "Database error", error: err });
+          }
+          res.status(200).json({ message: "status change successfully" });
+        }
+      );
+    }
+  );
 };
 
 // **Delete **

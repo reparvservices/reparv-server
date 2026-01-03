@@ -5,13 +5,13 @@ import {
   getByPropertyId,
   add,
   edit,
-  status,
   del,
   getUniqueSubscriptionPlans,
   getCities,
   getProjectPartnerByCity,
   getPropertiesByProject,
   updateAdURL,
+  adsStatus,
 } from "../../controllers/admin/adsManagerController.js";
 
 const router = express.Router();
@@ -28,7 +28,7 @@ router.get("/", getAll);
 router.get("/:id", getByPropertyId);
 //router.post("/add", add);
 //router.put("/edit/:id", edit);
-//router.put("/status/:id", status);
+router.put("/ads-status/:id", adsStatus);
 //router.delete("/delete/:id", del);
 
 export default router;
