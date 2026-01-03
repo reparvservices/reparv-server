@@ -2,7 +2,7 @@ import express from "express";
 
 import {
   getAll,
-  getById,
+  getByPropertyId,
   add,
   edit,
   status,
@@ -11,6 +11,7 @@ import {
   getCities,
   getProjectPartnerByCity,
   getPropertiesByProject,
+  updateAdURL,
 } from "../../controllers/admin/adsManagerController.js";
 
 const router = express.Router();
@@ -20,10 +21,11 @@ router.get("/subscription-plans", getUniqueSubscriptionPlans);
 router.get("/cities", getCities);
 router.post("/properties", getPropertiesByProject);
 router.get("/project-partner/:city", getProjectPartnerByCity);
+router.put("/update/ad-url/:id", updateAdURL);
 
 // Main CRUD Routes
 router.get("/", getAll);
-//router.get("/:id", getById);
+router.get("/:id", getByPropertyId);
 //router.post("/add", add);
 //router.put("/edit/:id", edit);
 //router.put("/status/:id", status);

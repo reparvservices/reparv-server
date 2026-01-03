@@ -188,43 +188,137 @@ export const getAllActive = (req, res) => {
   });
 };
 
-// **Fetch Single by ID**
-export const getById = (req, res) => {
-  const Id = parseInt(req.params.id);
+export const getByPropertyId = (req, res) => {
+  const propertyid  = req.params.id;
 
-  const sql = `
+  if (!propertyid) {
+    return res.status(400).json({ message: "Property ID is required" });
+  }
+
+  // STEP 1: Fetch property + project partner
+  const propertySql = `
     SELECT 
-      a.*, 
-      p.fullname AS projectPartnerName,
-      p.contact AS projectPartnerContact
-    FROM adsmanager a
-    LEFT JOIN projectpartner p 
-      ON a.projectPartnerId = p.id
-    WHERE a.id = ?
+      pr.*,
+      pr.propertycityid AS propertyCityId,
+      pp.fullname AS projectPartnerName,
+      pp.contact AS projectPartnerContact,
+      pp.city AS projectPartnerCity,
+      pp.id AS projectPartnerId,
+      pp.created_at AS partnerCreatedAt,
+      pp.updated_at AS partnerUpdatedAt
+    FROM properties pr
+    LEFT JOIN projectpartner pp
+      ON pr.projectpartnerid = pp.id
+    WHERE pr.propertyid = ?
     LIMIT 1
   `;
 
-  db.query(sql, [Id], (err, result) => {
+  db.query(propertySql, [propertyid], (err, propertyRows) => {
     if (err) {
-      console.error("Error fetching:", err);
+      console.error("Error fetching property:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
 
-    if (result.length === 0) {
-      return res.status(404).json({ message: "Ads Manager not found" });
+    if (propertyRows.length === 0) {
+      return res.status(404).json({ message: "Property not found" });
     }
 
-    const row = result[0];
+    const property = propertyRows[0];
 
-    const formatted = {
-      ...row,
-      startDate: moment(row.startDate).format("DD MMM YYYY | hh:mm A"),
-      endDate: moment(row.endDate).format("DD MMM YYYY | hh:mm A"),
-      created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
-    };
+    // If no project partner → return property only
+    if (!property.projectPartnerId) {
+      return res.json({
+        ...property,
+        projectPartnerName: null,
+        projectPartnerContact: null,
+        projectPartnerCity: null,
+        planName: null,
+        planId: null,
+        startDate: null,
+        endDate: null,
+        subscriptionCreatedAt: null,
+        created_at: moment(property.created_at).format("DD MMM YYYY | hh:mm A"),
+        updated_at: moment(property.updated_at).format("DD MMM YYYY | hh:mm A"),
+      });
+    }
 
-    res.json(formatted);
+    // STEP 2: Fetch latest subscription
+    const subSql = `
+      SELECT 
+        s.plan,
+        s.planId,
+        s.start_date AS startDate,
+        s.end_date AS endDate,
+        s.created_at AS subscriptionCreatedAt
+      FROM subscriptions s
+      WHERE s.projectpartnerid = ?
+      ORDER BY s.created_at DESC
+      LIMIT 1
+    `;
+
+    db.query(subSql, [property.projectPartnerId], (err2, subResult) => {
+      if (err2 || subResult.length === 0) {
+        return res.json({
+          ...property,
+          planName: null,
+          planId: null,
+          startDate: null,
+          endDate: null,
+          subscriptionCreatedAt: null,
+          created_at: moment(property.created_at).format("DD MMM YYYY | hh:mm A"),
+          updated_at: moment(property.updated_at).format("DD MMM YYYY | hh:mm A"),
+          partnerCreatedAt: property.partnerCreatedAt
+            ? moment(property.partnerCreatedAt).format("DD MMM YYYY | hh:mm A")
+            : null,
+          partnerUpdatedAt: property.partnerUpdatedAt
+            ? moment(property.partnerUpdatedAt).format("DD MMM YYYY | hh:mm A")
+            : null,
+        });
+      }
+
+      const subscription = subResult[0];
+
+      // STEP 3: Fetch plan name
+      db.query(
+        `SELECT planName FROM subscriptionPricing WHERE id = ? LIMIT 1`,
+        [subscription.planId],
+        (err3, planResult) => {
+          const planName =
+            !err3 && planResult.length > 0
+              ? planResult[0].planName
+              : null;
+
+          return res.json({
+            ...property,
+            ...subscription,
+            planName,
+            startDate: subscription.startDate
+              ? moment(subscription.startDate).format("DD MMM YYYY | hh:mm A")
+              : null,
+            endDate: subscription.endDate
+              ? moment(subscription.endDate).format("DD MMM YYYY | hh:mm A")
+              : null,
+            subscriptionCreatedAt: subscription.subscriptionCreatedAt
+              ? moment(subscription.subscriptionCreatedAt).format(
+                  "DD MMM YYYY | hh:mm A"
+                )
+              : null,
+            created_at: moment(property.created_at).format(
+              "DD MMM YYYY | hh:mm A"
+            ),
+            updated_at: moment(property.updated_at).format(
+              "DD MMM YYYY | hh:mm A"
+            ),
+            partnerCreatedAt: property.partnerCreatedAt
+              ? moment(property.partnerCreatedAt).format("DD MMM YYYY | hh:mm A")
+              : null,
+            partnerUpdatedAt: property.partnerUpdatedAt
+              ? moment(property.partnerUpdatedAt).format("DD MMM YYYY | hh:mm A")
+              : null,
+          });
+        }
+      );
+    });
   });
 };
 
@@ -652,6 +746,46 @@ export const del = (req, res) => {
         return res.status(500).json({ message: "Database error", error: err });
       }
       res.status(200).json({ message: "Ads Manager deleted successfully" });
+    });
+  });
+};
+
+export const updateAdURL = (req, res) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ message: "Invalid ID" });
+  }
+
+  const { adURL } = req.body;
+
+  if (!adURL || !adURL.trim()) {
+    return res.status(400).json({ message: "Ad URL is required" });
+  }
+
+  const updateSql = `
+    UPDATE properties
+    SET adURL = ?
+    WHERE propertyid = ?
+  `;
+
+  db.query(updateSql, [adURL.trim(), id], (err, result) => {
+    if (err) {
+      console.error("Error updating Ads URL:", err);
+      return res.status(500).json({
+        message: "Database error during update",
+      });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        message: "Property not found",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Ads URL updated successfully",
+      id,
     });
   });
 };
