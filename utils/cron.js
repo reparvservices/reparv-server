@@ -853,4 +853,3 @@ cron.schedule("0 */2 * * *", async () => {
     console.error(" Cron failed:", err.message);
   }
 });
-syncAllPropertySheets()
