@@ -112,7 +112,29 @@ export const getAll = (req, res) => {
     `;
   }
 
-  // 4. Project Partner Landing Page ENQUIRIES (from website)
+  // 4. Ads ENQUIRIES (from google sheet)
+  else if (enquirySource === "Ads") {
+    sql = `
+      SELECT 
+        enquirers.*, 
+        properties.frontView, 
+        properties.seoSlug, 
+        properties.commissionAmount,
+        territorypartner.fullname AS territoryName, 
+        territorypartner.contact AS territoryContact,
+        projectpartner.fullname AS projectPartnerName, 
+        projectpartner.contact AS projectPartnerContact
+      FROM enquirers 
+      LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+      LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
+      LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid
+      WHERE enquirers.source = 'Ads' 
+        AND enquirers.status != 'Token'
+      ORDER BY enquirers.enquirersid DESC
+    `;
+  }
+
+  // 5. Project Partner Landing Page ENQUIRIES (from website)
   else if (enquirySource === "Landing Page") {
     sql = `
       SELECT 
@@ -136,7 +158,7 @@ export const getAll = (req, res) => {
     `;
   }
 
-  // 5. OTHER SOURCES (default)
+  // 6. OTHER SOURCES (default)
   else {
     sql = `
       SELECT 
