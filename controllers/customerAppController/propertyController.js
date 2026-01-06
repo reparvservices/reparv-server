@@ -119,57 +119,73 @@ export const getAll = (req, res) => {
   });
 };
 
+
 export const addProperty = (req, res) => {
   try {
     const {
       property_type,
       property_name,
       price,
+      ownername,
       contact,
       areas,
       ofprice,
+      state,
+      city,
     } = req.body;
 
     console.log("Request Body:", req.body);
 
     // -------------------------------------------------
-    // 1️⃣ CHECK IF PROPERTY NAME EXISTS
+    // CHECK IF PROPERTY NAME EXISTS
     // -------------------------------------------------
     db.query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",
       [property_name],
       (err, result) => {
         if (err) {
-          return res.status(500).json({ message: "Database error", error: err });
+          return res.status(500).json({
+            message: "Database error",
+            error: err,
+          });
         }
 
         if (result.length > 0) {
-          return res.status(409).json({ message: "Property name already exists!" });
+          return res.status(409).json({
+            message: "Property name already exists!",
+          });
         }
 
         // -------------------------------------------------
-        // 2️⃣ PARSE AREAS
+        // PARSE AREAS
         // -------------------------------------------------
         let parsedAreas = [];
 
-        if (typeof areas === "string") parsedAreas = JSON.parse(areas);
-        else if (Array.isArray(areas)) parsedAreas = areas;
+        if (typeof areas === "string") {
+          parsedAreas = JSON.parse(areas);
+        } else if (Array.isArray(areas)) {
+          parsedAreas = areas;
+        }
 
         const builtUpArea =
-          parsedAreas.find(a => a.label.toLowerCase().includes("built-up"))
-            ?.value || null;
+          parsedAreas.find(a =>
+            a.label?.toLowerCase().includes("built-up")
+          )?.value || null;
 
         const carpetArea =
-          parsedAreas.find(a => a.label.toLowerCase().includes("carpet"))
-            ?.value || null;
+          parsedAreas.find(a =>
+            a.label?.toLowerCase().includes("carpet")
+          )?.value || null;
 
         // -------------------------------------------------
-        // 3️⃣ MAP UPLOADED IMAGES
+        // MAP UPLOADED IMAGES
         // -------------------------------------------------
         const mapFiles = (field) => {
-          if (req.files[field]) {
+          if (req.files && req.files[field]) {
             return JSON.stringify(
-              req.files[field].map(f => `/uploads/${f.filename}`)
+              req.files[field].map(
+                (f) => `/uploads/${f.filename}`
+              )
             );
           }
           return null;
@@ -186,12 +202,12 @@ export const addProperty = (req, res) => {
         const developedAmenities = mapFiles("developedAmenities");
 
         // -------------------------------------------------
-        // 4️⃣ SEO SLUG
+        // SEO SLUG
         // -------------------------------------------------
         const seoSlug = toSlug(property_name);
 
         // -------------------------------------------------
-        // 5️⃣ CORRECTED INSERT QUERY (NO EXTRA PLACEHOLDER)
+        // INSERT QUERY
         // -------------------------------------------------
         const insertSQL = `
           INSERT INTO properties
@@ -202,6 +218,9 @@ export const addProperty = (req, res) => {
             totalSalesPrice,
             totalOfferPrice,
             contact,
+            projectBy,
+            state,
+            city,
             builtUpArea,
             carpetArea,
             frontView,
@@ -217,38 +236,46 @@ export const addProperty = (req, res) => {
             created_at,
             updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         `;
 
-        // Must be EXACTLY 18 values
+        // -------------------------------------------------
+        // VALUES (OPTIONAL FIELDS → NULL)
+        // -------------------------------------------------
         const values = [
-          property_type,        // propertyType (1)
-          property_type,        // propertyCategory (2)
-          property_name,        // (3)
-          price,                // (4)
-          ofprice,              // (5)
-          contact,              // (6)
-          builtUpArea,          // (7)
-          carpetArea,           // (8)
-          frontView,            // (9)
-          sideView,             // (10)
-          kitchenView,          // (11)
-          hallView,             // (12)
-          bedroomView,          // (13)
-          bathroomView,         // (14)
-          balconyView,          // (15)
-          nearestLandmark,      // (16)
-          developedAmenities,   // (17)
-          seoSlug               // (18)
+          property_type,          // propertyType
+          property_type,          // propertyCategory
+          property_name,          // propertyName
+          price || null,          // totalSalesPrice
+          ofprice || null,        // totalOfferPrice
+          contact || null,        // contact
+          ownername || null,      // projectBy (OPTIONAL)
+          state || null,          // state (OPTIONAL)
+          city || null,           // city (OPTIONAL)
+          builtUpArea,
+          carpetArea,
+          frontView,
+          sideView,
+          kitchenView,
+          hallView,
+          bedroomView,
+          bathroomView,
+          balconyView,
+          nearestLandmark,
+          developedAmenities,
+          seoSlug,
         ];
 
         // -------------------------------------------------
-        // 6️⃣ INSERT EXECUTION
+        // EXECUTE INSERT
         // -------------------------------------------------
         db.query(insertSQL, values, (err, result) => {
           if (err) {
             console.error("Insert error:", err);
-            return res.status(500).json({ message: "Insert failed", error: err });
+            return res.status(500).json({
+              message: "Insert failed",
+              error: err,
+            });
           }
 
           return res.status(201).json({
@@ -260,10 +287,12 @@ export const addProperty = (req, res) => {
     );
   } catch (error) {
     console.error("Something went wrong:", error);
-    return res.status(500).json({ message: "Server error", error });
+    return res.status(500).json({
+      message: "Server error",
+      error,
+    });
   }
 };
-
 
 //**Change status */
 export const status = (req, res) => {
@@ -379,3 +408,4 @@ console.log("ddd");
     }
   );
 };
+
