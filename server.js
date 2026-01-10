@@ -86,6 +86,14 @@ import guestUserPropertyRoutes from "./routes/guestUser/propertyRoutes.js";
 import guestUserMapRoutes from "./routes/guestUser/mapRoutes.js";
 import guestUserBuilderRoutes from "./routes/guestUser/builderRoutes.js";
 
+// User Routes
+import userLoginRoutes from "./routes/user/userRoutes.js";
+import userProfileRoutes from "./routes/user/profileRoutes.js";
+import userDashboardRoutes from "./routes/user/dashboardRoutes.js";
+import userPropertyRoutes from "./routes/user/propertyRoutes.js";
+import userMapRoutes from "./routes/user/mapRoutes.js";
+import userBuilderRoutes from "./routes/user/builderRoutes.js";
+
 // builder
 import builderLoginRoutes from "./routes/builder/loginRoutes.js";
 import builderProfileRoutes from "./routes/builder/profileRoutes.js";
@@ -323,6 +331,8 @@ export const verifyToken = (req, res, next) => {
     "/territory-partner/login",
     "/guest-user/register",
     "/guest-user/login",
+    "/user/send-otp",
+    "/user/verify-otp",
     "/admin/authorities",
     "/admin/states",
     "/admin/cities",
@@ -547,6 +557,14 @@ app.use("/guest-user/dashboard", guestUserDashboardRoutes);
 app.use("/guest-user/builders", guestUserBuilderRoutes);
 app.use("/guest-user/properties", guestUserPropertyRoutes);
 app.use("/guest-user/map", guestUserMapRoutes);
+
+// Guest User Routes
+app.use("/user", userLoginRoutes);
+app.use("/user/profile", userProfileRoutes);
+app.use("/user/dashboard", userDashboardRoutes);
+app.use("/user/builders", userBuilderRoutes);
+app.use("/user/properties", userPropertyRoutes);
+app.use("/user/map", userMapRoutes);
 
 // Builder Routes
 app.use("/builder", builderLoginRoutes);
