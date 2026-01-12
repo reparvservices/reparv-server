@@ -7,6 +7,8 @@ import path from "path";
 import "dotenv/config";
 import "./utils/cron.js";
 
+
+
 import loginRoutes from "./routes/admin/loginRoutes.js";
 import profileRoutes from "./routes/admin/profileRoutes.js";
 import dashboardRoutes from "./routes/admin/dashboardRoutes.js";
@@ -93,6 +95,8 @@ import userDashboardRoutes from "./routes/user/dashboardRoutes.js";
 import userPropertyRoutes from "./routes/user/propertyRoutes.js";
 import userMapRoutes from "./routes/user/mapRoutes.js";
 import userBuilderRoutes from "./routes/user/builderRoutes.js";
+import userAuthRoutes from "./routes/user/authRoutes.js"
+
 
 // builder
 import builderLoginRoutes from "./routes/builder/loginRoutes.js";
@@ -418,7 +422,8 @@ export const verifyToken = (req, res, next) => {
     "/admin/call-enquirers/add",
     "/admin/whatsapp-enquirers/add",
     "/project-partner/properties/additionalinfo/",
-    "/api/saveSheetData"
+    "/api/saveSheetData",
+    "/user/auth"
   ];
 
   // Skip verification for public routes
@@ -475,8 +480,9 @@ app.get("/get-cookie", (req, res) => {
   res.json({ cookies: req.cookies }); // Send cookie data in response
 });
 
-// Use Login & Auth Routes
 
+
+// Use Login & Auth Routes
 app.use("/admin", loginRoutes);
 
 //frontend
@@ -565,6 +571,7 @@ app.use("/user/dashboard", userDashboardRoutes);
 app.use("/user/builders", userBuilderRoutes);
 app.use("/user/properties", userPropertyRoutes);
 app.use("/user/map", userMapRoutes);
+app.use("/user/auth", userAuthRoutes)
 
 // Builder Routes
 app.use("/builder", builderLoginRoutes);
