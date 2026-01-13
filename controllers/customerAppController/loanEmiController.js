@@ -30,7 +30,7 @@ export const submitEmiForm = (req, res) => {
     businessExperienceMonths,
     businessOtherIncome,
   } = req.body;
-
+console.log(req.body);
   const sql = `
   INSERT INTO loanemiforperson (
     employmentType, fullname, dateOfBirth, contactNo, panNumber, aadhaarNumber, email,
@@ -82,3 +82,4 @@ export const submitEmiForm = (req, res) => {
     res.status(201).json({ message: "Form data saved successfully", result });
   });
 };
+
