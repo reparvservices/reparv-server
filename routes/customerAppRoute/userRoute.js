@@ -1,5 +1,5 @@
 import express from "express";
-import { add, getProfile, update } from "../../controllers/customerAppController/userController.js";
+import { add, getProfile, googleLogin, update } from "../../controllers/customerAppController/userController.js";
 import multer from "multer";
 import path from 'path';
 
@@ -29,5 +29,7 @@ router.post("/signup", add);
 
 router.put("/update",upload.single('userimage'),update);
 router.get("/profile",getProfile)
+router.post('/google-login', googleLogin);
+
 export default router;
 

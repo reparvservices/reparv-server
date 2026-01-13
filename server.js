@@ -229,6 +229,7 @@ import customerSignUp from "./routes/customerAppRoute/userRoute.js";
 import customerPropertyRoute from "./routes/customerAppRoute/propertyRoute.js";
 import customerTrendRoute from "./routes/customerAppRoute/trendRoute.js";
 import customerEnquiryRoute from "./routes/customerAppRoute/enquiryRoute.js";
+import customerTicketRoute from "./routes/customerAppRoute/ticketRoute.js";
 
 //Builder App
 import builderapploginRoute from "./routes/builderAppRoute/builderapploginRoute.js";
@@ -406,7 +407,8 @@ export const verifyToken = (req, res, next) => {
     "/admin/propertyAnalytics",
     "/admin/call-enquirers/add",
     "/admin/whatsapp-enquirers/add",
-    "/project-partner/properties/additionalinfo/"
+    "/project-partner/properties/additionalinfo/",
+    "/customerapp/ticket"
   ];
 
   // Skip verification for public routes
@@ -792,6 +794,7 @@ app.use("/customerapp/user", customerSignUp);
 app.use("/customerapp/property", customerPropertyRoute);
 app.use("/customerapp/customerTrendRoute", customerTrendRoute);
 app.use("/customerapp/enquiry", customerEnquiryRoute);
+app.use("/customerapp/ticket",customerTicketRoute);
 
 //Builder app
 app.use("/builderapp/user", builderapploginRoute);
