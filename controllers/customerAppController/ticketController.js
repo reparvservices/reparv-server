@@ -26,7 +26,7 @@ export const add = (req, res) => {
       () => digits[Math.floor(Math.random() * digits.length)]
     ).join("");
 
-    return randomLetters + randomDigits; // Letters first, then numbers
+    return randomLetters + randomDigits; //  Letters first, then numbers
   };
 
   const { issue, details } = req.body;
