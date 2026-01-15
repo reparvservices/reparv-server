@@ -7,8 +7,6 @@ import path from "path";
 import "dotenv/config";
 import "./utils/cron.js";
 
-
-
 import loginRoutes from "./routes/admin/loginRoutes.js";
 import profileRoutes from "./routes/admin/profileRoutes.js";
 import dashboardRoutes from "./routes/admin/dashboardRoutes.js";
@@ -337,6 +335,7 @@ export const verifyToken = (req, res, next) => {
     "/guest-user/login",
     "/user/send-otp",
     "/user/verify-otp",
+    "/user/auth/google",
     "/admin/authorities",
     "/admin/states",
     "/admin/cities",
@@ -423,7 +422,6 @@ export const verifyToken = (req, res, next) => {
     "/admin/whatsapp-enquirers/add",
     "/project-partner/properties/additionalinfo/",
     "/api/saveSheetData",
-    "/user/auth"
   ];
 
   // Skip verification for public routes
@@ -564,7 +562,7 @@ app.use("/guest-user/builders", guestUserBuilderRoutes);
 app.use("/guest-user/properties", guestUserPropertyRoutes);
 app.use("/guest-user/map", guestUserMapRoutes);
 
-// Guest User Routes
+// User Routes
 app.use("/user", userLoginRoutes);
 app.use("/user/profile", userProfileRoutes);
 app.use("/user/dashboard", userDashboardRoutes);

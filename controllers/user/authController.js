@@ -1,7 +1,3 @@
-import jwt from "jsonwebtoken";
-import db from "../../config/dbconnect.js";
-import { verifyGoogleToken } from "../../utils/googleAuth.js";
-
 export const googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
@@ -15,13 +11,7 @@ export const googleLogin = async (req, res) => {
 
     const payload = await verifyGoogleToken(token);
 
-    const {
-      sub: googleId,
-      email,
-      name,
-      picture,
-      email_verified,
-    } = payload;
+    const { sub: googleId, email, name, picture, email_verified } = payload;
 
     if (!email_verified) {
       return res.status(403).json({
@@ -30,21 +20,17 @@ export const googleLogin = async (req, res) => {
       });
     }
 
-    // 🔑 FORCE PROMISE MODE
     const promiseDb = db.promise ? db.promise() : db;
 
     const [users] = await promiseDb.query(
-      "SELECT id, google_id, auth_provider, role FROM users WHERE email = ?",
+      "SELECT * FROM guestUsers WHERE email = ? AND status = 'Active'",
       [email]
     );
 
-    let userId;
-    let role = "user";
+    let userData;
 
     if (users.length > 0) {
       const user = users[0];
-      userId = user.id;
-      role = user.role;
 
       if (user.auth_provider === "local" && !user.google_id) {
         return res.status(409).json({
@@ -56,32 +42,58 @@ export const googleLogin = async (req, res) => {
 
       if (!user.google_id) {
         await promiseDb.query(
-          `UPDATE users 
+          `UPDATE guestUsers 
            SET google_id = ?, auth_provider = 'google', is_email_verified = 1 
            WHERE id = ?`,
-          [googleId, userId]
+          [googleId, user.id]
         );
       }
+
+      userData = {
+        id: user.id,
+        fullname: user.fullname,
+        email: user.email,
+        role: user.role,
+      };
+
     } else {
       const [result] = await promiseDb.query(
-        `INSERT INTO users 
-         (name, email, userimage, role, status, google_id, auth_provider, is_email_verified)
-         VALUES (?, ?, ?, 'user', 'Active', ?, 'google', 1)`,
+        `INSERT INTO guestUsers 
+         (fullname, email, userimage, role, status, google_id, auth_provider, is_email_verified)
+         VALUES (?, ?, ?, 'Guest User', 'Active', ?, 'google', 1)`,
         [name, email, picture, googleId]
       );
 
-      userId = result.insertId;
+      userData = {
+        id: result.insertId,
+        fullname: name,
+        email,
+        role: "Guest User",
+      };
     }
 
-    const accessToken = jwt.sign(
-      { id: userId, email, role },
+    /* JWT (MATCH OTP EXPIRY) */
+    const jwtToken = jwt.sign(
+      { id: userData.id, email: userData.email, role: userData.role },
       process.env.JWT_SECRET,
-      { expiresIn: "15m" }
+      { expiresIn: "10d" }
     );
+
+    /* SESSION (CRITICAL) */
+    req.session.user = userData;
+
+    /* COOKIE (CRITICAL) */
+    res.cookie("userToken", jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 10 * 24 * 60 * 60 * 1000,
+    });
 
     return res.json({
       success: true,
-      accessToken,
+      token: jwtToken,
+      user: userData,
     });
   } catch (error) {
     console.error("Google login error:", error.message);
