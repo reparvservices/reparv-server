@@ -6,6 +6,7 @@ import {
   getAll,
   getUserWishlist,
   status,
+  updateProperty,
 } from "../../controllers/customerAppController/propertyController.js";
 
 import multer from "multer";
@@ -69,7 +70,23 @@ router.post(
   ]),
   addProperty
 );
-router.get('/myproperty/:contact',getAll)
+router.get('/myproperty/:id',getAll)
+router.put(
+  "/update/:propertyid",
+  upload.fields([
+    { name: "frontView" },
+    { name: "sideView" },
+    { name: "kitchenView" },
+    { name: "hallView" },
+    { name: "bedroomView" },
+    { name: "bathroomView" },
+    { name: "balconyView" },
+    { name: "nearestLandmark" },
+    { name: "developedAmenities" },
+  ]),
+  updateProperty
+);
+
 router.delete("/delete/:id", del);
 router.put("/status/:id", status);
 export default router;

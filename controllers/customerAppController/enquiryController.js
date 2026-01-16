@@ -32,6 +32,7 @@ export const add = async (req, res) => {
     // 2️⃣ Insert enquiry
     const insertSQL = `
       INSERT INTO enquirers (
+      customerid,
         propertyid,
         category,
         customer,
@@ -40,12 +41,13 @@ export const add = async (req, res) => {
         updated_at,
         created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     db.query(
       insertSQL,
       [
+        user_id,
         propertyid,
         propertyCategory,
         fullname,
@@ -87,11 +89,12 @@ export const add = async (req, res) => {
 };
 
 export const getAll = (req, res) => {
-  const { contact } = req.query;
+  const user_id = req.params.id;
+  console.log(user_id, "userid");
   // Validate contact
-  if (!contact || !contact.trim()) {
+  if (!user_id || !user_id.trim()) {
     return res.status(400).json({
-      message: "Please provide a valid contact number",
+      message: "Please provide a valid user id",
     });
   }
   const sql = `
@@ -103,10 +106,10 @@ export const getAll = (req, res) => {
     LEFT JOIN properties 
     ON enquirers.propertyid = properties.propertyid
     LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid 
-    WHERE enquirers.contact = ? 
+    WHERE enquirers.customerid = ? 
     ORDER BY enquirers.enquirersid DESC`;
 
-  db.query(sql, [contact.trim()], (err, results) => {
+  db.query(sql, [user_id.trim()], (err, results) => {
     if (err) {
       console.error("Database Query Error:", err);
       return res
@@ -128,7 +131,7 @@ export const getAll = (req, res) => {
 
 //Fetch only Visit Enquiry
 export const getVisitsOnly = (req, res) => {
-  const { contact, fullname } = req.query;
+  const { contact, fullname, userid } = req.query;
 
   //Validate required query parameters
   if (!contact) {
@@ -145,13 +148,13 @@ export const getVisitsOnly = (req, res) => {
     properties.city,properties.location,properties.propertyApprovedBy,properties.distanceFromCityCenter
     FROM enquirers 
     LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
-    WHERE enquirers.contact = ? 
+    WHERE enquirers.customerid = ? 
       AND enquirers.visitdate IS NOT NULL 
       AND enquirers.status = 'Visit Scheduled'
     ORDER BY enquirers.enquirersid DESC
   `;
 
-  db.query(sql, [contact], (err, results) => {
+  db.query(sql, [userid], (err, results) => {
     if (err) {
       console.error("Database Query Error:", err);
       return res.status(500).json({
@@ -175,10 +178,10 @@ export const getVisitsOnly = (req, res) => {
 };
 
 export const getBookingOnly = (req, res) => {
-  const { contact } = req.query;
+  const { contact, userid } = req.query;
   console.log(contact);
-  if (!contact) {
-    console.log("Invalid User Id: " + contact);
+  if (!userid) {
+    console.log("Invalid User Id: ");
     return res.status(400).json({ message: "Invalid User Id" });
   }
   const sql = `
@@ -196,11 +199,11 @@ export const getBookingOnly = (req, res) => {
     LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
     LEFT JOIN territorypartner ON enquirers.territorypartnerid = territorypartner.id
     LEFT JOIN propertyfollowup ON propertyfollowup.enquirerid = enquirers.enquirersid
-    WHERE enquirers.status = 'Token' AND propertyfollowup.status = 'Token' AND enquirers.contact= ?
+    WHERE enquirers.status = 'Token' AND propertyfollowup.status = 'Token' AND enquirers.customerid = ?
     ORDER BY propertyfollowup.created_at DESC
   `;
 
-  db.query(sql, [contact], (err, result) => {
+  db.query(sql, [userid], (err, result) => {
     if (err) {
       console.error("Error fetching :", err);
       return res.status(500).json({ message: "Database error", error: err });
@@ -381,10 +384,10 @@ export const addVisitor = (req, res) => {
 
       const isWhatsapp = source === "whatsapp" ? 1 : 0;
       const isCall = source === "call" ? 1 : 0;
-      const isShare=source==='share'?1 :0;
+      const isShare = source === "share" ? 1 : 0;
 
       if (results.length > 0) {
-        // ✅ UPDATE ONLY (row already exists)
+        //  UPDATE ONLY (row already exists)
         const updateSql = `
           UPDATE property_analytics
           SET
@@ -397,7 +400,7 @@ export const addVisitor = (req, res) => {
 
         db.query(
           updateSql,
-          [isWhatsapp, isCall,isShare, propertyid],
+          [isWhatsapp, isCall, isShare, propertyid],
           (err3) => {
             if (err3) {
               console.error(err3);
@@ -411,7 +414,7 @@ export const addVisitor = (req, res) => {
           }
         );
       } else {
-        // ✅ INSERT ONLY ONCE (first visit)
+        //  INSERT ONLY ONCE (first visit)
         const insertSql = `
           INSERT INTO property_analytics
             (property_id, views, whatsapp_enquiry, calls,share)
@@ -420,7 +423,7 @@ export const addVisitor = (req, res) => {
 
         db.query(
           insertSql,
-          [propertyid, isWhatsapp, isCall,isShare],
+          [propertyid, isWhatsapp, isCall, isShare],
           (err4) => {
             if (err4) {
               console.error(err4);
@@ -437,8 +440,6 @@ export const addVisitor = (req, res) => {
     });
   });
 };
-
-
 
 export const getTotalVisitors = (req, res) => {
   const { propertyid } = req.query;
@@ -479,5 +480,33 @@ export const getTotalVisitors = (req, res) => {
       share: result[0].share,
       whatsapp_enquiry: result[0].whatsapp_enquiry,
     });
+  });
+};
+
+export const getOwnerEnquiries = (req, res) => {
+  const id = req.params.id;
+
+  const sql = `
+    SELECT 
+      e.enquirersid,
+      e.customer,
+      e.contact,
+      e.message,
+      e.created_at,
+      p.propertyid,
+      p.propertyName,
+      p.city
+    FROM enquirers e
+    JOIN properties p ON e.propertyid = p.propertyid
+    WHERE p.customerid = ?
+    ORDER BY e.created_at DESC
+  `;
+
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      return res.status(500).json({ message: "DB error", err });
+    }
+
+    res.status(200).json(result);
   });
 };

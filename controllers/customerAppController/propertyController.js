@@ -3,7 +3,6 @@ import db from "../../config/dbconnect.js";
 import fs from "fs";
 import path from "path";
 
-
 function toSlug(text) {
   return text
     .toLowerCase() // Convert to lowercase
@@ -92,17 +91,16 @@ export const getUserWishlist = (req, res) => {
 
 // **Fetch All Properties**
 export const getAll = (req, res) => {
-  const userContact= req.params.contact;
-  console.log(userContact,req.params.contact);
-  
-  if (!userContact) {
+  const userId = req.params.id;
+
+  if (!userId) {
     return res.status(401).json({ message: "Unauthorized Access" });
   }
 
   const sql = `SELECT properties.* FROM properties
-               WHERE properties.contact = ?
+               WHERE properties.customerid = ?
                ORDER BY properties.propertyid DESC`;
-  db.query(sql,[userContact], (err, result) => {
+  db.query(sql, [userId], (err, result) => {
     if (err) {
       console.error("Error fetching properties:", err);
       return res.status(500).json({ message: "Database error", error: err });
@@ -113,8 +111,8 @@ export const getAll = (req, res) => {
       updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
     }));
 
-   // console.log(formatted);
-    
+    // console.log(formatted);
+
     res.json(formatted);
   });
 };
@@ -132,33 +130,33 @@ export const addProperty = (req, res) => {
       ofprice,
       state,
       city,
+      address,
+      customerid,
     } = req.body;
 
     console.log("Request Body:", req.body);
+    console.log("Files:", req.files);
 
-    // -------------------------------------------------
-    // CHECK IF PROPERTY NAME EXISTS
-    // -------------------------------------------------
     db.query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",
       [property_name],
       (err, result) => {
         if (err) {
+          console.log("Check property error:", err);
           return res.status(500).json({
+            success: false,
             message: "Database error",
-            error: err,
           });
         }
 
         if (result.length > 0) {
+          console.log("Duplicate property name:", property_name);
           return res.status(409).json({
-            message: "Property name already exists!",
+            success: false,
+            message: "Property name already exists",
           });
         }
 
-        // -------------------------------------------------
-        // PARSE AREAS
-        // -------------------------------------------------
         let parsedAreas = [];
 
         if (typeof areas === "string") {
@@ -167,25 +165,23 @@ export const addProperty = (req, res) => {
           parsedAreas = areas;
         }
 
+        console.log("Parsed areas:", parsedAreas);
+
         const builtUpArea =
-          parsedAreas.find(a =>
-            a.label?.toLowerCase().includes("built-up")
-          )?.value || null;
+          parsedAreas.find((a) => a.label?.toLowerCase().includes("built-up"))
+            ?.value || null;
 
         const carpetArea =
-          parsedAreas.find(a =>
-            a.label?.toLowerCase().includes("carpet")
-          )?.value || null;
+          parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
+            ?.value || null;
 
-        // -------------------------------------------------
-        // MAP UPLOADED IMAGES
-        // -------------------------------------------------
+        console.log("Built-up area:", builtUpArea);
+        console.log("Carpet area:", carpetArea);
+
         const mapFiles = (field) => {
           if (req.files && req.files[field]) {
             return JSON.stringify(
-              req.files[field].map(
-                (f) => `/uploads/${f.filename}`
-              )
+              req.files[field].map((f) => `/uploads/${f.filename}`)
             );
           }
           return null;
@@ -201,17 +197,25 @@ export const addProperty = (req, res) => {
         const nearestLandmark = mapFiles("nearestLandmark");
         const developedAmenities = mapFiles("developedAmenities");
 
-        // -------------------------------------------------
-        // SEO SLUG
-        // -------------------------------------------------
-        const seoSlug = toSlug(property_name);
+        console.log("Images:", {
+          frontView,
+          sideView,
+          kitchenView,
+          hallView,
+          bedroomView,
+          bathroomView,
+          balconyView,
+          nearestLandmark,
+          developedAmenities,
+        });
 
-        // -------------------------------------------------
-        // INSERT QUERY
-        // -------------------------------------------------
+        const seoSlug = toSlug(property_name);
+        console.log("SEO Slug:", seoSlug);
+
         const insertSQL = `
           INSERT INTO properties
           (
+            customerid,
             propertyType,
             propertyCategory,
             propertyName,
@@ -221,6 +225,7 @@ export const addProperty = (req, res) => {
             projectBy,
             state,
             city,
+            address,
             builtUpArea,
             carpetArea,
             frontView,
@@ -236,22 +241,21 @@ export const addProperty = (req, res) => {
             created_at,
             updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
         `;
 
-        // -------------------------------------------------
-        // VALUES (OPTIONAL FIELDS → NULL)
-        // -------------------------------------------------
         const values = [
-          property_type,          // propertyType
-          property_type,          // propertyCategory
-          property_name,          // propertyName
-          price || null,          // totalSalesPrice
-          ofprice || null,        // totalOfferPrice
-          contact || null,        // contact
-          ownername || null,      // projectBy (OPTIONAL)
-          state || null,          // state (OPTIONAL)
-          city || null,           // city (OPTIONAL)
+          customerid,
+          property_type,
+          property_type,
+          property_name,
+          price,
+          ofprice,
+          contact,
+          ownername,
+          state,
+          city,
+          address,
           builtUpArea,
           carpetArea,
           frontView,
@@ -266,19 +270,21 @@ export const addProperty = (req, res) => {
           seoSlug,
         ];
 
-        // -------------------------------------------------
-        // EXECUTE INSERT
-        // -------------------------------------------------
+        console.log("Insert values:", values);
+
         db.query(insertSQL, values, (err, result) => {
           if (err) {
-            console.error("Insert error:", err);
+            console.log("Insert error:", err);
             return res.status(500).json({
+              success: false,
               message: "Insert failed",
-              error: err,
             });
           }
 
+          console.log("Insert success:", result);
+
           return res.status(201).json({
+            success: true,
             message: "Property added successfully",
             id: result.insertId,
           });
@@ -286,14 +292,174 @@ export const addProperty = (req, res) => {
       }
     );
   } catch (error) {
-    console.error("Something went wrong:", error);
+    console.log("Unhandled error:", error);
     return res.status(500).json({
+      success: false,
       message: "Server error",
-      error,
     });
   }
 };
 
+export const updateProperty = (req, res) => {
+  try {
+    const { propertyid } = req.params;
+
+    const {
+      property_type,
+      property_name,
+      price,
+      ownername,
+      contact,
+      areas,
+      ofprice,
+      state,
+      city,
+    } = req.body;
+    console.log(req.body);
+    if (!propertyid) {
+      return res.status(400).json({ message: "Property ID is required" });
+    }
+
+    // -------------------------------------------------
+    // 1️⃣ CHECK PROPERTY NAME (EXCEPT CURRENT)
+    // -------------------------------------------------
+    db.query(
+      `SELECT propertyid FROM properties 
+       WHERE propertyName = ? AND propertyid != ?`,
+      [property_name, propertyid],
+      (err, exists) => {
+        if (err) {
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        if (exists.length > 0) {
+          return res
+            .status(409)
+            .json({ message: "Property name already exists!" });
+        }
+
+        // -------------------------------------------------
+        // 2️⃣ PARSE AREAS
+        // -------------------------------------------------
+        let parsedAreas = [];
+
+        if (typeof areas === "string") parsedAreas = JSON.parse(areas);
+        else if (Array.isArray(areas)) parsedAreas = areas;
+
+        const builtUpArea =
+          parsedAreas.find((a) => a.label.toLowerCase().includes("built-up"))
+            ?.value || null;
+
+        const carpetArea =
+          parsedAreas.find((a) => a.label.toLowerCase().includes("carpet"))
+            ?.value || null;
+
+        // -------------------------------------------------
+        // 3️⃣ IMAGE MAPPING (ONLY UPDATE IF SENT)
+        // -------------------------------------------------
+        const mapFiles = (field) => {
+          if (req.files && req.files[field]) {
+            return JSON.stringify(
+              req.files[field].map((f) => `/uploads/${f.filename}`)
+            );
+          }
+          return undefined;
+        };
+
+        const images = {
+          frontView: mapFiles("frontView"),
+          sideView: mapFiles("sideView"),
+          kitchenView: mapFiles("kitchenView"),
+          hallView: mapFiles("hallView"),
+          bedroomView: mapFiles("bedroomView"),
+          bathroomView: mapFiles("bathroomView"),
+          balconyView: mapFiles("balconyView"),
+          nearestLandmark: mapFiles("nearestLandmark"),
+          developedAmenities: mapFiles("developedAmenities"),
+        };
+
+        // -------------------------------------------------
+        // 4️⃣ SEO SLUG
+        // -------------------------------------------------
+        const seoSlug = toSlug(property_name);
+
+        // -------------------------------------------------
+        // 5️⃣ DYNAMIC UPDATE QUERY
+        // -------------------------------------------------
+        let updateSQL = `
+          UPDATE properties SET
+            propertyType = ?,
+            propertyCategory = ?,
+            propertyName = ?,
+            totalSalesPrice = ?,
+            totalOfferPrice = ?,
+            contact = ?,
+            projectBy = ?,
+            state = ?,
+            city = ?,
+            builtUpArea = ?,
+            carpetArea = ?,
+            seoSlug = ?,
+            updated_at = NOW()
+        `;
+
+        const values = [
+          property_type,
+          property_type,
+          property_name,
+          price,
+          ofprice,
+          contact,
+          ownername,
+          state,
+          city,
+          builtUpArea,
+          carpetArea,
+          seoSlug,
+        ];
+
+        // -------------------------------------------------
+        // 6️⃣ CONDITIONAL IMAGE UPDATE
+        // -------------------------------------------------
+        Object.entries(images).forEach(([key, value]) => {
+          if (value !== undefined) {
+            updateSQL += `, ${key} = ?`;
+            values.push(value);
+          }
+        });
+
+        updateSQL += ` WHERE propertyid = ?`;
+        values.push(propertyid);
+
+        // -------------------------------------------------
+        // 7️⃣ EXECUTE UPDATE
+        // -------------------------------------------------
+        db.query(updateSQL, values, (err, result) => {
+          if (err) {
+            console.error("Update error:", err);
+            return res
+              .status(500)
+              .json({ message: "Update failed", error: err });
+          }
+
+          if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "Property not found" });
+          }
+
+          return res.status(200).json({
+            message: "Property updated successfully",
+            propertyid,
+          });
+        });
+      }
+    );
+  } catch (error) {
+    console.error("Update error:", error);
+    return res.status(500).json({ message: "Server error", error });
+  }
+};
 //**Change status */
 export const status = (req, res) => {
   const Id = parseInt(req.params.id);
@@ -341,7 +507,7 @@ export const del = (req, res) => {
   if (isNaN(Id)) {
     return res.status(400).json({ message: "Invalid Property ID" });
   }
-console.log("ddd");
+  console.log("ddd");
 
   const imageFields = [
     "frontView",
