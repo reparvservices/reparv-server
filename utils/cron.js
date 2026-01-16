@@ -8,6 +8,10 @@ import timezone from "dayjs/plugin/timezone.js";
 import fs from "fs";
 import admin from "firebase-admin";
 import dotenv from "dotenv";
+import Papa from "papaparse";
+import axios from "axios";
+import { google } from "googleapis";
+
 dotenv.config();
 
 dayjs.extend(utc);
@@ -144,7 +148,7 @@ async function sendPPNotification(
     const response = await projectApp.messaging().send(message);
     console.log("📨 Project Partner Notification Sent:", response);
   } catch (err) {
-    console.error("❌ Error Sending PP Notification:", err);
+    console.error(" Error Sending PP Notification:", err);
   }
 }
 
@@ -329,7 +333,7 @@ You have a scheduled visit today!
 
 Please make sure to follow up on time and provide the best service.
 
-✅ Reminder: Be punctual and prepared for the visit!
+ Reminder: Be punctual and prepared for the visit!
 
 Thank you,
 Team Reparv`
@@ -425,7 +429,7 @@ You have been assigned a new enquiry!
 📞 Contact: ${enquiry.contact}
 📍 Location: ${enquiry.location}, ${enquiry.city}
 
-Please take action on this enquiry: Accept ✅ or Reject . 
+Please take action on this enquiry: Accept  or Reject . 
 
 Ensure timely follow-up and provide the best service.
 
@@ -547,80 +551,6 @@ const queryAsync = (sql, params = []) => {
     });
   });
 };
-
-// cron.schedule("0 0 * * *", async () => {
-//   try {
-//     console.log("🕛 Running daily subscription status & reminder check...");
-
-//     //  Expire old subscriptions
-//     await queryAsync(`
-//       UPDATE subscriptions
-//       SET status = 'Expired'
-//       WHERE end_date < NOW()
-//       AND status = 'Active'
-//     `);
-
-//     // 2️Find subscriptions expiring in exactly 7 days and not yet notified
-//     const expiringSoon = await queryAsync(`
-//       SELECT
-//         s.id,
-//         s.salespersonid,
-//         s.plan,
-//         s.end_date,
-//         sp.onesignalid,
-//         sp.fullname
-//       FROM subscriptions s
-//       JOIN salespersons sp
-
-//         ON s.salespersonid = sp.salespersonsid
-//       WHERE DATE(s.end_date) = DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-//         AND s.status = 'Active'
-//         AND s.notified_7days = 0
-//     `);
-
-//     console.log(
-//       ⁠ 📅 Found ${expiringSoon.length} subscriptions expiring in 7 days. ⁠
-//     );
-
-//     // 3 Send notifications
-//     for (const sub of expiringSoon) {
-//       if (sub.onesignalid) {
-//         await sendSPNotification(
-//           sub.onesignalid,
-//           "⚠️ Subscription Expiry Reminder",
-//           `Hello ${sub.fullname}, 👋
-
-// We wanted to remind you that your Reparv Sales Partner subscription will expire in *7 days*.
-
-// 🗓️ Expiry Date: ${new Date(sub.end_date).toLocaleDateString()}
-// 💼 Current Plan: ${sub.plan}
-
-// Please renew your subscription before it expires to continue:
-// - Receiving new leads and enquiries 📈
-// - Accessing premium tools and analytics 📊
-// - Maintaining your active Sales Partner status ✅
-
-// Renew now to avoid any interruption in your services.
-
-// Thank you,
-// Team Reparv`
-//         );
-
-//         // 4️⃣ Mark as notified
-//         await queryAsync(
-//           ⁠ UPDATE subscriptions SET notified_7days = 1 WHERE id = ? ⁠,
-//           [sub.id]
-//         );
-
-//         console.log(⁠ Sent 7-day expiry reminder to ${sub.fullname} ⁠);
-//       }
-//     }
-
-//     console.log(" Expiry check and reminders completed successfully.");
-//   } catch (error) {
-//     console.error(" Error in subscription cron:", error);
-//   }
-// });
 
 export const checkcalendernotes = () => {
   const sql = `
@@ -747,7 +677,7 @@ function notifyProjectPartnerForNewEnquiry() {
           const { token, propertyName, location, enquirersid } = enquiry;
 
           if (!token) {
-            console.log("❌ Project partner token missing.");
+            console.log(" Project partner token missing.");
             continue;
           }
 
@@ -789,3 +719,137 @@ function notifyProjectPartnerForNewEnquiry() {
 }
 
 cron.schedule("* * * * *", notifyProjectPartnerForNewEnquiry);
+
+function convertSheetUrlToCsv(sheetUrl) {
+  if (!sheetUrl) return null;
+
+  try {
+    const url = new URL(sheetUrl);
+
+    // Extract spreadsheet ID
+    const match = url.pathname.match(/\/d\/([^/]+)/);
+    if (!match) throw new Error("Invalid Google Sheet URL");
+
+    const sheetId = match[1];
+
+    // Extract gid (sheet tab)
+    const gid =
+      url.searchParams.get("gid") || url.hash.replace("#gid=", "") || 0;
+
+    // Build CSV export URL
+    return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+  } catch (err) {
+    console.error("Sheet URL conversion error:", err.message);
+    return null;
+  }
+}
+
+const getAllPropertySheets = () => {
+  return new Promise((resolve, reject) => {
+    db.query(
+      `SELECT propertyid, adUrl FROM properties WHERE adUrl IS NOT NULL`,
+      (err, result) => {
+        if (err) return reject(err);
+        resolve(result);
+      }
+    );
+  });
+};
+
+
+
+const auth = new google.auth.GoogleAuth({
+  credentials: {
+    type: process.env.GOOGLE_TYPE,
+    project_id: process.env.GOOGLE_PROJECT_ID,
+    private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID,
+    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    client_email: process.env.GOOGLE_CLIENT_EMAIL,
+    client_id: process.env.GOOGLE_CLIENT_ID,
+  },
+  scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+});
+
+function extractSheetId(sheetUrl) {
+  if (!sheetUrl) return null;
+
+  try {
+    const match = sheetUrl.match(/\/d\/([^/]+)/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+const sheets = google.sheets({ version: "v4", auth });
+
+async function getSheetRows(spreadsheetId, range = "Sheet1") {
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+  });
+
+  return res.data.values || [];
+}
+
+async function syncAllPropertySheets() {
+  try {
+    console.log("Global sheet sync started");
+
+    const properties = await getAllPropertySheets();
+    console.log(`Total properties: ${properties.length}`);
+
+    for (const property of properties) {
+      if (!property.adUrl) continue;
+
+      const sheetId = extractSheetId(property.adUrl);
+      if (!sheetId) {
+        console.log(`Invalid sheet URL for property ${property.propertyid}`);
+        continue;
+      }
+
+      try {
+        console.log(`Fetching sheet for property ${property.propertyid}`);
+
+        const rows = await getSheetRows(sheetId);
+
+        if (!rows || rows.length < 2) {
+          console.log(`No data rows for property ${property.propertyid}`);
+          continue;
+        }
+
+        console.log(
+          `Property ${property.propertyid} contains ${rows.length - 1} rows`
+        );
+
+        await axios.post(process.env.API_URL, {
+          propertyId: property.propertyid,
+          rows,
+        });
+
+        console.log(`Property ${property.propertyid} synced successfully`);
+      } catch (err) {
+        console.error(
+          `Sheet processing error for property ${property.propertyid}:`,
+          err.message
+        );
+      }
+    }
+
+    console.log("All property sheets synced successfully");
+  } catch (err) {
+    console.error("Global sync failed:", err.message);
+  }
+}
+
+// Runs every 2 hours (at minute 0)
+cron.schedule("0 */2 * * *", async () => {
+  console.log(" Cron started: syncing all property sheets");
+
+  try {
+    await syncAllPropertySheets();
+    console.log(" Cron completed successfully");
+  } catch (err) {
+    console.error(" Cron failed:", err.message);
+  }
+});

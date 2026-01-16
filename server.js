@@ -86,6 +86,16 @@ import guestUserPropertyRoutes from "./routes/guestUser/propertyRoutes.js";
 import guestUserMapRoutes from "./routes/guestUser/mapRoutes.js";
 import guestUserBuilderRoutes from "./routes/guestUser/builderRoutes.js";
 
+// User Routes
+import userLoginRoutes from "./routes/user/userRoutes.js";
+import userProfileRoutes from "./routes/user/profileRoutes.js";
+import userDashboardRoutes from "./routes/user/dashboardRoutes.js";
+import userPropertyRoutes from "./routes/user/propertyRoutes.js";
+import userMapRoutes from "./routes/user/mapRoutes.js";
+import userBuilderRoutes from "./routes/user/builderRoutes.js";
+import userAuthRoutes from "./routes/user/authRoutes.js"
+
+
 // builder
 import builderLoginRoutes from "./routes/builder/loginRoutes.js";
 import builderProfileRoutes from "./routes/builder/profileRoutes.js";
@@ -239,6 +249,7 @@ import builderEnquiryCustomerRoute from "./routes/builderAppRoute/builderPropert
 import builderCommunityRoute from "./routes/builderAppRoute/communityRoute.js";
 import builderTicketRoute from "./routes/builderAppRoute/BuilderTicketRoutes.js";
 import builderpostRoute from "./routes/builderAppRoute/BuilderpostRoutes.js";
+import db from "./config/dbconnect.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -323,6 +334,9 @@ export const verifyToken = (req, res, next) => {
     "/territory-partner/login",
     "/guest-user/register",
     "/guest-user/login",
+    "/user/send-otp",
+    "/user/verify-otp",
+    "/user/auth/google",
     "/admin/authorities",
     "/admin/states",
     "/admin/cities",
@@ -465,8 +479,9 @@ app.get("/get-cookie", (req, res) => {
   res.json({ cookies: req.cookies }); // Send cookie data in response
 });
 
-// Use Login & Auth Routes
 
+
+// Use Login & Auth Routes
 app.use("/admin", loginRoutes);
 
 //frontend
@@ -494,99 +509,6 @@ app.use("/api/partner/account", accountCancellation);
 
 // Map Route Call
 app.use("/api/map", geocodeRoutes);
-
-app.post("/api/saveSheetData", async (req, res) => {
-  try {
-    const { rows } = req.body;
-
-    if (!rows || rows.length === 0) {
-      return res.status(400).json({ error: "No sheet data received" });
-    }
-
-    const header = rows[0];
-    const dataRows = rows.slice(1); // skip header
-    const updatedRows = [];
-
-    // Convert db.query to promise
-    const queryAsync = (sql, values) =>
-      new Promise((resolve, reject) => {
-        db.query(sql, values, (err, result) => {
-          if (err) reject(err);
-          else resolve(result);
-        });
-      });
-
-    for (let index = 0; index < dataRows.length; index++) {
-      const row = dataRows[index];
-
-      const leadStatus = (row[18] || "").trim().toUpperCase(); // Column 19
-
-      // Only insert rows marked as CREATED
-      if (leadStatus !== "CREATED") continue;
-
-      const fullName = row[14] || ""; // Column 15
-      const rawPhone = row[16] || ""; // Column 17
-      const city = row[17] || ""; // Column 18
-      const budgetRange = row[12] || ""; // Column 13
-
-      // Clean the phone number
-      const contact = rawPhone.replace(/[^0-9]/g, "");
-
-      // Extract minbudget and maxbudget
-      let minbudget = 0;
-      let maxbudget = 0;
-
-      try {
-        if (budgetRange.includes("to")) {
-          const parts = budgetRange.split("to");
-
-          minbudget = parseInt(parts[0].replace("_lakhs", "").trim()) * 100000;
-          maxbudget = parseInt(parts[1].replace("_lakhs", "").trim()) * 100000;
-        }
-      } catch (err) {
-        console.error("Budget Parse Error:", err);
-      }
-
-      // Insert into database
-      const insertSql = `
-        INSERT INTO enquirers (customer, contact, city, minbudget, maxbudget)
-        VALUES (?, ?, ?, ?, ?)
-      `;
-
-      try {
-        await queryAsync(insertSql, [
-          fullName,
-          contact,
-          city,
-          minbudget,
-          maxbudget,
-        ]);
-
-        console.log(`Inserted: ${fullName} | ${contact} | ${city}`);
-
-        // Mark row as updated (Google Sheet index)
-        updatedRows.push({
-          rowIndex: index + 2, // Sheet starts at row 2 (after header)
-          newStatus: "Added",
-        });
-
-        // Update local array also → status column is index 18
-        row[18] = "Added";
-      } catch (err) {
-        console.error("Database Insert Error:", err);
-      }
-    }
-
-    res.json({
-      message: "Sheet data processed successfully",
-      updateRows: updatedRows,
-      updatedSheet: [header, ...dataRows],
-    });
-  } catch (e) {
-    console.error("API Error:", e);
-    res.status(500).json({ error: e.message });
-  }
-});
 
 app.use(verifyToken);
 app.use("/admin/profile", profileRoutes);
@@ -640,6 +562,15 @@ app.use("/guest-user/dashboard", guestUserDashboardRoutes);
 app.use("/guest-user/builders", guestUserBuilderRoutes);
 app.use("/guest-user/properties", guestUserPropertyRoutes);
 app.use("/guest-user/map", guestUserMapRoutes);
+
+// User Routes
+app.use("/user", userLoginRoutes);
+app.use("/user/profile", userProfileRoutes);
+app.use("/user/dashboard", userDashboardRoutes);
+app.use("/user/builders", userBuilderRoutes);
+app.use("/user/properties", userPropertyRoutes);
+app.use("/user/map", userMapRoutes);
+app.use("/user/auth", userAuthRoutes)
 
 // Builder Routes
 app.use("/builder", builderLoginRoutes);
@@ -804,6 +735,84 @@ app.use("/builderapp/customer", builderEnquiryCustomerRoute);
 app.use("/builderapp/community", builderCommunityRoute);
 app.use("/builderapp/ticket", builderTicketRoute);
 app.use("/builderapp/post", builderpostRoute);
+
+
+app.post("/api/saveSheetData", async (req, res) => {
+  try {
+    const { rows } = req.body;
+
+    if (!rows || rows.length < 2) {
+      return res.status(400).json({ error: "No sheet data received" });
+    }
+
+    const dataRows = rows;
+
+    // Promisify db.query
+    const queryAsync = (sql, values) =>
+      new Promise((resolve, reject) => {
+        db.query(sql, values, (err, result) => {
+          if (err) return reject(err);
+          resolve(result);
+        });
+      });
+
+    for (let index = 0; index < dataRows.length; index++) {
+      const row = dataRows[index];
+
+      const adsid = row[0] || "";
+      const campaign = row[7] || "";
+      const propertyId = campaign.split("|")[0].split("-")[1]?.trim() || null;
+      const customer = row[13] || "";
+      const rawPhone = row[14];
+
+      const contact = rawPhone
+        ? rawPhone.toString().replace(/\D/g, "").slice(-10)
+        : "";
+
+      const city = row[16] || "";
+
+      //  CHECK DUPLICATE adsid
+      const checkSql = `SELECT enquirersid FROM enquirers WHERE adsid = ? LIMIT 1`;
+      const existing = await queryAsync(checkSql, [adsid]);
+
+      if (existing.length > 0) {
+        console.log(`Skipped (duplicate adsid): ${adsid}`);
+        continue;
+      }
+
+      //  INSERT
+      const insertSql = `
+        INSERT INTO enquirers
+        (adsid,propertyid, customer, contact, city,source)
+        VALUES (?, ?,?, ?, ?,?)
+      `;
+
+      try {
+        await queryAsync(insertSql, [
+          adsid,
+          propertyId,
+          customer,
+          contact,
+          city,
+          'Ads'
+        ]);
+
+        console.log("Inserted:", adsid, customer);
+      } catch (err) {
+        console.error("DB insert error:", err);
+      }
+    }
+
+    //  SIMPLE RESPONSE — NO SHEET UPDATE DATA
+    res.json({
+      success: true,
+      message: "Data processed successfully",
+    });
+  } catch (e) {
+    console.error("API Error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 //  Start Server
 app.listen(PORT, () => {

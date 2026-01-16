@@ -112,6 +112,27 @@ export const getAll = (req, res) => {
       ORDER BY enquirers.enquirersid DESC`;
     params = [userId, userId, userId];
   } 
+
+  // Ads Enquiries
+  else if (enquirySource === "Ads") {
+    sql = `
+      SELECT 
+        enquirers.*, 
+        properties.frontView, properties.seoSlug, properties.commissionAmount,
+        territorypartner.fullname AS territoryName, 
+        territorypartner.contact AS territoryContact,
+        projectpartner.fullname AS projectPartnerName, 
+        projectpartner.contact AS projectPartnerContact
+      FROM enquirers 
+      LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+      LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
+      LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid
+      WHERE enquirers.source = "Ads" 
+        AND enquirers.status != 'Token' 
+        AND (properties.projectpartnerid = ? OR enquirers.projectpartnerid = ? OR enquirers.projectbroker = ?)
+      ORDER BY enquirers.enquirersid DESC`;
+    params = [userId, userId, userId];
+  } 
   
   // Digital Broker Enquiries (Now Includes Enquiry Lister)
   else if (enquirySource === "Digital Broker") {

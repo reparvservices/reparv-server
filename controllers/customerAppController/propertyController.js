@@ -117,6 +117,7 @@ export const getAll = (req, res) => {
   });
 };
 
+
 export const addProperty = (req, res) => {
   try {
     const {
@@ -573,3 +574,4 @@ export const del = (req, res) => {
     }
   );
 };
+
