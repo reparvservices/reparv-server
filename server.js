@@ -47,6 +47,7 @@ import emiRoutes from "./routes/admin/emiRoutes.js";
 import marketingContentRoutes from "./routes/admin/marketingContentRoutes.js";
 import brandAccessoriesRoutes from "./routes/admin/brandAccessoriesRoutes.js";
 import messageRoutes from "./routes/admin/messageRoutes.js";
+import contactUsRoutes from "./routes/admin/contactUsRoutes.js";
 import scheduledRequestRoutes from "./routes/admin/scheduledRequestRoutes.js";
 import FAQRoutes from "./routes/admin/FAQRoutes.js";
 import propertyAnalyticsRoutes from "./routes/admin/propertyAnalyticsRoutes.js";
@@ -61,6 +62,7 @@ import frontendBlogRoutes from "./routes/frontend/blogRoutes.js";
 import sliderImagesRoutes from "./routes/frontend/sliderRoutes.js";
 import testimonialFeedbackRoutes from "./routes/frontend/testimonialRoutes.js";
 import frontendEmiRoutes from "./routes/frontend/emiRoutes.js";
+import frontendContactUsRoutes from "./routes/frontend/contactUsRoutes.js";
 // frontend project-partner landing page
 import frontendProjectPartnerRoutes from "./routes/frontend/projectPartnerRoutes.js";
 
@@ -370,6 +372,7 @@ export const verifyToken = (req, res, next) => {
     "/frontend/testimonial",
     "/frontend/emi",
     "/frontend/project-partner",
+    "/frontend/contact-us",
     "/salesapp/enquiry",
     "/api/booking",
     "/salesapp/api/login",
@@ -494,6 +497,7 @@ app.use("/frontend/blog", frontendBlogRoutes);
 app.use("/frontend/slider", sliderImagesRoutes);
 app.use("/frontend/testimonial", testimonialFeedbackRoutes);
 app.use("/frontend/emi", frontendEmiRoutes);
+app.use("/frontend/contact-us", frontendContactUsRoutes);
 // frontend project-partner landing page
 app.use("/frontend/project-partner", frontendProjectPartnerRoutes);
 
@@ -551,6 +555,7 @@ app.use("/admin/emi", emiRoutes);
 app.use("/admin/marketing-content", marketingContentRoutes);
 app.use("/admin/brand-accessories", brandAccessoriesRoutes);
 app.use("/admin/messages", messageRoutes);
+app.use("/admin/contact-us", contactUsRoutes);
 app.use("/admin/scheduled-requests", scheduledRequestRoutes);
 app.use("/admin/faqs", FAQRoutes);
 app.use("/admin/propertyAnalytics", propertyAnalyticsRoutes);
@@ -570,7 +575,7 @@ app.use("/user/dashboard", userDashboardRoutes);
 app.use("/user/builders", userBuilderRoutes);
 app.use("/user/properties", userPropertyRoutes);
 app.use("/user/map", userMapRoutes);
-app.use("/user/auth", userAuthRoutes)
+app.use("/user/auth", userAuthRoutes);
 
 // Builder Routes
 app.use("/builder", builderLoginRoutes);
