@@ -5,7 +5,7 @@ import cookieParser from "cookie-parser";
 import session from "express-session";
 import path from "path";
 import "dotenv/config";
-import "./utils/cron.js";
+// import "./utils/cron.js";
 
 import loginRoutes from "./routes/admin/loginRoutes.js";
 import profileRoutes from "./routes/admin/profileRoutes.js";
@@ -425,7 +425,9 @@ export const verifyToken = (req, res, next) => {
     "/admin/call-enquirers/add",
     "/admin/whatsapp-enquirers/add",
     "/project-partner/properties/additionalinfo/",
-    "/customerapp/ticket"
+    "/customerapp/ticket",
+    "customerapp/user/google-login",
+    "/customerapp/loans"
   ];
 
   // Skip verification for public routes
@@ -473,7 +475,7 @@ export const verifyToken = (req, res, next) => {
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
-    message: "Backend is running successfully!",
+    message: "Backend is running successfully update 1.1.1!",
   });
 });
 
@@ -725,12 +727,12 @@ app.use("/projectpartner/departments", projectpartnerappDepartment);
 app.use("/projectpartner/roles", projectPartnerRoles);
 
 //Customer app
-app.use("/customerapp", customerEmi);
+app.use("/customerapp/loans", customerEmi);
 app.use("/customerapp/user", customerSignUp);
 app.use("/customerapp/property", customerPropertyRoute);
 app.use("/customerapp/customerTrendRoute", customerTrendRoute);
 app.use("/customerapp/enquiry", customerEnquiryRoute);
-app.use("/customerapp/ticket",customerTicketRoute);
+app.use("/customerapp/ticket", customerTicketRoute);
 
 //Builder app
 app.use("/builderapp/user", builderapploginRoute);
@@ -823,4 +825,3 @@ app.post("/api/saveSheetData", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
-
