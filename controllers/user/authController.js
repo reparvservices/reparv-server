@@ -1,4 +1,6 @@
 import { verifyGoogleToken } from "../../utils/googleAuth.js";
+import db from "../../config/dbconnect.js";
+import jwt from "jsonwebtoken";
 
 export const googleLogin = async (req, res) => {
   try {
@@ -98,7 +100,7 @@ export const googleLogin = async (req, res) => {
       user: userData,
     });
   } catch (error) {
-    console.error("Google login error:", error.message);
+    console.log("Google login error:", error.message);
 
     return res.status(401).json({
       success: false,
