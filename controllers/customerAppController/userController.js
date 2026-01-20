@@ -6,7 +6,7 @@ import nodemailer from "nodemailer";
 import { OAuth2Client } from "google-auth-library";
 import e from "express";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
-const client = new OAuth2Client(process.env.GOOGLELOGIN_CLIENT_ID);
+const client = new OAuth2Client(process.env.MOBILE_GOOGLE_LOGIN_CLIENT_ID);
 
 dotenv.config();
 
@@ -272,7 +272,6 @@ export const update = async (req, res) => {
     });
   }
 };
-
 export const googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
@@ -287,7 +286,7 @@ export const googleLogin = async (req, res) => {
     // Verify Google token
     const ticket = await client.verifyIdToken({
       idToken: token,
-      audience: process.env.GOOGLELOGIN_CLIENT_ID,
+      audience: process.env.MOBILE_GOOGLE_LOGIN_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
@@ -383,3 +382,4 @@ export const googleLogin = async (req, res) => {
     });
   }
 };
+
