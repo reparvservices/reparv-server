@@ -41,7 +41,7 @@ router.post("/login", async (req, res) => {
             return reject(new Error("Invalid Email | Username"));
           }
           resolve(results[0]);
-        }
+        },
       );
     });
 
@@ -62,7 +62,7 @@ router.post("/login", async (req, res) => {
       process.env.JWT_SECRET,
       {
         expiresIn: "10d",
-      }
+      },
     );
 
     // Ensure session middleware is active

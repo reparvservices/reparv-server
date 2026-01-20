@@ -1,6 +1,5 @@
 import express from "express";
 import multer from "multer";
-
 import {
   addProperty,
   addInWishList,
@@ -20,12 +19,7 @@ const upload = multer({
     fileSize: 1024 * 1024 * 2, // 2MB
   },
   fileFilter: (req, file, cb) => {
-    const allowed = [
-      "image/jpeg",
-      "image/png",
-      "image/jpg",
-      "image/webp",
-    ];
+    const allowed = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
     if (!allowed.includes(file.mimetype)) {
       return cb(new Error("Only JPEG, PNG, JPG, WEBP allowed"));
     }
@@ -50,7 +44,7 @@ router.post(
     { name: "nearestLandmark", maxCount: 3 },
     { name: "developedAmenities", maxCount: 3 },
   ]),
-  addProperty
+  addProperty,
 );
 
 router.get("/myproperty/:id", getAll);
@@ -68,7 +62,7 @@ router.put(
     { name: "nearestLandmark" },
     { name: "developedAmenities" },
   ]),
-  updateProperty
+  updateProperty,
 );
 
 router.delete("/delete/:id", del);
@@ -85,9 +79,7 @@ router.use((err, req, res, next) => {
     return res.status(400).json({ success: false, error: err.message });
   }
   if (err) {
-    return res
-      .status(400)
-      .json({ success: false, error: err.message });
+    return res.status(400).json({ success: false, error: err.message });
   }
   next();
 });

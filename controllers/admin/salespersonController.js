@@ -6,7 +6,7 @@ import { verifyRazorpayPayment } from "../paymentController.js";
 import fs from "fs";
 import path from "path";
 import sendProjectPartnerChangeEmail from "../../utils/sendProjectPartnerChangeEmail.js";
-import { uploadToS3 } from "../../utils/imageUpload.js";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 
@@ -549,8 +549,7 @@ export const add = async (req, res) => {
   }
 };
 
-
-export const edit = (req, res) => {
+export const edit = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const {
     fullname,
@@ -580,111 +579,104 @@ export const edit = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Handle new uploaded files
-  const adharImageFiles = req.files?.["adharImage"] || [];
-  const panImageFiles = req.files?.["panImage"] || [];
-  const reraImageFiles = req.files?.["reraImage"] || [];
+  try {
+    // 1️⃣ Fetch old images from DB
+    const [rows] = await new Promise((resolve, reject) =>
+      db.query(
+        "SELECT adharimage, panimage, reraimage FROM salespersons WHERE salespersonsid = ?",
+        [salespersonsid],
+        (err, results) => (err ? reject(err) : resolve(results))
+      )
+    );
 
-  const adharImageUrls = adharImageFiles.map(
-    (file) => `/uploads/${file.filename}`
-  );
-  const panImageUrls = panImageFiles.map((file) => `/uploads/${file.filename}`);
-  const reraImageUrls = reraImageFiles.map(
-    (file) => `/uploads/${file.filename}`
-  );
-
-  // STEP 1: Get old images
-  db.query(
-    "SELECT adharimage, panimage, reraimage FROM salespersons WHERE salespersonsid = ?",
-    [salespersonsid],
-    (selectErr, results) => {
-      if (selectErr) {
-        console.error("Error fetching old images:", selectErr);
-        return res
-          .status(500)
-          .json({ message: "Database error while fetching old images" });
-      }
-
-      const oldData = results[0];
-
-      // Utility: delete old images
-      const deleteOldFiles = (oldImagesJson) => {
-        try {
-          const oldImages = JSON.parse(oldImagesJson || "[]");
-          oldImages.forEach((url) => {
-            const filePath = path.join(process.cwd(), "public", url);
-            if (fs.existsSync(filePath)) {
-              fs.unlinkSync(filePath);
-            }
-          });
-        } catch (err) {
-          console.error("Error deleting old files:", err);
-        }
-      };
-
-      // Prepare SQL
-      let updateSql = `UPDATE salespersons 
-        SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, state = ?, city = ?, 
-        pincode = ?, experience = ?, rerano = ?, adharno = ?, panno = ?, bankname = ?, 
-        accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?`;
-      const updateValues = [
-        fullname,
-        contact,
-        email.toLowerCase(),
-        intrest,
-        address,
-        state,
-        city,
-        pincode,
-        experience,
-        rerano,
-        adharno,
-        panno,
-        bankname,
-        accountholdername,
-        accountnumber,
-        ifsc,
-        currentdate,
-      ];
-
-      // Aadhaar
-      if (adharImageUrls.length > 0) {
-        updateSql += `, adharimage = ?`;
-        updateValues.push(JSON.stringify(adharImageUrls));
-        deleteOldFiles(oldData?.adharimage);
-      }
-
-      // PAN
-      if (panImageUrls.length > 0) {
-        updateSql += `, panimage = ?`;
-        updateValues.push(JSON.stringify(panImageUrls));
-        deleteOldFiles(oldData?.panimage);
-      }
-
-      // RERA
-      if (reraImageUrls.length > 0) {
-        updateSql += `, reraimage = ?`;
-        updateValues.push(JSON.stringify(reraImageUrls));
-        deleteOldFiles(oldData?.reraimage);
-      }
-
-      updateSql += ` WHERE salespersonsid = ?`;
-      updateValues.push(salespersonsid);
-
-      // STEP 2: Update DB
-      db.query(updateSql, updateValues, (updateErr) => {
-        if (updateErr) {
-          console.error("Error updating salespersons:", updateErr);
-          return res.status(500).json({
-            message: "Database error during update",
-            error: updateErr,
-          });
-        }
-
-        res.status(200).json({ message: "Sales person updated successfully" });
-      });
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ message: "Sales person not found" });
     }
-  );
+
+    const oldData = rows[0];
+
+    // 2️⃣ Upload new files to S3 if provided
+    const adharFile = req.files?.["adharImage"]?.[0];
+    const panFile = req.files?.["panImage"]?.[0];
+    const reraFile = req.files?.["reraImage"]?.[0];
+
+    let newAdharUrls = oldData.adharimage ? JSON.parse(oldData.adharimage) : [];
+    let newPanUrls = oldData.panimage ? JSON.parse(oldData.panimage) : [];
+    let newReraUrls = oldData.reraimage ? JSON.parse(oldData.reraimage) : [];
+
+    // Upload & replace old files if new ones exist
+    if (adharFile) {
+      const url = await uploadToS3(adharFile, "documents/adhar");
+      // Delete old files from S3
+      for (const oldUrl of newAdharUrls) await deleteFromS3(oldUrl);
+      newAdharUrls = [url];
+    }
+
+    if (panFile) {
+      const url = await uploadToS3(panFile, "documents/pan");
+      for (const oldUrl of newPanUrls) await deleteFromS3(oldUrl);
+      newPanUrls = [url];
+    }
+
+    if (reraFile) {
+      const url = await uploadToS3(reraFile, "documents/rera");
+      for (const oldUrl of newReraUrls) await deleteFromS3(oldUrl);
+      newReraUrls = [url];
+    }
+
+    // 3️⃣ Build update query
+    let updateSql = `
+      UPDATE salespersons
+      SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, state = ?, city = ?, 
+          pincode = ?, experience = ?, rerano = ?, adharno = ?, panno = ?, bankname = ?, 
+          accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?
+    `;
+    const updateValues = [
+      fullname,
+      contact,
+      email.toLowerCase(),
+      intrest,
+      address,
+      state,
+      city,
+      pincode,
+      experience,
+      rerano,
+      adharno,
+      panno,
+      bankname,
+      accountholdername,
+      accountnumber,
+      ifsc,
+      currentdate,
+    ];
+
+    if (newAdharUrls.length > 0) {
+      updateSql += `, adharimage = ?`;
+      updateValues.push(JSON.stringify(newAdharUrls));
+    }
+    if (newPanUrls.length > 0) {
+      updateSql += `, panimage = ?`;
+      updateValues.push(JSON.stringify(newPanUrls));
+    }
+    if (newReraUrls.length > 0) {
+      updateSql += `, reraimage = ?`;
+      updateValues.push(JSON.stringify(newReraUrls));
+    }
+
+    updateSql += ` WHERE salespersonsid = ?`;
+    updateValues.push(salespersonsid);
+
+    // 4️⃣ Execute update
+    await new Promise((resolve, reject) =>
+      db.query(updateSql, updateValues, (err) => (err ? reject(err) : resolve()))
+    );
+
+    res.status(200).json({ message: "Sales person updated successfully" });
+  } catch (err) {
+    console.error("Error updating Sales Person:", err);
+    res.status(500).json({ message: "Server error", error: err });
+  }
 };
 
 // **Delete **

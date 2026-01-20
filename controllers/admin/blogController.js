@@ -1,6 +1,7 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 import bcrypt from "bcryptjs";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 function toSlug(text) {
   return text
@@ -112,7 +113,6 @@ export const add = async (req, res) => {
   }
 };
 // **Edit **
-
 export const edit = async (req, res) => {
   try {
     const blogId = req.params.id;

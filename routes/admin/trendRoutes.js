@@ -31,7 +31,6 @@ const upload = multer({
 router.get("/", getAll);
 router.get("/active", getAllActive);
 router.get("/:id", getById);
-
 router.post(
   "/add",
   upload.fields([
@@ -39,7 +38,6 @@ router.post(
   ]),
   add
 );
-
 router.put(
   "/edit/:id",
   upload.fields([
