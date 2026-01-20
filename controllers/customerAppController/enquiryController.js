@@ -14,7 +14,7 @@ export const add = async (req, res) => {
       .json({ message: "All fields except visitdate are required" });
   }
 
-  // 1️⃣ Fetch property category
+  //  Fetch property category
   const categorySQL = `SELECT propertyCategory FROM properties WHERE propertyid = ?`;
 
   db.query(categorySQL, [propertyid], (err, results) => {
@@ -29,7 +29,7 @@ export const add = async (req, res) => {
 
     const propertyCategory = results[0].propertyCategory;
 
-    // 2️⃣ Insert enquiry
+    //  Insert enquiry
     const insertSQL = `
       INSERT INTO enquirers (
       customerid,
@@ -64,7 +64,7 @@ export const add = async (req, res) => {
             .json({ message: "Database error", error: err });
         }
 
-        // 3️⃣ Remove from wishlist if exists
+        //  Remove from wishlist if exists
         const deleteWishlistSql = `
           DELETE FROM user_property_wishlist 
           WHERE user_id = ? AND property_id = ?

@@ -24,10 +24,10 @@ export const createSubscription = async (req, res) => {
     const { user_id, plan, payment_id, amount } = req.body;
     console.log("Request Body:", req.body);
 
-    // 1️⃣ Fetch payment details from Razorpay
+    //  Fetch payment details from Razorpay
     const payment = await razorpay.payments.fetch(payment_id);
 
-    // 2️⃣ Capture payment only if not auto-captured
+    //  Capture payment only if not auto-captured
     if (!payment.captured) {
       const captureResponse = await razorpay.payments.capture(
         payment_id,
@@ -43,7 +43,7 @@ export const createSubscription = async (req, res) => {
       }
     }
 
-    // 3️⃣ Validate plan
+    //  Validate plan
     const months = PLAN_MONTHS[plan];
     if (!months)
       return res.status(400).json({
@@ -55,7 +55,7 @@ export const createSubscription = async (req, res) => {
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + months);
 
-    // 4️⃣ Insert subscription for Project Partner
+    //  Insert subscription for Project Partner
     await db.promise().query(
       `INSERT INTO subscriptions 
        (projectpartnerid, plan, amount, start_date, end_date, payment_id, status)
@@ -63,7 +63,7 @@ export const createSubscription = async (req, res) => {
       [user_id, plan, amount, startDate, endDate, payment_id, "Active"]
     );
 
-    // 5️⃣ Update project partner table
+    //  Update project partner table
     await db.promise().query(
       `UPDATE projectpartner 
        SET paymentstatus = ?, paymentid = ?, amount = ?
@@ -71,7 +71,7 @@ export const createSubscription = async (req, res) => {
       ["Success", payment_id, amount, user_id]
     );
 
-    // 6️⃣ Trial handling
+    //  Trial handling
     if (months === 1) {
       await db.promise().query(
         `UPDATE projectpartner 

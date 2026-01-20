@@ -2,6 +2,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import fs from "fs";
 import path from "path";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 // **Fetch All **
 export const getAll = (req, res) => {
@@ -16,40 +17,60 @@ export const getAll = (req, res) => {
 };
 
 // **Add Slider Images **
-export const addImages = (req, res) => {
+export const addImages = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
   try {
-    const files = req.files; // Array of uploaded files
-    const imagePaths = files.map((file) => file.filename); // Get filenames
+    const files = req.files; // array of files from multer
 
-    // Insert each image as a separate row
-    const insertSQL = `INSERT INTO sliders (image, updated_at, created_at) 
-                         VALUES ?`;
+    if (!files || files.length === 0) {
+      return res.status(400).json({ message: "No images uploaded" });
+    }
 
-    const values = imagePaths.map((filename) => [
-      filename,
+    // 1️⃣ Upload all images to S3
+    const imageUrls = [];
+
+    for (const file of files) {
+      const url = await uploadToS3(file, "sliders"); // S3 folder: sliders
+      imageUrls.push(url);
+    }
+
+    // 2️⃣ Prepare bulk insert
+    const insertSQL = `
+      INSERT INTO sliders (image, updated_at, created_at)
+      VALUES ?
+    `;
+
+    const values = imageUrls.map((url) => [
+      url,
       currentdate,
       currentdate,
     ]);
 
-    db.query(insertSQL, [values], (err, result) => {
+    // 3️⃣ Insert into DB
+    db.query(insertSQL, [values], (err) => {
       if (err) {
-        console.error("Error inserting Images:", err);
-        return res.status(500).json({ message: "Database error", error: err });
+        console.error("Error inserting images:", err);
+        return res.status(500).json({
+          message: "Database error",
+          error: err,
+        });
       }
-      res
-        .status(200)
-        .json({ message: "Images uploaded SuccessFully", images: imagePaths });
+
+      res.status(200).json({
+        message: "Images uploaded successfully",
+        images: imageUrls,
+      });
     });
   } catch (err) {
     console.error("Upload error:", err);
-    res.status(500).json({ error: "Upload failed" });
+    res.status(500).json({ message: "Upload failed", error: err });
   }
 };
 
+
 // **Add Slider Image **
-export const addSmallScreenImage = (req, res) => {
+export const addSmallScreenImage = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const Id = parseInt(req.params.id);
 
@@ -58,23 +79,31 @@ export const addSmallScreenImage = (req, res) => {
   }
 
   try {
-    const imagePath = req.file ? req.file.filename : null;
-
-    if (!imagePath) {
+    if (!req.file) {
       return res.status(400).json({ message: "No image uploaded" });
     }
 
-    const updateSQL = `UPDATE sliders SET mobileimage = ?, updated_at = ? WHERE id = ?`;
+    // Upload to S3
+    const imageUrl = await uploadToS3(req.file, "sliders/mobile");
 
-    db.query(updateSQL, [imagePath, currentdate, Id], (err, result) => {
+    const updateSQL = `
+      UPDATE sliders 
+      SET mobileimage = ?, updated_at = ? 
+      WHERE id = ?
+    `;
+
+    db.query(updateSQL, [imageUrl, currentdate, Id], (err) => {
       if (err) {
         console.error("Error updating image:", err);
-        return res.status(500).json({ message: "Database error", error: err });
+        return res.status(500).json({
+          message: "Database error",
+          error: err,
+        });
       }
 
       res.status(200).json({
         message: "Image uploaded successfully",
-        image: imagePath,
+        image: imageUrl,
       });
     });
   } catch (err) {
@@ -82,6 +111,7 @@ export const addSmallScreenImage = (req, res) => {
     res.status(500).json({ error: "Upload failed" });
   }
 };
+
 
 // **Change Status**
 export const status = (req, res) => {
@@ -121,39 +151,49 @@ export const status = (req, res) => {
   });
 };
 
+// **Delete Slider Image **
 export const del = (req, res) => {
   const Id = parseInt(req.params.id);
-  if (isNaN(Id))
-    return res.status(400).json({ message: "Invalid Slider Image ID" });
 
-  db.query("SELECT image FROM sliders WHERE id = ?", [Id], (err, result) => {
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid Slider Image ID" });
+  }
+
+  db.query("SELECT image FROM sliders WHERE id = ?", [Id], async (err, result) => {
     if (err) {
       console.error("Database error:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
+
     if (result.length === 0) {
       return res.status(404).json({ message: "Slider Image not found" });
     }
 
-    const imagePath = result[0].image; // Get the image path from the database
-    if (imagePath) {
-      const filePath = path.join(process.cwd(), imagePath); // Full path to the file
+    const imageUrl = result[0].image;
 
-      // Delete the image file from the uploads folder
-      fs.unlink(filePath, (err) => {
-        if (err && err.code !== "ENOENT") {
-          console.error("Error deleting image:", err);
-        }
-      });
+    /* ---------- DELETE IMAGE FROM S3 ---------- */
+    try {
+      if (imageUrl) {
+        await deleteFromS3(imageUrl);
+      }
+    } catch (s3Err) {
+      console.error("S3 delete error:", s3Err);
+      // Continue DB delete even if S3 delete fails
     }
 
-    // Now delete the property from the database
+    /* ---------- DELETE RECORD FROM DB ---------- */
     db.query("DELETE FROM sliders WHERE id = ?", [Id], (err) => {
       if (err) {
         console.error("Error deleting slider image:", err);
-        return res.status(500).json({ message: "Database error", error: err });
+        return res.status(500).json({
+          message: "Database error",
+          error: err,
+        });
       }
-      res.status(200).json({ message: "Slider image deleted successfully" });
+
+      res.status(200).json({
+        message: "Slider image deleted successfully",
+      });
     });
   });
 };

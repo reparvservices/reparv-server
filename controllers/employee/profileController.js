@@ -2,12 +2,13 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 
 export const getProfile = (req, res) => {
   const Id = req.employeeUser?.id;
-  
+
   if (!Id) {
     return res.status(400).json({ message: "Unauthorized User" });
   }
@@ -25,7 +26,7 @@ export const getProfile = (req, res) => {
   });
 };
 
-export const editProfile = (req, res) => {
+export const editProfile = async (req, res) => {
   const userId = req.employeeUser?.id;
   if (!userId) {
     return res.status(400).json({ message: "Invalid User ID" });
@@ -38,51 +39,79 @@ export const editProfile = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Fetch existing user profile first
-  db.query(
-    "SELECT userimage FROM employees WHERE id = ?",
-    [userId],
-    (err, result) => {
-      if (err) {
-        console.error("Error fetching user:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
-
-      if (result.length === 0) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const existingImage = result[0].userimage;
-      const finalImagePath = req.file
-        ? `/uploads/${req.file.filename}`
-        : existingImage;
-
-      let updateSql = `UPDATE employees SET name = ?, username = ?, contact = ?, email = ?, userimage = ?, updated_at = ? WHERE id = ?`;
-      const updateValues = [
-        name,
-        username,
-        contact,
-        email,
-        finalImagePath,
-        currentdate,
-        userId,
-      ];
-
-      db.query(updateSql, updateValues, (updateErr, updateResult) => {
-        if (updateErr) {
-          console.error("Error updating profile:", updateErr);
+  try {
+    // STEP 1: Fetch existing user profile
+    db.query(
+      "SELECT userimage FROM employees WHERE id = ?",
+      [userId],
+      async (err, result) => {
+        if (err) {
+          console.error("Error fetching user:", err);
           return res
             .status(500)
-            .json({
+            .json({ message: "Database error", error: err });
+        }
+
+        if (result.length === 0) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        let existingImage = result[0].userimage;
+        let newImageUrl = existingImage;
+
+        // STEP 2: Upload new image to S3 if provided
+        if (req.file) {
+          try {
+            newImageUrl = await uploadToS3(req.file);
+
+            // Delete old image from S3 if exists
+            if (existingImage) {
+              await deleteFromS3(existingImage);
+            }
+          } catch (s3Err) {
+            console.error("S3 upload/delete error:", s3Err);
+            return res
+              .status(500)
+              .json({ message: "S3 upload/delete failed", error: s3Err });
+          }
+        }
+
+        // STEP 3: Update user profile in DB
+        const updateSql = `
+        UPDATE employees
+        SET name = ?, username = ?, contact = ?, email = ?, userimage = ?, updated_at = ?
+        WHERE id = ?
+      `;
+        const updateValues = [
+          name,
+          username,
+          contact,
+          email,
+          newImageUrl,
+          currentdate,
+          userId,
+        ];
+
+        db.query(updateSql, updateValues, (updateErr) => {
+          if (updateErr) {
+            console.error("Error updating profile:", updateErr);
+            return res.status(500).json({
               message: "Database error during update",
               error: updateErr,
             });
-        }
+          }
 
-        res.status(200).json({ message: "Profile updated successfully" });
-      });
-    }
-  );
+          res.status(200).json({
+            message: "Profile updated successfully",
+            userimage: newImageUrl,
+          });
+        });
+      },
+    );
+  } catch (error) {
+    console.error("Edit profile error:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
 };
 
 export const changePassword = async (req, res) => {
@@ -141,18 +170,16 @@ export const changePassword = async (req, res) => {
           (updateErr) => {
             if (updateErr) {
               console.error("Error updating password:", updateErr);
-              return res
-                .status(500)
-                .json({
-                  message: "Database error during update",
-                  error: updateErr,
-                });
+              return res.status(500).json({
+                message: "Database error during update",
+                error: updateErr,
+              });
             }
 
             res.status(200).json({ message: "Password changed successfully" });
-          }
+          },
         );
-      }
+      },
     );
   } catch (error) {
     console.error("Error:", error);

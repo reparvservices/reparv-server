@@ -6,6 +6,7 @@ import { verifyRazorpayPayment } from "../paymentController.js";
 import fs from "fs";
 import path from "path";
 import sendProjectPartnerChangeEmail from "../../utils/sendProjectPartnerChangeEmail.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 
@@ -329,8 +330,7 @@ export const getById = (req, res) => {
 //     });
 //   });
 // };
-
-export const add = (req, res) => {
+export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
   let {
@@ -361,14 +361,11 @@ export const add = (req, res) => {
       message: "FullName, Contact and Email Required!",
     });
   }
-  //  Convert email to lowercase
-  email = email?.toLowerCase();
 
-  // If username not passed, set null
-  if (!username || username.trim() === "") {
-    username = null;
-  }
-  // Referral generator (unchanged)
+  email = email?.toLowerCase();
+  if (!username || username.trim() === "") username = null;
+
+  // Referral generator
   const createReferralCode = () => {
     const chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*";
@@ -392,48 +389,49 @@ export const add = (req, res) => {
     );
   };
 
-  // File uploads (unchanged)
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
+  try {
+    // 1️⃣ Upload files to S3
+    let adharImageUrl = null;
+    let panImageUrl = null;
+    let reraImageUrl = null;
 
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
-    : null;
+    if (req.files?.["adharImage"]?.[0]) {
+      adharImageUrl = await uploadToS3(req.files["adharImage"][0], "documents/adhar");
+    }
+    if (req.files?.["panImage"]?.[0]) {
+      panImageUrl = await uploadToS3(req.files["panImage"][0], "documents/pan");
+    }
+    if (req.files?.["reraImage"]?.[0]) {
+      reraImageUrl = await uploadToS3(req.files["reraImage"][0], "documents/rera");
+    }
 
+    // 2️⃣ Check duplicates
+    const checkSql = `SELECT * FROM salespersons WHERE contact = ? OR email = ? OR username= ?`;
+    db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
+      if (checkErr) {
+        return res.status(500).json({
+          message: "Database error during validation",
+          error: checkErr,
+        });
+      }
 
+      if (rows.length > 0) {
+        const dup = rows[0];
+        let duplicateField = "";
+        if (dup.contact === contact) duplicateField = "Contact number already exists";
+        else if (dup.email === email) duplicateField = "Email already exists";
+        else if (dup.username === username) duplicateField = "Username already exists";
 
- const checkSql = `SELECT * FROM salespersons WHERE contact = ? OR email = ? OR username= ?`;
+        return res.status(409).json({
+          message: duplicateField,
+          field: duplicateField.includes("Contact")
+            ? "contact"
+            : duplicateField.includes("Email")
+            ? "email"
+            : "username",
+        });
+      }
 
-db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
-  if (checkErr) {
-    return res.status(500).json({
-      message: "Database error during validation",
-      error: checkErr,
-    });
-  }
-
-  if (rows.length > 0) {
-    const dup = rows[0];
-
-    let duplicateField = "";
-    if (dup.contact === contact) duplicateField = "Contact number already exists";
-    else if (dup.email === email) duplicateField = "Email already exists";
-    else if (dup.username === username) duplicateField = "Username already exists";
-
-    return res.status(409).json({
-      message: duplicateField,
-      field: duplicateField.includes("Contact")
-        ? "contact"
-        : duplicateField.includes("Email")
-        ? "email"
-        : "username",
-    });
-  }
       generateUniqueReferralCode(async (referralErr, referralCode) => {
         if (referralErr) {
           return res.status(500).json({
@@ -442,15 +440,10 @@ db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
           });
         }
 
-        // Password (ONLY WHEN password provided)
-
         let hashedPassword = null;
-
         let loginstatus = "Inactive";
-
         if (password) {
           hashedPassword = await bcrypt.hash(password, saltRounds);
-
           loginstatus = "Active";
         }
 
@@ -502,26 +495,21 @@ db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
 
             const newId = insertResult.insertId;
 
-            // --------------------------------------------------
-            // 🆕 NEW: Make status ACTIVE after creating record
-            // --------------------------------------------------
+            // Make status ACTIVE
             db.query(
               "UPDATE salespersons SET status = 'Active' WHERE salespersonsid = ?",
               [newId],
               (updateErr) => {
-                if (updateErr) {
-                  console.error("Error updating status:", updateErr);
-                }
+                if (updateErr) console.error("Error updating status:", updateErr);
               }
             );
 
-            // existing follow-up insert
+            // Insert follow-up
             const followupSql = `
             INSERT INTO partnerFollowup 
             (partnerId, role, followUp, followUpText, created_at, updated_at) 
             VALUES (?, ?, ?, ?, ?, ?)
           `;
-
             db.query(
               followupSql,
               [
@@ -554,9 +542,13 @@ db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
           }
         );
       });
-    }
-  );
+    });
+  } catch (err) {
+    console.error("Error adding Sales Person:", err);
+    return res.status(500).json({ message: "Server error", error: err });
+  }
 };
+
 
 export const edit = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");

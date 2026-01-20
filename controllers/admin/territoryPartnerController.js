@@ -6,6 +6,7 @@ import { verifyRazorpayPayment } from "../paymentController.js";
 import fs from "fs";
 import path from "path";
 import sendProjectPartnerChangeEmail from "../../utils/sendProjectPartnerChangeEmail.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 export const getAll = (req, res) => {
@@ -358,14 +359,13 @@ export const add = async (req, res) => {
     return res.status(400).json({ message: "All Fields required!" });
   }
 
-  //  Convert email to lowercase
-  email = email?.toLowerCase();
+  email = email.toLowerCase();
 
-  // If username not passed, set null
   if (!username || username.trim() === "") {
     username = null;
   }
-  // Referral code generator (same)
+
+  /* ---------- REFERRAL CODE ---------- */
   const createReferralCode = () => {
     const chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*";
@@ -389,74 +389,82 @@ export const add = async (req, res) => {
     );
   };
 
-  // Image upload (same)
-  const adharImageUrl = req.files?.["adharImage"]?.[0]
-    ? `/uploads/${req.files["adharImage"][0].filename}`
-    : null;
+  /* ---------- DUPLICATE CHECK ---------- */
+  const checkSql = `
+    SELECT contact, email, username 
+    FROM territorypartner 
+    WHERE contact = ? OR email = ? OR username = ?
+  `;
 
-  const panImageUrl = req.files?.["panImage"]?.[0]
-    ? `/uploads/${req.files["panImage"][0].filename}`
-    : null;
+  db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
+    if (checkErr) {
+      return res.status(500).json({
+        message: "Database error during validation",
+        error: checkErr,
+      });
+    }
 
-  const reraImageUrl = req.files?.["reraImage"]?.[0]
-    ? `/uploads/${req.files["reraImage"][0].filename}`
-    : null;
+    if (rows.length > 0) {
+      const dup = rows[0];
+      let duplicateField = "";
 
-  // Duplicate check (same)
-const checkSql = `
-  SELECT contact, email, username 
-  FROM territorypartner 
-  WHERE contact = ? OR email = ? OR username = ?
-`;
+      if (dup.contact === contact) duplicateField = "Contact number already exists";
+      else if (dup.email === email) duplicateField = "Email already exists";
+      else if (dup.username === username) duplicateField = "Username already exists";
 
-db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
-  if (checkErr) {
-    return res.status(500).json({
-      message: "Database error during validation",
-      error: checkErr,
-    });
-  }
+      return res.status(409).json({
+        message: duplicateField,
+        field: duplicateField.includes("Contact")
+          ? "contact"
+          : duplicateField.includes("Email")
+          ? "email"
+          : "username",
+      });
+    }
 
-  if (rows.length > 0) {
-    const dup = rows[0];
+    /* ---------- S3 IMAGE UPLOAD ---------- */
+    let adharImageUrl = null;
+    let panImageUrl = null;
+    let reraImageUrl = null;
 
-    let duplicateField = "";
-    if (dup.contact === contact) duplicateField = "Contact number already exists";
-    else if (dup.email === email) duplicateField = "Email already exists";
-    else if (dup.username === username) duplicateField = "Username already exists";
+    try {
+      if (req.files?.adharImage?.[0]) {
+        adharImageUrl = await uploadToS3(req.files.adharImage[0]);
+      }
 
-    return res.status(409).json({
-      message: duplicateField,
-      field: duplicateField.includes("Contact")
-        ? "contact"
-        : duplicateField.includes("Email")
-        ? "email"
-        : "username",
-    });
-  }
+      if (req.files?.panImage?.[0]) {
+        panImageUrl = await uploadToS3(req.files.panImage[0]);
+      }
 
+      if (req.files?.reraImage?.[0]) {
+        reraImageUrl = await uploadToS3(req.files.reraImage[0]);
+      }
+    } catch (uploadErr) {
+      return res.status(500).json({
+        message: "Image upload failed",
+        error: uploadErr,
+      });
+    }
 
-      generateUniqueReferralCode(async (referralErr, referralCode) => {
-        if (referralErr) {
-          return res.status(500).json({
-            message: "Referral code generation failed",
-            error: referralErr,
-          });
-        }
+    /* ---------- REFERRAL + LOGIN ---------- */
+    generateUniqueReferralCode(async (referralErr, referralCode) => {
+      if (referralErr) {
+        return res.status(500).json({
+          message: "Referral code generation failed",
+          error: referralErr,
+        });
+      }
 
-        // ---------------------------------------
-        // 🔐 NEW : handle login if password exists
-        // ---------------------------------------
-        let hashedPassword = null;
-        let loginstatus = "Inactive";
-        if (password) {
-          hashedPassword = await bcrypt.hash(password, 10);
+      let hashedPassword = null;
+      let loginstatus = "Inactive";
 
-          loginstatus = "Active"; // active login user
-        }
-        // ---------------------------------------
+      if (password) {
+        hashedPassword = await bcrypt.hash(password, 10);
+        loginstatus = "Active";
+      }
 
-        const insertSql = `
+      /* ---------- INSERT ---------- */
+      const insertSql = `
         INSERT INTO territorypartner
         (projectpartnerid, fullname, contact, email, intrest, refrence, referral,
         address, state, city, pincode, experience, adharno, panno, rerano,
@@ -467,118 +475,110 @@ db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
-        db.query(
-          insertSql,
-          [
-            projectpartnerid || null,
-            fullname,
-            contact,
-            email,
-            intrest,
-            refrence,
-            referralCode,
-            address,
-            state,
-            city,
-            pincode,
-            experience,
-            adharno,
-            panno,
-            rerano,
-            bankname,
-            accountholdername,
-            accountnumber,
-            ifsc,
-            adharImageUrl,
-            panImageUrl,
-            reraImageUrl,
-            username,
-            hashedPassword,
-            loginstatus,
-            currentdate,
-            currentdate,
-          ],
-          async (insertErr, insertResult) => {
-            if (insertErr) {
-              console.log(insertErr);
+      db.query(
+        insertSql,
+        [
+          projectpartnerid || null,
+          fullname,
+          contact,
+          email,
+          intrest,
+          refrence,
+          referralCode,
+          address,
+          state,
+          city,
+          pincode,
+          experience,
+          adharno,
+          panno,
+          rerano,
+          bankname,
+          accountholdername,
+          accountnumber,
+          ifsc,
+          adharImageUrl,
+          panImageUrl,
+          reraImageUrl,
+          username,
+          hashedPassword,
+          loginstatus,
+          currentdate,
+          currentdate,
+        ],
+        async (insertErr, insertResult) => {
+          if (insertErr) {
+            return res.status(500).json({
+              message: "Database error during insertion",
+              error: insertErr,
+            });
+          }
 
-              return res.status(500).json({
-                message: "Database error during insertion",
-                error: insertErr,
-              });
-            }
+          const partnerId = insertResult.insertId;
 
-            const partnerId = insertResult.insertId;
+          /* ---------- STATUS ACTIVE ---------- */
+          db.query(
+            "UPDATE territorypartner SET status = 'Active' WHERE id = ?",
+            [partnerId]
+          );
 
-            // --------------------------------------------------
-            // 🆕 NEW: Make status ACTIVE after creating record
-            // --------------------------------------------------
-            db.query(
-              "UPDATE territorypartner SET status = 'Active' WHERE id = ?",
-              [partnerId],
-              (updateErr) => {
-                if (updateErr) {
-                  console.error("Error updating status:", updateErr);
-                }
-              }
-            );
-            // Follow-up insert (same)
-            const followupSql = `
+          /* ---------- FOLLOWUP ---------- */
+          const followupSql = `
             INSERT INTO partnerFollowup 
             (partnerId, role, followUp, followUpText, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
           `;
 
-            db.query(
-              followupSql,
-              [
-                partnerId,
-                "Territory Partner",
-                "New",
-                "Newly Added Territory Partner",
-                currentdate,
-                currentdate,
-              ],
-              async (followupErr) => {
-                if (followupErr) {
-                  return res.status(500).json({
-                    message: "Follow-up insert failed",
-                    error: followupErr,
-                  });
-                }
-
-                // Send email (only if login assigned)
-                if (password) {
-                  await sendEmail(
-                    email,
-                    username,
-                    password,
-                    "Territory Partner",
-                    "https://territory.reparv.in"
-                  );
-                }
-
-                return res.status(201).json({
-                  message: password
-                    ? "Territory Partner added & login assigned"
-                    : "Territory Partner added successfully",
-                  Id: partnerId,
+          db.query(
+            followupSql,
+            [
+              partnerId,
+              "Territory Partner",
+              "New",
+              "Newly Added Territory Partner",
+              currentdate,
+              currentdate,
+            ],
+            async (followupErr) => {
+              if (followupErr) {
+                return res.status(500).json({
+                  message: "Follow-up insert failed",
+                  error: followupErr,
                 });
               }
-            );
-          }
-        );
-      });
-    }
-  );
+
+              if (password) {
+                await sendEmail(
+                  email,
+                  username,
+                  password,
+                  "Territory Partner",
+                  "https://territory.reparv.in"
+                );
+              }
+
+              return res.status(201).json({
+                message: password
+                  ? "Territory Partner added & login assigned"
+                  : "Territory Partner added successfully",
+                Id: partnerId,
+              });
+            }
+          );
+        }
+      );
+    });
+  });
 };
-export const edit = (req, res) => {
+
+export const edit = async (req, res) => {
   const partnerid = parseInt(req.params.id);
   if (isNaN(partnerid)) {
     return res.status(400).json({ message: "Invalid Partner ID" });
   }
 
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
   const {
     fullname,
     contact,
@@ -602,29 +602,16 @@ export const edit = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Handle uploaded files (single file each)
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
-
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
-    : null;
-
-  // STEP 1: Fetch old images
+  /* ---------- FETCH OLD DATA ---------- */
   db.query(
     "SELECT adharimage, panimage, reraimage FROM territorypartner WHERE id = ?",
     [partnerid],
-    (selectErr, results) => {
+    async (selectErr, results) => {
       if (selectErr) {
-        console.error("Error fetching old images:", selectErr);
-        return res
-          .status(500)
-          .json({ message: "Database error while fetching old images" });
+        return res.status(500).json({
+          message: "Database error while fetching old data",
+          error: selectErr,
+        });
       }
 
       if (results.length === 0) {
@@ -633,26 +620,56 @@ export const edit = (req, res) => {
 
       const oldData = results[0];
 
-      // Helper to delete old file
-      const deleteOldFile = (filePath) => {
-        try {
-          if (filePath) {
-            const absPath = path.join(process.cwd(), "public", filePath);
-            if (fs.existsSync(absPath)) {
-              fs.unlinkSync(absPath);
-            }
-          }
-        } catch (err) {
-          console.error("Error deleting file:", err);
-        }
-      };
+      /* ---------- S3 UPLOAD (IF NEW FILES) ---------- */
+      let adharImageUrl = oldData.adharimage;
+      let panImageUrl = oldData.panimage;
+      let reraImageUrl = oldData.reraimage;
 
-      // STEP 2: Prepare SQL
-      let updateSql = `UPDATE territorypartner 
-        SET fullname = ?, contact = ?, email = ?, intrest = ?,
-        address = ?, state = ?, city = ?, pincode = ?, experience = ?, 
-        adharno = ?, panno = ?, rerano = ?, bankname = ?, 
-        accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?`;
+      try {
+        if (req.files?.adharImage?.[0]) {
+          adharImageUrl = await uploadToS3(req.files.adharImage[0]);
+        }
+
+        if (req.files?.panImage?.[0]) {
+          panImageUrl = await uploadToS3(req.files.panImage[0]);
+        }
+
+        if (req.files?.reraImage?.[0]) {
+          reraImageUrl = await uploadToS3(req.files.reraImage[0]);
+        }
+      } catch (uploadErr) {
+        return res.status(500).json({
+          message: "Image upload failed",
+          error: uploadErr,
+        });
+      }
+
+      /* ---------- UPDATE QUERY ---------- */
+      const updateSql = `
+        UPDATE territorypartner SET
+          fullname = ?,
+          contact = ?,
+          email = ?,
+          intrest = ?,
+          address = ?,
+          state = ?,
+          city = ?,
+          pincode = ?,
+          experience = ?,
+          adharno = ?,
+          panno = ?,
+          rerano = ?,
+          bankname = ?,
+          accountholdername = ?,
+          accountnumber = ?,
+          ifsc = ?,
+          adharimage = ?,
+          panimage = ?,
+          reraimage = ?,
+          updated_at = ?
+        WHERE id = ?
+      `;
+
       const updateValues = [
         fullname,
         contact,
@@ -670,48 +687,30 @@ export const edit = (req, res) => {
         accountholdername,
         accountnumber,
         ifsc,
+        adharImageUrl,
+        panImageUrl,
+        reraImageUrl,
         currentdate,
+        partnerid,
       ];
 
-      // Replace old files only if new ones uploaded
-      if (adharImageUrl) {
-        updateSql += `, adharimage = ?`;
-        updateValues.push(adharImageUrl);
-        deleteOldFile(oldData?.adharimage);
-      }
-
-      if (panImageUrl) {
-        updateSql += `, panimage = ?`;
-        updateValues.push(panImageUrl);
-        deleteOldFile(oldData?.panimage);
-      }
-
-      if (reraImageUrl) {
-        updateSql += `, reraimage = ?`;
-        updateValues.push(reraImageUrl);
-        deleteOldFile(oldData?.reraimage);
-      }
-
-      updateSql += ` WHERE id = ?`;
-      updateValues.push(partnerid);
-
-      // STEP 3: Update DB
+      /* ---------- EXECUTE UPDATE ---------- */
       db.query(updateSql, updateValues, (updateErr) => {
         if (updateErr) {
-          console.error("Error updating Territory Partner:", updateErr);
           return res.status(500).json({
             message: "Database error during update",
             error: updateErr,
           });
         }
 
-        res
+        return res
           .status(200)
           .json({ message: "Territory Partner updated successfully" });
       });
     }
   );
 };
+
 
 // **Delete **
 export const del = (req, res) => {

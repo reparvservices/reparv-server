@@ -2,21 +2,21 @@ import axios from "axios";
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 import { sanitize } from "../../utils/sanitize.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 // * Fetch All Enquiries with Enquiry Lister Details
 export const getAll = (req, res) => {
   const projectPartnerId = req.employeeUser?.projectpartnerid;
   if (!projectPartnerId) {
     return res.status(401).json({
-      message: "Unauthorized Access — Employee is not linked to any Project Partner.",
+      message:
+        "Unauthorized Access — Employee is not linked to any Project Partner.",
     });
   }
 
   const enquirySource = req.params.source;
   if (!enquirySource) {
-    return res
-      .status(401)
-      .json({ message: "Enquiry Source Not Selected" });
+    return res.status(401).json({ message: "Enquiry Source Not Selected" });
   }
 
   let sql;
@@ -40,8 +40,8 @@ export const getAll = (req, res) => {
         AND properties.projectpartnerid = ?
       ORDER BY enquirers.enquirersid DESC`;
     params = [projectPartnerId];
-  } 
-  
+  }
+
   // Direct Enquiries (with Lister Info)
   else if (enquirySource === "Direct") {
     sql = `
@@ -90,8 +90,8 @@ export const getAll = (req, res) => {
         AND (enquirers.projectpartnerid = ? OR enquirers.projectbroker = ? OR enquirers.projectpartner = ?)
       ORDER BY enquirers.enquirersid DESC`;
     params = [projectPartnerId, projectPartnerId, projectPartnerId];
-  } 
-  
+  }
+
   // CSV Imported Enquiries
   else if (enquirySource === "CSV") {
     sql = `
@@ -111,8 +111,8 @@ export const getAll = (req, res) => {
         AND (properties.projectpartnerid = ? OR enquirers.projectbroker = ?)
       ORDER BY enquirers.enquirersid DESC`;
     params = [projectPartnerId, projectPartnerId, projectPartnerId];
-  } 
-  
+  }
+
   // Digital Broker Enquiries (Now Includes Enquiry Lister)
   else if (enquirySource === "Digital Broker") {
     sql = `
@@ -165,8 +165,8 @@ export const getAll = (req, res) => {
         )
       ORDER BY enquirers.enquirersid DESC`;
     params = [projectPartnerId];
-  } 
-  
+  }
+
   // Default (All Enquiries)
   else {
     sql = `
@@ -237,7 +237,8 @@ export const getProperties = (req, res) => {
   const projectPartnerId = req.employeeUser?.projectpartnerid;
   if (!projectPartnerId) {
     return res.status(401).json({
-      message: "Unauthorized Access — Employee is not linked to any Project Partner.",
+      message:
+        "Unauthorized Access — Employee is not linked to any Project Partner.",
     });
   }
 
@@ -292,7 +293,7 @@ export const getProperties = (req, res) => {
         message: "Properties fetched successfully.",
         data: propertyResults,
       });
-    }
+    },
   );
 };
 
@@ -300,7 +301,8 @@ export const getPropertyList = (req, res) => {
   const projectPartnerId = req.employeeUser?.projectpartnerid;
   if (!projectPartnerId) {
     return res.status(401).json({
-      message: "Unauthorized Access — Employee is not linked to any Project Partner.",
+      message:
+        "Unauthorized Access — Employee is not linked to any Project Partner.",
     });
   }
   const enquiryId = req.params.id;
@@ -347,7 +349,7 @@ export const getPropertyList = (req, res) => {
         }
 
         res.json(propertyResults);
-      }
+      },
     );
   });
 };
@@ -365,8 +367,8 @@ export const getRemarkList = (req, res) => {
     const formatted = result.map((row) => ({
       ...row,
       visitdate: row.visitdate
-          ? moment(row.visitdate).format("DD MMM YYYY")
-          : null,
+        ? moment(row.visitdate).format("DD MMM YYYY")
+        : null,
     }));
 
     res.json(formatted);
@@ -408,12 +410,11 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
-
 
 export const assignEnquiry = async (req, res) => {
   const { salespersonid, salesperson, salespersoncontact } = req.body;
@@ -489,9 +490,9 @@ export const assignEnquiry = async (req, res) => {
               contact: salespersoncontact,
             },
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -531,9 +532,9 @@ export const updateEnquirerProperty = async (req, res) => {
           res.status(200).json({
             message: "Enquirer Property Updated Successfully",
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -566,7 +567,7 @@ export const del = (req, res) => {
         }
         res.status(200).json({ message: "Enquiry deleted successfully" });
       });
-    }
+    },
   );
 };
 
@@ -619,136 +620,157 @@ export const visitScheduled = (req, res) => {
             message: "Visit added successfully",
             Id: insertResult.insertId,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
-export const token = (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { paymenttype, tokenamount, remark, dealamount, enquiryStatus } =
-    req.body;
-  const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+export const token = async (req, res) => {
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const { paymenttype, tokenamount, remark, dealamount, enquiryStatus } =
+      req.body;
 
-  if (
-    !paymenttype ||
-    !tokenamount ||
-    !remark ||
-    !dealamount ||
-    !enquiryStatus
-  ) {
-    return res.status(400).json({ message: "Please add all required fields!" });
-  }
-
-  const Id = parseInt(req.params.id);
-  if (isNaN(Id)) {
-    return res.status(400).json({ message: "Invalid Enquiry ID" });
-  }
-
-  // Step 1: Get Enquirer (to access propertyid)
-  db.query(
-    "SELECT * FROM enquirers WHERE enquirersid = ?",
-    [Id],
-    (err, enquirerResult) => {
-      if (err)
-        return res.status(500).json({ message: "Database error", error: err });
-      if (enquirerResult.length === 0)
-        return res.status(404).json({ message: "Enquirer not found" });
-
-      const enquirer = enquirerResult[0];
-      const propertyId = enquirer.propertyid;
-
-      // Step 2: Get Property data
-      db.query(
-        "SELECT commissionType, commissionAmount, commissionPercentage FROM properties WHERE propertyid = ?",
-        [propertyId],
-        (err, propertyResult) => {
-          if (err)
-            return res
-              .status(500)
-              .json({ message: "Property fetch error", error: err });
-          if (propertyResult.length === 0)
-            return res.status(404).json({ message: "Property not found" });
-
-          const property = propertyResult[0];
-          let { commissionType, commissionAmount, commissionPercentage } =
-            property;
-
-          commissionType = commissionType || "";
-          commissionPercentage = Number(commissionPercentage) || 0;
-          let finalCommissionAmount = Number(commissionAmount) || 0;
-
-          // If type is percentage, calculate commissionAmount from dealamount
-          if (commissionType.toLowerCase() === "percentage") {
-            finalCommissionAmount =
-              (Number(dealamount) * commissionPercentage) / 100;
-          }
-
-          // Split commission
-          const reparvCommission = (finalCommissionAmount * 40) / 100;
-
-          const grossSalesCommission = (finalCommissionAmount * 40) / 100;
-          const salesCommission =
-            grossSalesCommission - (grossSalesCommission * 2) / 100;
-
-          const grossTerritoryCommission = (finalCommissionAmount * 20) / 100;
-          const territoryCommission =
-            grossTerritoryCommission - (grossTerritoryCommission * 2) / 100;
-
-          const TDS =
-            (grossSalesCommission * 2) / 100 +
-            (grossTerritoryCommission * 2) / 100;
-
-          // Step 3: Insert into propertyfollowup
-          const insertSQL = `
-          INSERT INTO propertyfollowup (
-            enquirerid, paymenttype, tokenamount, remark, dealamount, status, 
-            totalcommission, reparvcommission, salescommission, territorycommission, tds, paymentimage,
-            updated_at, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-
-          db.query(
-            insertSQL,
-            [
-              Id,
-              paymenttype,
-              tokenamount,
-              remark,
-              dealamount,
-              enquiryStatus,
-              finalCommissionAmount,
-              reparvCommission,
-              salesCommission,
-              territoryCommission,
-              TDS,
-              imagePath,
-              currentdate,
-              currentdate,
-            ],
-            (err, insertResult) => {
-              if (err)
-                return res
-                  .status(500)
-                  .json({ message: "Insert error", error: err });
-
-              res.status(201).json({
-                message: "Token added successfully",
-                followupId: insertResult.insertId,
-                commissionBreakdown: {
-                  totalCommission: finalCommissionAmount,
-                  salesCommission,
-                  reparvCommission,
-                  territoryCommission,
-                },
-              });
-            }
-          );
-        }
-      );
+    if (
+      !paymenttype ||
+      !tokenamount ||
+      !remark ||
+      !dealamount ||
+      !enquiryStatus
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Please add all required fields!" });
     }
-  );
+
+    const Id = parseInt(req.params.id);
+    if (isNaN(Id)) {
+      return res.status(400).json({ message: "Invalid Enquiry ID" });
+    }
+
+    // STEP 1: Upload payment image to S3 if provided
+    let paymentImageUrl = null;
+    if (req.file) {
+      try {
+        paymentImageUrl = await uploadToS3(req.file);
+      } catch (s3Err) {
+        console.error("S3 upload error:", s3Err);
+        return res
+          .status(500)
+          .json({ message: "S3 upload failed", error: s3Err });
+      }
+    }
+
+    // STEP 2: Get Enquirer (to access propertyid)
+    db.query(
+      "SELECT * FROM enquirers WHERE enquirersid = ?",
+      [Id],
+      (err, enquirerResult) => {
+        if (err)
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        if (enquirerResult.length === 0)
+          return res.status(404).json({ message: "Enquirer not found" });
+
+        const enquirer = enquirerResult[0];
+        const propertyId = enquirer.propertyid;
+
+        // STEP 3: Get Property data
+        db.query(
+          "SELECT commissionType, commissionAmount, commissionPercentage FROM properties WHERE propertyid = ?",
+          [propertyId],
+          (err, propertyResult) => {
+            if (err)
+              return res
+                .status(500)
+                .json({ message: "Property fetch error", error: err });
+            if (propertyResult.length === 0)
+              return res.status(404).json({ message: "Property not found" });
+
+            const property = propertyResult[0];
+            let { commissionType, commissionAmount, commissionPercentage } =
+              property;
+
+            commissionType = commissionType || "";
+            commissionPercentage = Number(commissionPercentage) || 0;
+            let finalCommissionAmount = Number(commissionAmount) || 0;
+
+            // If type is percentage, calculate commissionAmount from dealamount
+            if (commissionType.toLowerCase() === "percentage") {
+              finalCommissionAmount =
+                (Number(dealamount) * commissionPercentage) / 100;
+            }
+
+            // Split commission
+            const reparvCommission = (finalCommissionAmount * 40) / 100;
+            const grossSalesCommission = (finalCommissionAmount * 40) / 100;
+            const salesCommission =
+              grossSalesCommission - (grossSalesCommission * 2) / 100;
+
+            const grossTerritoryCommission = (finalCommissionAmount * 20) / 100;
+            const territoryCommission =
+              grossTerritoryCommission - (grossTerritoryCommission * 2) / 100;
+
+            const TDS =
+              (grossSalesCommission * 2) / 100 +
+              (grossTerritoryCommission * 2) / 100;
+
+            // STEP 4: Insert into propertyfollowup
+            const insertSQL = `
+              INSERT INTO propertyfollowup (
+                enquirerid, paymenttype, tokenamount, remark, dealamount, status, 
+                totalcommission, reparvcommission, salescommission, territorycommission, tds, paymentimage,
+                updated_at, created_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+
+            db.query(
+              insertSQL,
+              [
+                Id,
+                paymenttype,
+                tokenamount,
+                remark,
+                dealamount,
+                enquiryStatus,
+                finalCommissionAmount,
+                reparvCommission,
+                salesCommission,
+                territoryCommission,
+                TDS,
+                paymentImageUrl, // <-- Use S3 URL
+                currentdate,
+                currentdate,
+              ],
+              (err, insertResult) => {
+                if (err)
+                  return res
+                    .status(500)
+                    .json({ message: "Insert error", error: err });
+
+                res.status(201).json({
+                  message: "Token added successfully",
+                  followupId: insertResult.insertId,
+                  commissionBreakdown: {
+                    totalCommission: finalCommissionAmount,
+                    salesCommission,
+                    reparvCommission,
+                    territoryCommission,
+                  },
+                  paymentImage: paymentImageUrl, // return S3 URL
+                });
+              },
+            );
+          },
+        );
+      },
+    );
+  } catch (error) {
+    console.error("Token error:", error);
+    return res.status(500).json({ message: "Internal server error", error });
+  }
 };
 
 export const followUp = (req, res) => {
@@ -815,9 +837,9 @@ export const followUp = (req, res) => {
             message: "Follow Up remark added successfully",
             Id: insertResult.insertId,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -866,9 +888,9 @@ export const cancelled = (req, res) => {
             message: "Remark added successfully",
             Id: insertResult.insertId,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -877,7 +899,8 @@ export const toDigitalBroker = (req, res) => {
   const projectPartnerId = req.employeeUser?.projectpartnerid;
   if (!projectPartnerId) {
     return res.status(401).json({
-      message: "Unauthorized Access — Employee is not linked to any Project Partner.",
+      message:
+        "Unauthorized Access — Employee is not linked to any Project Partner.",
     });
   }
 
@@ -887,31 +910,41 @@ export const toDigitalBroker = (req, res) => {
   }
 
   // First, check if the enquiry exists
-  db.query("SELECT * FROM enquirers WHERE enquirersid = ?", [Id], (err, result) => {
-    if (err) {
-      console.error("Database error:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
+  db.query(
+    "SELECT * FROM enquirers WHERE enquirersid = ?",
+    [Id],
+    (err, result) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
 
-    if (result.length === 0) {
-      return res.status(404).json({ message: "Enquiry not found" });
-    }
+      if (result.length === 0) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
 
-    // Then, update the enquiry
-    const updateSql = `
+      // Then, update the enquiry
+      const updateSql = `
       UPDATE enquirers 
       SET salespersonid = NULL, territorypartnerid = NULL, projectpartnerid = NULL, 
           projectbroker = ? 
       WHERE enquirersid = ?
     `;
 
-    db.query(updateSql, [projectPartnerId, Id], (err, updateResult) => {
-      if (err) {
-        console.error("Error Converting Enquiry into Digital Broker:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
+      db.query(updateSql, [projectPartnerId, Id], (err, updateResult) => {
+        if (err) {
+          console.error("Error Converting Enquiry into Digital Broker:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
 
-      res.status(200).json({ message: "Enquiry convert into digital broker successfully" });
-    });
-  });
+        res
+          .status(200)
+          .json({
+            message: "Enquiry convert into digital broker successfully",
+          });
+      });
+    },
+  );
 };

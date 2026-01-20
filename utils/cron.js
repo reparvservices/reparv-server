@@ -606,7 +606,7 @@ const queryAsync = (sql, params = []) => {
 // Team Reparv`
 //         );
 
-//         // 4️⃣ Mark as notified
+//         //  Mark as notified
 //         await queryAsync(
 //           ⁠ UPDATE subscriptions SET notified_7days = 1 WHERE id = ? ⁠,
 //           [sub.id]

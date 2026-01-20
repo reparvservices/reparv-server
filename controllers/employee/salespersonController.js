@@ -2,12 +2,14 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import fs from "fs";
 import path from "path";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 export const getAll = (req, res) => {
   const projectPartnerId = req.employeeUser?.projectpartnerid;
   if (!projectPartnerId) {
     return res.status(401).json({
-      message: "Unauthorized Access — Employee is not linked to any Project Partner.",
+      message:
+        "Unauthorized Access — Employee is not linked to any Project Partner.",
     });
   }
   const sql = `
@@ -53,7 +55,8 @@ export const getAllActive = (req, res) => {
   const projectPartnerId = req.employeeUser?.projectpartnerid;
   if (!projectPartnerId) {
     return res.status(401).json({
-      message: "Unauthorized Access — Employee is not linked to any Project Partner.",
+      message:
+        "Unauthorized Access — Employee is not linked to any Project Partner.",
     });
   }
   const sql =
@@ -67,12 +70,13 @@ export const getAllActive = (req, res) => {
   });
 };
 
-// **Add New Sales Person **
+// --- ADD NEW SALES PERSON ---
 export const add = (req, res) => {
   const projectPartnerId = req.employeeUser?.projectpartnerid;
   if (!projectPartnerId) {
     return res.status(401).json({
-      message: "Unauthorized Access — Employee is not linked to any Project Partner.",
+      message:
+        "Unauthorized Access — Employee is not linked to any Project Partner.",
     });
   }
 
@@ -97,14 +101,12 @@ export const add = (req, res) => {
     ifsc,
   } = req.body;
 
-  // Validate required fields
   if (!fullname || !contact || !email || !intrest) {
     return res.status(400).json({
       message: "FullName, Contact and Email Required!",
     });
   }
 
-  // Function to generate referral code
   const createReferralCode = () => {
     const chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*";
@@ -112,10 +114,9 @@ export const add = (req, res) => {
     for (let i = 0; i < 6; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    return "REF-" + code; // Total 10 characters
+    return "REF-" + code;
   };
 
-  // Check if referral is unique
   const generateUniqueReferralCode = (callback) => {
     const code = createReferralCode();
     db.query(
@@ -125,134 +126,140 @@ export const add = (req, res) => {
         if (err) return callback(err, null);
         if (results.length > 0) return generateUniqueReferralCode(callback);
         return callback(null, code);
-      }
+      },
     );
   };
 
-  // Handle uploaded files safely
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
+  // --- Upload files to S3 ---
+  const uploadFilesToS3 = async () => {
+    const adharImageFile = req.files?.["adharImage"]?.[0];
+    const panImageFile = req.files?.["panImage"]?.[0];
+    const reraImageFile = req.files?.["reraImage"]?.[0];
 
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
-    : null;
+    const adharImageUrl = adharImageFile
+      ? await uploadToS3(adharImageFile)
+      : null;
+    const panImageUrl = panImageFile ? await uploadToS3(panImageFile) : null;
+    const reraImageUrl = reraImageFile ? await uploadToS3(reraImageFile) : null;
 
-  // Check for duplicates
-  const checkSql = `SELECT * FROM salespersons WHERE contact = ? OR email = ?`;
+    return { adharImageUrl, panImageUrl, reraImageUrl };
+  };
 
-  db.query(checkSql, [contact, email], (checkErr, checkResult) => {
-    if (checkErr) {
-      console.error("Error checking existing salespersons:", checkErr);
-      return res.status(500).json({
-        message: "Database error during validation",
-        error: checkErr,
-      });
-    }
+  db.query(
+    "SELECT * FROM salespersons WHERE contact = ? OR email = ?",
+    [contact, email],
+    async (checkErr, checkResult) => {
+      if (checkErr)
+        return res
+          .status(500)
+          .json({
+            message: "Database error during validation",
+            error: checkErr,
+          });
 
-    if (checkResult.length > 0) {
-      return res.status(409).json({
-        message: "Sales person already exists with this Contact or Email Id.",
-      });
-    }
-
-    // Generate unique referral code
-    generateUniqueReferralCode((referralErr, referralCode) => {
-      if (referralErr) {
-        console.error("Referral code generation failed:", referralErr);
-        return res.status(500).json({
-          message: "Error generating referral code",
-          error: referralErr,
+      if (checkResult.length > 0)
+        return res.status(409).json({
+          message: "Sales person already exists with this Contact or Email Id.",
         });
-      }
 
-      // Insert new salespersons
-      const insertSql = `
-        INSERT INTO salespersons 
-        (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, rerano, adharno, panno, 
-         bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
-      `;
+      try {
+        const { adharImageUrl, panImageUrl, reraImageUrl } =
+          await uploadFilesToS3();
 
-      db.query(
-        insertSql,
-        [
-          projectPartnerId,
-          fullname,
-          contact,
-          email,
-          intrest,
-          refrence,
-          referralCode,
-          address,
-          state,
-          city,
-          pincode,
-          experience,
-          rerano,
-          adharno,
-          panno,
-          bankname,
-          accountholdername,
-          accountnumber,
-          ifsc,
-          adharImageUrl,
-          panImageUrl,
-          reraImageUrl,
-          currentdate,
-          currentdate,
-        ],
-        (insertErr, insertResult) => {
-          if (insertErr) {
-            console.error("Error inserting Sales Person:", insertErr);
-            return res.status(500).json({
-              message: "Database error",
-              error: insertErr,
-            });
-          }
+        generateUniqueReferralCode((referralErr, referralCode) => {
+          if (referralErr)
+            return res
+              .status(500)
+              .json({
+                message: "Error generating referral code",
+                error: referralErr,
+              });
 
-          // Insert default follow-up entry
-          const followupSql = `
-            INSERT INTO partnerFollowup 
-            (partnerId, role, followUp, followUpText, created_at, updated_at) 
-            VALUES (?, ?, ?, ?, ?, ?)
+          const insertSql = `
+            INSERT INTO salespersons 
+            (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, rerano, adharno, panno, 
+             bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `;
 
           db.query(
-            followupSql,
+            insertSql,
             [
-              insertResult.insertId,
-              "Sales Person",
-              "New",
-              "Newly Added Sales Person",
+              projectPartnerId,
+              fullname,
+              contact,
+              email,
+              intrest,
+              refrence,
+              referralCode,
+              address,
+              state,
+              city,
+              pincode,
+              experience,
+              rerano,
+              adharno,
+              panno,
+              bankname,
+              accountholdername,
+              accountnumber,
+              ifsc,
+              adharImageUrl,
+              panImageUrl,
+              reraImageUrl,
               currentdate,
               currentdate,
             ],
-            (followupErr) => {
-              if (followupErr) {
-                console.error("Error adding follow-up:", followupErr);
-                return res.status(500).json({
-                  message: "Follow-up insert failed",
-                  error: followupErr,
-                });
-              }
+            (insertErr, insertResult) => {
+              if (insertErr)
+                return res
+                  .status(500)
+                  .json({ message: "Database error", error: insertErr });
 
-              return res.status(201).json({
-                message: "Sales Person added successfully",
-                Id: insertResult.insertId,
-              });
-            }
+              const followupSql = `
+                INSERT INTO partnerFollowup 
+                (partnerId, role, followUp, followUpText, created_at, updated_at) 
+                VALUES (?, ?, ?, ?, ?, ?)
+              `;
+              db.query(
+                followupSql,
+                [
+                  insertResult.insertId,
+                  "Sales Person",
+                  "New",
+                  "Newly Added Sales Person",
+                  currentdate,
+                  currentdate,
+                ],
+                (followupErr) => {
+                  if (followupErr)
+                    return res
+                      .status(500)
+                      .json({
+                        message: "Follow-up insert failed",
+                        error: followupErr,
+                      });
+
+                  return res.status(201).json({
+                    message: "Sales Person added successfully",
+                    Id: insertResult.insertId,
+                  });
+                },
+              );
+            },
           );
-        }
-      );
-    });
-  });
+        });
+      } catch (err) {
+        console.error("Error uploading files to S3:", err);
+        return res
+          .status(500)
+          .json({ message: "File upload failed", error: err });
+      }
+    },
+  );
 };
 
+// --- EDIT SALES PERSON ---
 export const edit = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const {
@@ -283,109 +290,114 @@ export const edit = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Handle new uploaded files
-  const adharImageFiles = req.files?.["adharImage"] || [];
-  const panImageFiles = req.files?.["panImage"] || [];
-  const reraImageFiles = req.files?.["reraImage"] || [];
+  // --- Upload new files to S3 ---
+  const uploadNewFilesToS3 = async () => {
+    const adharImageFiles = req.files?.["adharImage"] || [];
+    const panImageFiles = req.files?.["panImage"] || [];
+    const reraImageFiles = req.files?.["reraImage"] || [];
 
-  const adharImageUrls = adharImageFiles.map(
-    (file) => `/uploads/${file.filename}`
-  );
-  const panImageUrls = panImageFiles.map((file) => `/uploads/${file.filename}`);
-  const reraImageUrls = reraImageFiles.map(
-    (file) => `/uploads/${file.filename}`
-  );
+    const adharImageUrls = [];
+    const panImageUrls = [];
+    const reraImageUrls = [];
 
-  // STEP 1: Get old images
+    for (const file of adharImageFiles)
+      adharImageUrls.push(await uploadToS3(file));
+    for (const file of panImageFiles) panImageUrls.push(await uploadToS3(file));
+    for (const file of reraImageFiles)
+      reraImageUrls.push(await uploadToS3(file));
+
+    return { adharImageUrls, panImageUrls, reraImageUrls };
+  };
+
   db.query(
     "SELECT adharimage, panimage, reraimage FROM salespersons WHERE salespersonsid = ?",
     [salespersonsid],
-    (selectErr, results) => {
-      if (selectErr) {
-        console.error("Error fetching old images:", selectErr);
+    async (selectErr, results) => {
+      if (selectErr)
         return res
           .status(500)
           .json({ message: "Database error while fetching old images" });
-      }
 
       const oldData = results[0];
 
-      // Utility: delete old images
       const deleteOldFiles = (oldImagesJson) => {
         try {
           const oldImages = JSON.parse(oldImagesJson || "[]");
           oldImages.forEach((url) => {
             const filePath = path.join(process.cwd(), "public", url);
-            if (fs.existsSync(filePath)) {
-              fs.unlinkSync(filePath);
-            }
+            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
           });
         } catch (err) {
           console.error("Error deleting old files:", err);
         }
       };
 
-      // Prepare SQL
-      let updateSql = `UPDATE salespersons 
-        SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, state = ?, city = ?, 
-        pincode = ?, experience = ?, rerano = ?, adharno = ?, panno = ?, bankname = ?, 
-        accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?`;
-      const updateValues = [
-        fullname,
-        contact,
-        email,
-        intrest,
-        address,
-        state,
-        city,
-        pincode,
-        experience,
-        rerano,
-        adharno,
-        panno,
-        bankname,
-        accountholdername,
-        accountnumber,
-        ifsc,
-        currentdate,
-      ];
+      try {
+        const { adharImageUrls, panImageUrls, reraImageUrls } =
+          await uploadNewFilesToS3();
 
-      // Aadhaar
-      if (adharImageUrls.length > 0) {
-        updateSql += `, adharimage = ?`;
-        updateValues.push(JSON.stringify(adharImageUrls));
-        deleteOldFiles(oldData?.adharimage);
-      }
+        let updateSql = `UPDATE salespersons 
+          SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, state = ?, city = ?, 
+          pincode = ?, experience = ?, rerano = ?, adharno = ?, panno = ?, bankname = ?, 
+          accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?`;
+        const updateValues = [
+          fullname,
+          contact,
+          email,
+          intrest,
+          address,
+          state,
+          city,
+          pincode,
+          experience,
+          rerano,
+          adharno,
+          panno,
+          bankname,
+          accountholdername,
+          accountnumber,
+          ifsc,
+          currentdate,
+        ];
 
-      // PAN
-      if (panImageUrls.length > 0) {
-        updateSql += `, panimage = ?`;
-        updateValues.push(JSON.stringify(panImageUrls));
-        deleteOldFiles(oldData?.panimage);
-      }
-
-      // RERA
-      if (reraImageUrls.length > 0) {
-        updateSql += `, reraimage = ?`;
-        updateValues.push(JSON.stringify(reraImageUrls));
-        deleteOldFiles(oldData?.reraimage);
-      }
-
-      updateSql += ` WHERE salespersonsid = ?`;
-      updateValues.push(salespersonsid);
-
-      // STEP 2: Update DB
-      db.query(updateSql, updateValues, (updateErr) => {
-        if (updateErr) {
-          console.error("Error updating salespersons:", updateErr);
-          return res.status(500).json({
-            message: "Database error during update",
-            error: updateErr,
-          });
+        if (adharImageUrls.length > 0) {
+          updateSql += `, adharimage = ?`;
+          updateValues.push(JSON.stringify(adharImageUrls));
+          deleteOldFiles(oldData?.adharimage);
+        }
+        if (panImageUrls.length > 0) {
+          updateSql += `, panimage = ?`;
+          updateValues.push(JSON.stringify(panImageUrls));
+          deleteOldFiles(oldData?.panimage);
+        }
+        if (reraImageUrls.length > 0) {
+          updateSql += `, reraimage = ?`;
+          updateValues.push(JSON.stringify(reraImageUrls));
+          deleteOldFiles(oldData?.reraimage);
         }
 
-        res.status(200).json({ message: "Sales person updated successfully" });
-      });
-    }
+        updateSql += ` WHERE salespersonsid = ?`;
+        updateValues.push(salespersonsid);
+
+        db.query(updateSql, updateValues, (updateErr) => {
+          if (updateErr)
+            return res
+              .status(500)
+              .json({
+                message: "Database error during update",
+                error: updateErr,
+              });
+
+          res
+            .status(200)
+            .json({ message: "Sales person updated successfully" });
+        });
+      } catch (err) {
+        console.error("Error uploading files to S3:", err);
+        return res
+          .status(500)
+          .json({ message: "File upload failed", error: err });
+      }
+    },
   );
 };
