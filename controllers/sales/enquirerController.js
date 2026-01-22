@@ -1,12 +1,15 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 import { sanitize } from "../../utils/sanitize.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 // Fetch All Enquiries
 export const getAll = (req, res) => {
   const userId = req.salesUser?.id;
   if (!userId) {
-    return res.status(401).json({ message: "Unauthorized Access, Please Login Again!" });
+    return res
+      .status(401)
+      .json({ message: "Unauthorized Access, Please Login Again!" });
   }
 
   const enquirySource = req.params.source;
@@ -200,18 +203,21 @@ export const getPropertyCity = (req, res) => {
   });
 };
 
-// Fetch All Active Territory Partner by Date 
+// Fetch All Active Territory Partner by Date
 export const getTerritoryPartners = (req, res) => {
   const salesUserId = req.salesUser?.id;
   if (!salesUserId) {
-    return res.status(401).json({ message: "Unauthorized! Please Login Again." });
+    return res
+      .status(401)
+      .json({ message: "Unauthorized! Please Login Again." });
   }
 
   const propertyCity = req.params.city;
   const { selectedDate } = req.query; // e.g., '2025-09-12'
 
   // Step 1: Fetch projectpartnerid of the logged-in salesperson
-  const fetchSalesQuery = "SELECT projectpartnerid FROM salespersons WHERE salespersonsid = ?";
+  const fetchSalesQuery =
+    "SELECT projectpartnerid FROM salespersons WHERE salespersonsid = ?";
 
   db.query(fetchSalesQuery, [salesUserId], (err, salesResult) => {
     if (err) {
@@ -240,7 +246,7 @@ export const getTerritoryPartners = (req, res) => {
            inactive_until IS NULL 
            OR NOT JSON_CONTAINS(inactive_until, JSON_QUOTE(?))
         ) AND projectpartnerid = ?
-        ORDER BY id DESC`
+        ORDER BY id DESC`;
       params = [propertyCity, selectedDate, projectpartnerid];
     } else {
       // No projectpartnerid linked — fetch all active ones in that city
@@ -272,7 +278,8 @@ export const getTerritoryPartners = (req, res) => {
 // Assign Enquiry To Territory Partners
 export const assignEnquiry = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { territorypartnerid, territorypartnerdate, territorytimeslot } = req.body;
+  const { territorypartnerid, territorypartnerdate, territorytimeslot } =
+    req.body;
   if (!territorypartnerid || !territorypartnerdate || !territorytimeslot) {
     return res.status(400).json({ message: "All Fields Required" });
   }
@@ -313,9 +320,9 @@ export const assignEnquiry = async (req, res) => {
           res.status(200).json({
             message: "Enquiry assigned successfully to Territory Partner",
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -353,9 +360,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -408,25 +415,29 @@ export const visitScheduled = (req, res) => {
             message: "Visit added successfully",
             Id: insertResult.insertId,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
-export const token = (req, res) => {
+export const token = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { paymenttype, tokenamount, remark, dealamount, enquiryStatus,propertyinfoid} =
-    req.body;
-  const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
-
+  const {
+    paymenttype,
+    tokenamount,
+    remark,
+    dealamount,
+    enquiryStatus,
+    propertyinfoid,
+  } = req.body;
 
   if (
     !paymenttype ||
     !tokenamount ||
     !remark ||
     !dealamount ||
-    !enquiryStatus 
+    !enquiryStatus
   ) {
     return res.status(400).json({ message: "Please add all required fields!" });
   }
@@ -436,101 +447,107 @@ export const token = (req, res) => {
     return res.status(400).json({ message: "Invalid Enquiry ID" });
   }
 
-  // Step 1: Get Enquirer (to access propertyid)
-  db.query(
-    "SELECT * FROM enquirers WHERE enquirersid = ?",
-    [Id],
-    (err, enquirerResult) => {
-      if (err)
-        return res.status(500).json({ message: "Database error", error: err });
-      if (enquirerResult.length === 0)
-        return res.status(404).json({ message: "Enquirer not found" });
+  try {
+    // 1️⃣ Get Enquirer
+    const enquirerResult = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT * FROM enquirers WHERE enquirersid = ?",
+        [Id],
+        (err, result) => (err ? reject(err) : resolve(result))
+      );
+    });
 
-      const enquirer = enquirerResult[0];
-      const propertyId = enquirer.propertyid;
+    if (enquirerResult.length === 0) {
+      return res.status(404).json({ message: "Enquirer not found" });
+    }
 
-      // Step 2: Get Property data
+    const enquirer = enquirerResult[0];
+    const propertyId = enquirer.propertyid;
+
+    // 2️⃣ Get Property data
+    const propertyResult = await new Promise((resolve, reject) => {
       db.query(
         "SELECT commissionType, commissionAmount, commissionPercentage FROM properties WHERE propertyid = ?",
         [propertyId],
-        (err, propertyResult) => {
-          if (err)
-            return res
-              .status(500)
-              .json({ message: "Property fetch error", error: err });
-          if (propertyResult.length === 0)
-            return res.status(404).json({ message: "Property not found" });
-
-          const property = propertyResult[0];
-          let { commissionType, commissionAmount, commissionPercentage } =
-            property;
-
-          commissionType = commissionType || "";
-          commissionPercentage = Number(commissionPercentage) || 0;
-          let finalCommissionAmount = Number(commissionAmount) || 0;
-
-          // If type is percentage, calculate commissionAmount from dealamount
-          if (commissionType.toLowerCase() === "percentage") {
-            finalCommissionAmount =
-              (Number(dealamount) * commissionPercentage) / 100;
-          }
-
-          // Split commission
-          const reparvCommission = (finalCommissionAmount * 40) / 100;
-          const salesCommission = (finalCommissionAmount * 40) / 100;
-          const territoryCommission = (finalCommissionAmount * 20) / 100;
-
-          // Step 3: Insert into propertyfollowup
-          const insertSQL = `
-          INSERT INTO propertyfollowup (
-            enquirerid, paymenttype, tokenamount, remark, dealamount, status, propertyinfoid,
-            totalcommission, reparvcommission, salescommission, territorycommission, paymentimage,
-            updated_at, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
-        `;
-
-          db.query(
-            insertSQL,
-            [
-              Id,
-              paymenttype,
-              tokenamount,
-              remark,
-              dealamount,
-              enquiryStatus,
-              propertyId || null,
-             
-              finalCommissionAmount,
-              reparvCommission,
-              salesCommission,
-              territoryCommission,
-              imagePath,
-              currentdate,
-              currentdate,
-            ],
-            (err, insertResult) => {
-              if (err)
-                return res
-                  .status(500)
-                  .json({ message: "Insert error", error: err });
-
-              res.status(201).json({
-                message: "Token added successfully",
-                followupId: insertResult.insertId,
-                commissionBreakdown: {
-                  totalCommission: finalCommissionAmount,
-                  salesCommission,
-                  reparvCommission,
-                  territoryCommission,
-                },
-              });
-            }
-          );
-        }
+        (err, result) => (err ? reject(err) : resolve(result))
       );
+    });
+
+    if (propertyResult.length === 0) {
+      return res.status(404).json({ message: "Property not found" });
     }
-  );
+
+    const property = propertyResult[0];
+    let { commissionType, commissionAmount, commissionPercentage } = property;
+
+    commissionType = commissionType || "";
+    commissionPercentage = Number(commissionPercentage) || 0;
+    let finalCommissionAmount = Number(commissionAmount) || 0;
+
+    if (commissionType.toLowerCase() === "percentage") {
+      finalCommissionAmount = (Number(dealamount) * commissionPercentage) / 100;
+    }
+
+    // Split commission
+    const reparvCommission = (finalCommissionAmount * 40) / 100;
+    const salesCommission = (finalCommissionAmount * 40) / 100;
+    const territoryCommission = (finalCommissionAmount * 20) / 100;
+
+    // 3️⃣ Upload image to S3 (if exists)
+    let paymentImage = null;
+    if (req.file) {
+      paymentImage = await uploadToS3(req.file); // uses your existing helper
+    }
+
+    // 4️⃣ Insert into propertyfollowup
+    const insertSQL = `
+      INSERT INTO propertyfollowup (
+        enquirerid, paymenttype, tokenamount, remark, dealamount, status, propertyinfoid,
+        totalcommission, reparvcommission, salescommission, territorycommission, paymentimage,
+        updated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const insertResult = await new Promise((resolve, reject) => {
+      db.query(
+        insertSQL,
+        [
+          Id,
+          paymenttype,
+          tokenamount,
+          remark,
+          dealamount,
+          enquiryStatus,
+          propertyId || null,
+          finalCommissionAmount,
+          reparvCommission,
+          salesCommission,
+          territoryCommission,
+          paymentImage,
+          currentdate,
+          currentdate,
+        ],
+        (err, result) => (err ? reject(err) : resolve(result))
+      );
+    });
+
+    return res.status(201).json({
+      message: "Token added successfully",
+      followupId: insertResult.insertId,
+      commissionBreakdown: {
+        totalCommission: finalCommissionAmount,
+        salesCommission,
+        reparvCommission,
+        territoryCommission,
+      },
+      paymentImage, // S3 URL
+    });
+  } catch (error) {
+    console.error("Error in token function:", error);
+    return res.status(500).json({ message: "Server error", error });
+  }
 };
+
 
 export const followUpOld = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -577,9 +594,9 @@ export const followUpOld = (req, res) => {
             message: "Follow Up remark added successfully",
             Id: insertResult.insertId,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -651,9 +668,9 @@ export const followUp = (req, res) => {
             Id: insertResult.insertId,
             visitDate: visitDate || null,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -702,9 +719,9 @@ export const cancelled = (req, res) => {
             message: "Remark added successfully",
             Id: insertResult.insertId,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -747,4 +764,3 @@ export const getAvailableTPsForDate = (req, res) => {
     res.json(result);
   });
 };
-

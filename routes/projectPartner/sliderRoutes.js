@@ -11,25 +11,21 @@ import {
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
+// ---------------- MULTER MEMORY STORAGE ----------------
+const storage = multer.memoryStorage(); // store file in memory for S3 upload
 
 const upload = multer({
   storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "image/svg+xml"];
+    const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
     if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error("Only JPEG, PNG, SVG, and JPG images are allowed"));
+      return cb(new Error("Only JPEG, PNG, and JPG images are allowed"));
     }
     cb(null, true);
   },
 });
+
 
 
 router.get("/", getAll);

@@ -329,7 +329,7 @@ You have a scheduled visit today!
 
 Please make sure to follow up on time and provide the best service.
 
-✅ Reminder: Be punctual and prepared for the visit!
+ Reminder: Be punctual and prepared for the visit!
 
 Thank you,
 Team Reparv`
@@ -425,7 +425,7 @@ You have been assigned a new enquiry!
 📞 Contact: ${enquiry.contact}
 📍 Location: ${enquiry.location}, ${enquiry.city}
 
-Please take action on this enquiry: Accept ✅ or Reject . 
+Please take action on this enquiry: Accept  or Reject . 
 
 Ensure timely follow-up and provide the best service.
 
@@ -598,7 +598,7 @@ const queryAsync = (sql, params = []) => {
 // Please renew your subscription before it expires to continue:
 // - Receiving new leads and enquiries 📈
 // - Accessing premium tools and analytics 📊
-// - Maintaining your active Sales Partner status ✅
+// - Maintaining your active Sales Partner status 
 
 // Renew now to avoid any interruption in your services.
 

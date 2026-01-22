@@ -1,5 +1,6 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 // **Fetch All**
 export const getAll = (req, res) => {
@@ -71,57 +72,6 @@ ORDER BY
   });
 };
 
-// **Add New **
-
-export const add = (req, res) => {
-  const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
-  console.log("add");
-
-  const { userId, postContent, like,projectpartnerid, } = req.body;
-  const imageFile = req.file?.filename;
-  console.log(userId);
-
-  if (!userId) {
-    return res.status(400).json({ message: "User ID is required" });
-  }
-
-  if (!imageFile && !postContent) {
-    console.log("err");
-
-    return res
-      .status(400)
-      .json({ message: "Either image or post content is required" });
-  }
-
-  const finalImagePath = imageFile ? `/uploads/${imageFile}` : null;
-
-  const sql = `
-    INSERT INTO salespersonposts (userId, image, postContent, likes, projectpartnerid,created_at)
-    VALUES (?, ?, ?, ?, ?,?)
-  `;
-
-  db.query(
-    sql,
-    [userId, finalImagePath, postContent, like || 0,projectpartnerid || null, currentDate],
-    (err, result) => {
-      if (err) {
-        if (err.code === "ER_DUP_ENTRY") {
-          console.log("Er1", err);
-
-          return res.status(409).json({ message: "Duplicate post" });
-        }
-        console.log("Er2", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
-
-      return res.status(201).json({
-        message: "Post added successfully",
-        postId: result.insertId,
-      });
-    }
-  );
-};
-
 export const addLike = async (req, res) => {
   const { postId } = req.body;
   console.log(postId, "pppppp");
@@ -157,49 +107,153 @@ export const addLike = async (req, res) => {
           }
 
           return res.status(200).json({ message: "Post liked successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
-// Update Post Controller
-export const updatePost = (req, res) => {
-  const postId = req.params.id;
-  const { postContent } = req.body;
-  const image = req.file ? req.file.filename : null;
+export const add = async (req, res) => {
+  try {
+    const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-  let sql;
-  let values;
+    const { userId, postContent, like, projectpartnerid } = req.body;
 
-  if (image && postContent) {
-    const finalImagePath = `/uploads/${image}`;
-    sql = "UPDATE salespersonposts SET image = ?, postContent = ? WHERE postId = ?";
-    values = [finalImagePath, postContent, postId];
-  } else if (image) {
-    const finalImagePath = `/uploads/${image}`;
-    sql = "UPDATE salespersonposts SET image = ? WHERE postId = ?";
-    values = [finalImagePath, postId];
-  } else if (postContent) {
-    sql = "UPDATE salespersonposts SET postContent = ? WHERE postId = ?";
-    values = [postContent, postId];
-  } else {
-    return res.status(400).json({ message: "Nothing to update" });
-  }
-
-  db.query(sql, values, (err, result) => {
-    if (err) {
-      console.error("Error updating post:", err);
-      return res.status(500).json({ message: "Database error", error: err });
+    if (!userId) {
+      return res.status(400).json({ message: "User ID is required" });
     }
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Post not found" });
+    if (!req.file && !postContent) {
+      return res
+        .status(400)
+        .json({ message: "Either image or post content is required" });
     }
 
-    res.status(200).json({
-      message: "Post updated successfully",
-      updatedRows: result.affectedRows,
+    /* ---------- UPLOAD IMAGE TO S3 ---------- */
+    let imageUrl = null;
+    if (req.file) {
+      imageUrl = await uploadToS3(req.file);
+    }
+
+    const sql = `
+      INSERT INTO salespersonposts
+      (userId, image, postContent, likes, projectpartnerid, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    db.query(
+      sql,
+      [
+        userId,
+        imageUrl,
+        postContent || null,
+        like || 0,
+        projectpartnerid || null,
+        currentDate,
+      ],
+      (err, result) => {
+        if (err) {
+          if (err.code === "ER_DUP_ENTRY") {
+            return res.status(409).json({ message: "Duplicate post" });
+          }
+          return res.status(500).json({
+            message: "Database error",
+            error: err,
+          });
+        }
+
+        return res.status(201).json({
+          message: "Post added successfully",
+          postId: result.insertId,
+        });
+      },
+    );
+  } catch (error) {
+    console.error("Add post error:", error);
+    return res.status(500).json({
+      message: "Server error while adding post",
+      error,
     });
-  });
+  }
+};
+
+export const updatePost = async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const { postContent } = req.body;
+
+    if (!postId) {
+      return res.status(400).json({ message: "Post ID is required" });
+    }
+
+    /* ---------- FETCH OLD IMAGE ---------- */
+    db.query(
+      "SELECT image FROM salespersonposts WHERE postId = ?",
+      [postId],
+      async (fetchErr, rows) => {
+        if (fetchErr) {
+          return res.status(500).json({
+            message: "Database error while fetching post",
+            error: fetchErr,
+          });
+        }
+
+        if (rows.length === 0) {
+          return res.status(404).json({ message: "Post not found" });
+        }
+
+        let newImageUrl = null;
+
+        /* ---------- UPLOAD NEW IMAGE ---------- */
+        if (req.file) {
+          newImageUrl = await uploadToS3(req.file);
+
+          // 🗑 delete old image from S3
+          if (rows[0].image) {
+            await deleteFromS3(rows[0].image);
+          }
+        }
+
+        /* ---------- BUILD UPDATE QUERY ---------- */
+        let sql = "UPDATE salespersonposts SET updated_at = NOW()";
+        const values = [];
+
+        if (newImageUrl) {
+          sql += ", image = ?";
+          values.push(newImageUrl);
+        }
+
+        if (postContent) {
+          sql += ", postContent = ?";
+          values.push(postContent);
+        }
+
+        if (!newImageUrl && !postContent) {
+          return res.status(400).json({ message: "Nothing to update" });
+        }
+
+        sql += " WHERE postId = ?";
+        values.push(postId);
+
+        db.query(sql, values, (updateErr) => {
+          if (updateErr) {
+            return res.status(500).json({
+              message: "Database error during update",
+              error: updateErr,
+            });
+          }
+
+          return res.status(200).json({
+            message: "Post updated successfully",
+          });
+        });
+      },
+    );
+  } catch (error) {
+    console.error("Update post error:", error);
+    return res.status(500).json({
+      message: "Server error while updating post",
+      error,
+    });
+  }
 };

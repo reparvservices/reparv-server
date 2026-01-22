@@ -33,10 +33,10 @@ export const submitEmiForm = (req, res) => {
     propertyid,
   } = req.body;
 
-  // ✅ Convert empty strings to NULL
+  //  Convert empty strings to NULL
   const toNull = (v) => (v === "" || v === undefined ? null : v);
 
-  // ✅ Convert date to MySQL format YYYY-MM-DD
+  //  Convert date to MySQL format YYYY-MM-DD
   if (dateOfBirth) {
     const [dd, mm, yyyy] = dateOfBirth.split("/");
     dateOfBirth = `${yyyy}-${mm}-${dd}`;
@@ -108,7 +108,7 @@ export const submitEmiForm = (req, res) => {
 
   db.query(sql, values, (err, result) => {
     if (err) {
-      console.error(" Error inserting data:", err);
+      console.error("Error inserting data:", err);
       return res.status(500).json({
         message: "Database insert error",
         error: err.sqlMessage,

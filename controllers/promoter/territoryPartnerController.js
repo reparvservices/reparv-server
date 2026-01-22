@@ -3,6 +3,7 @@ import moment from "moment";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
 import { verifyRazorpayPayment } from "../paymentController.js";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 export const getAll = (req, res) => {
@@ -131,278 +132,274 @@ export const getAll = (req, res) => {
   });
 };
 
-// **Add New Territory Partner **
-export const add = (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const partnerAdderId = req.promoterUser?.id;
-  if (!partnerAdderId) {
-    return res.status(400).json({ message: "Invalid Partner Adder ID" });
-  }
+export const add = async (req, res) => {
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const partnerAdderId = req.promoterUser?.id;
 
-  const {
-    fullname,
-    contact,
-    email,
-    intrest,
-    refrence,
-    address,
-    state,
-    city,
-    pincode,
-    experience,
-    adharno,
-    panno,
-    rerano,
-    bankname,
-    accountholdername,
-    accountnumber,
-    ifsc,
-  } = req.body;
-
-  // Validate required fields
-  if (!fullname || !contact || !email || !intrest) {
-    return res.status(400).json({ message: "All Fields required!" });
-  }
-
-  // Generate referral code
-  const createReferralCode = () => {
-    const chars =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*";
-    let code = "";
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return "REF-" + code; // Total 10 characters
-  };
-
-  const generateUniqueReferralCode = (callback) => {
-    const code = createReferralCode();
-    db.query(
-      "SELECT referral FROM territorypartner WHERE referral = ?",
-      [code],
-      (err, results) => {
-        if (err) return callback(err, null);
-        if (results.length > 0) return generateUniqueReferralCode(callback);
-        return callback(null, code);
-      }
-    );
-  };
-
-  // Handle uploaded files safely
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
-
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
-    : null;
-
-  // Check for duplicates
-  const checkSql = `SELECT * FROM territorypartner WHERE contact = ? OR email = ?`;
-
-  db.query(checkSql, [contact, email], (checkErr, checkResult) => {
-    if (checkErr) {
-      console.error("Error checking existing Territory Partner:", checkErr);
-      return res.status(500).json({
-        message: "Database error during validation",
-        error: checkErr,
-      });
+    if (!partnerAdderId) {
+      return res.status(400).json({ message: "Invalid Partner Adder ID" });
     }
 
-    if (checkResult.length > 0) {
+    const {
+      fullname,
+      contact,
+      email,
+      intrest,
+      refrence,
+      address,
+      state,
+      city,
+      pincode,
+      experience,
+      adharno,
+      panno,
+      rerano,
+      bankname,
+      accountholdername,
+      accountnumber,
+      ifsc,
+    } = req.body;
+
+    if (!fullname || !contact || !email || !intrest) {
+      return res.status(400).json({ message: "All Fields required!" });
+    }
+
+    /* ---------- DUPLICATE CHECK ---------- */
+    const exists = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT id FROM territorypartner WHERE contact=? OR email=?",
+        [contact, email],
+        (err, result) => {
+          if (err) reject(err);
+          resolve(result.length > 0);
+        },
+      );
+    });
+
+    if (exists) {
       return res.status(409).json({
         message: "Territory Partner already exists with this Contact or Email.",
       });
     }
 
-    // Generate unique referral code before inserting
-    generateUniqueReferralCode((referralErr, referralCode) => {
-      if (referralErr) {
-        console.error("Error generating referral:", referralErr);
-        return res.status(500).json({
-          message: "Referral code generation failed",
-          error: referralErr,
-        });
-      }
+    /* ---------- REFERRAL CODE ---------- */
+    const createReferralCode = () =>
+      "REF-" + Math.random().toString(36).substring(2, 8).toUpperCase();
 
-      // Insert new territory partner
-      const insertSql = `
-        INSERT INTO territorypartner 
-        (fullname, contact, email, intrest, partneradder, refrence, referral, address, state, city, pincode, experience, adharno, panno, rerano, 
-         bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
-
-      db.query(
-        insertSql,
-        [
-          fullname,
-          contact,
-          email,
-          intrest,
-          partnerAdderId,
-          refrence,
-          referralCode,
-          address,
-          state,
-          city,
-          pincode,
-          experience,
-          adharno,
-          panno,
-          rerano,
-          bankname,
-          accountholdername,
-          accountnumber,
-          ifsc,
-          adharImageUrl,
-          panImageUrl,
-          reraImageUrl,
-          currentdate,
-          currentdate,
-        ],
-        (insertErr, insertResult) => {
-          if (insertErr) {
-            console.error("Error inserting Territory Partner:", insertErr);
-            return res.status(500).json({
-              message: "Database error during insertion",
-              error: insertErr,
-            });
-          }
-
-          // Insert follow-up for the new Territory Partner
-          const followupSql = `
-            INSERT INTO partnerFollowup 
-            (partnerId, role, followUp, followUpText, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `;
-
-          db.query(
-            followupSql,
-            [
-              insertResult.insertId,
-              "Territory Partner",
-              "New",
-              "Newly Added Territory Partner",
-              currentdate,
-              currentdate,
-            ],
-            (followupErr) => {
-              if (followupErr) {
-                console.error("Error adding follow-up:", followupErr);
-                return res.status(500).json({
-                  message: "Follow-up insert failed",
-                  error: followupErr,
-                });
-              }
-
-              return res.status(201).json({
-                message: "Territory Partner added successfully",
-                Id: insertResult.insertId,
-              });
-            }
-          );
-        }
-      );
+    const referralCode = await new Promise((resolve, reject) => {
+      const generate = () => {
+        const code = createReferralCode();
+        db.query(
+          "SELECT referral FROM territorypartner WHERE referral=?",
+          [code],
+          (err, r) => {
+            if (err) return reject(err);
+            if (r.length > 0) return generate();
+            resolve(code);
+          },
+        );
+      };
+      generate();
     });
-  });
+
+    /* ---------- S3 UPLOAD ---------- */
+    const adharImage = req.files?.["adharImage"]?.[0]
+      ? await uploadToS3(req.files["adharImage"][0])
+      : null;
+
+    const panImage = req.files?.["panImage"]?.[0]
+      ? await uploadToS3(req.files["panImage"][0])
+      : null;
+
+    const reraImage = req.files?.["reraImage"]?.[0]
+      ? await uploadToS3(req.files["reraImage"][0])
+      : null;
+
+    /* ---------- INSERT ---------- */
+    const insertSql = `
+      INSERT INTO territorypartner
+      (fullname, contact, email, intrest, partneradder, refrence, referral,
+       address, state, city, pincode, experience, adharno, panno, rerano,
+       bankname, accountholdername, accountnumber, ifsc,
+       adharimage, panimage, reraimage, created_at, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `;
+
+    db.query(
+      insertSql,
+      [
+        fullname,
+        contact,
+        email,
+        intrest,
+        partnerAdderId,
+        refrence,
+        referralCode,
+        address,
+        state,
+        city,
+        pincode,
+        experience,
+        adharno,
+        panno,
+        rerano,
+        bankname,
+        accountholdername,
+        accountnumber,
+        ifsc,
+        adharImage,
+        panImage,
+        reraImage,
+        currentdate,
+        currentdate,
+      ],
+      (err, result) => {
+        if (err) {
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        db.query(
+          `INSERT INTO partnerFollowup
+           (partnerId, role, followUp, followUpText, created_at, updated_at)
+           VALUES (?,?,?,?,?,?)`,
+          [
+            result.insertId,
+            "Territory Partner",
+            "New",
+            "Newly Added Territory Partner",
+            currentdate,
+            currentdate,
+          ],
+        );
+
+        res.status(201).json({
+          message: "Territory Partner added successfully",
+          Id: result.insertId,
+        });
+      },
+    );
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server Error", error });
+  }
 };
 
-export const edit = (req, res) => {
-  const partnerid = parseInt(req.params.id);
-  if (isNaN(partnerid)) {
-    return res.status(400).json({ message: "Invalid Partner ID" });
-  }
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const {
-    fullname,
-    contact,
-    email,
-    intrest,
-    address,
-    state,
-    city,
-    pincode,
-    experience,
-    adharno,
-    panno,
-    rerano,
-    bankname,
-    accountholdername,
-    accountnumber,
-    ifsc,
-  } = req.body;
-
-  if (!fullname || !contact || !email) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
-  // Handle uploaded files
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
-
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
-    : null;
-
-  let updateSql = `UPDATE territorypartner SET fullname = ?, contact = ?, email = ?, intrest = ?,
-    address = ?, state = ?, city = ?, pincode = ?, experience = ?, adharno = ?, panno = ?,
-     rerano = ?, bankname = ?, accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?`;
-  const updateValues = [
-    fullname,
-    contact,
-    email,
-    intrest,
-    address,
-    state,
-    city,
-    pincode,
-    experience,
-    adharno,
-    panno,
-    rerano,
-    bankname,
-    accountholdername,
-    accountnumber,
-    ifsc,
-    currentdate,
-  ];
-
-  if (adharImageUrl) {
-    updateSql += `, adharimage = ?`;
-    updateValues.push(adharImageUrl);
-  }
-
-  if (panImageUrl) {
-    updateSql += `, panimage = ?`;
-    updateValues.push(panImageUrl);
-  }
-
-  if (reraImageUrl) {
-    updateSql += `, reraimage = ?`;
-    updateValues.push(reraImageUrl);
-  }
-
-  updateSql += ` WHERE id = ?`;
-  updateValues.push(partnerid);
-
-  db.query(updateSql, updateValues, (updateErr, result) => {
-    if (updateErr) {
-      console.error("Error updating Territory Partner:", updateErr);
-      return res
-        .status(500)
-        .json({ message: "Database error during update", error: updateErr });
+export const edit = async (req, res) => {
+  try {
+    const partnerid = parseInt(req.params.id);
+    if (isNaN(partnerid)) {
+      return res.status(400).json({ message: "Invalid Partner ID" });
     }
 
-    res.status(200).json({ message: "Territory Partner updated successfully" });
-  });
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+    const {
+      fullname,
+      contact,
+      email,
+      intrest,
+      address,
+      state,
+      city,
+      pincode,
+      experience,
+      adharno,
+      panno,
+      rerano,
+      bankname,
+      accountholdername,
+      accountnumber,
+      ifsc,
+    } = req.body;
+
+    if (!fullname || !contact || !email) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    /* ---------- FETCH OLD IMAGES ---------- */
+    const old = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT adharimage, panimage, reraimage FROM territorypartner WHERE id=?",
+        [partnerid],
+        (err, result) => {
+          if (err) reject(err);
+          resolve(result[0]);
+        },
+      );
+    });
+
+    let adharImage = old?.adharimage;
+    let panImage = old?.panimage;
+    let reraImage = old?.reraimage;
+
+    /* ---------- S3 UPDATE ---------- */
+    if (req.files?.["adharImage"]?.[0]) {
+      if (adharImage) await deleteFromS3(adharImage);
+      adharImage = await uploadToS3(req.files["adharImage"][0]);
+    }
+
+    if (req.files?.["panImage"]?.[0]) {
+      if (panImage) await deleteFromS3(panImage);
+      panImage = await uploadToS3(req.files["panImage"][0]);
+    }
+
+    if (req.files?.["reraImage"]?.[0]) {
+      if (reraImage) await deleteFromS3(reraImage);
+      reraImage = await uploadToS3(req.files["reraImage"][0]);
+    }
+
+    /* ---------- UPDATE ---------- */
+    const updateSql = `
+      UPDATE territorypartner SET
+      fullname=?, contact=?, email=?, intrest=?, address=?, state=?, city=?,
+      pincode=?, experience=?, adharno=?, panno=?, rerano=?,
+      bankname=?, accountholdername=?, accountnumber=?, ifsc=?,
+      adharimage=?, panimage=?, reraimage=?, updated_at=?
+      WHERE id=?
+    `;
+
+    db.query(
+      updateSql,
+      [
+        fullname,
+        contact,
+        email,
+        intrest,
+        address,
+        state,
+        city,
+        pincode,
+        experience,
+        adharno,
+        panno,
+        rerano,
+        bankname,
+        accountholdername,
+        accountnumber,
+        ifsc,
+        adharImage,
+        panImage,
+        reraImage,
+        currentdate,
+        partnerid,
+      ],
+      (err) => {
+        if (err) {
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        res.status(200).json({
+          message: "Territory Partner updated successfully",
+        });
+      },
+    );
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server Error", error });
+  }
 };
