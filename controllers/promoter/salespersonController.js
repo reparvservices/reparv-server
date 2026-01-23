@@ -1,5 +1,6 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 
@@ -164,7 +165,7 @@ export const add = (req, res) => {
         if (err) return callback(err, null);
         if (results.length > 0) return generateUniqueReferralCode(callback);
         return callback(null, code);
-      }
+      },
     );
   };
 
@@ -255,104 +256,126 @@ export const add = (req, res) => {
                 message: "Sales Person added successfully",
                 Id: insertResult.insertId,
               });
-            }
+            },
           );
-        }
+        },
       );
     });
   });
 };
 
-export const edit = (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const {
-    fullname,
-    contact,
-    email,
-    intrest,
-    address,
-    state,
-    city,
-    pincode,
-    experience,
-    rerano,
-    adharno,
-    panno,
-    bankname,
-    accountholdername,
-    accountnumber,
-    ifsc,
-  } = req.body;
-  const salespersonsid = parseInt(req.params.id);
-  if (isNaN(salespersonsid)) {
-    return res.status(400).json({ message: "Invalid Partner ID" });
-  }
-
-  if (!fullname || !contact || !email) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
-  // Handle uploaded files
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
-
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
-    : null;
-
-  let updateSql = `UPDATE salespersons SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, state = ?, city = ?, pincode = ?, experience = ?, 
-  rerano = ?, adharno = ?, panno = ?, bankname = ?, accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?`;
-  const updateValues = [
-    fullname,
-    contact,
-    email,
-    intrest,
-    address,
-    state,
-    city,
-    pincode,
-    experience,
-    rerano,
-    adharno,
-    panno,
-    bankname,
-    accountholdername,
-    accountnumber,
-    ifsc,
-    currentdate,
-  ];
-
-  if (adharImageUrl) {
-    updateSql += `, adharimage = ?`;
-    updateValues.push(adharImageUrl);
-  }
-
-  if (panImageUrl) {
-    updateSql += `, panimage = ?`;
-    updateValues.push(panImageUrl);
-  }
-
-  if (reraImageUrl) {
-    updateSql += `, reraimage = ?`;
-    updateValues.push(reraImageUrl);
-  }
-
-  updateSql += ` WHERE salespersonsid = ?`;
-  updateValues.push(salespersonsid);
-
-  db.query(updateSql, updateValues, (updateErr, result) => {
-    if (updateErr) {
-      console.error("Error updating salesperson:", updateErr);
-      return res
-        .status(500)
-        .json({ message: "Database error during update", error: updateErr });
+export const edit = async (req, res) => {
+  try {
+    const salespersonsid = parseInt(req.params.id);
+    if (isNaN(salespersonsid)) {
+      return res.status(400).json({ message: "Invalid Partner ID" });
     }
 
-    res.status(200).json({ message: "Sales person updated successfully" });
-  });
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+    const {
+      fullname,
+      contact,
+      email,
+      intrest,
+      address,
+      state,
+      city,
+      pincode,
+      experience,
+      rerano,
+      adharno,
+      panno,
+      bankname,
+      accountholdername,
+      accountnumber,
+      ifsc,
+    } = req.body;
+
+    if (!fullname || !contact || !email) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    /* ---------- FETCH OLD IMAGES ---------- */
+    const old = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT adharimage, panimage, reraimage FROM salespersons WHERE salespersonsid = ?",
+        [salespersonsid],
+        (err, result) => {
+          if (err) reject(err);
+          resolve(result?.[0]);
+        },
+      );
+    });
+
+    let adharImage = old?.adharimage;
+    let panImage = old?.panimage;
+    let reraImage = old?.reraimage;
+
+    /* ---------- HANDLE S3 UPLOAD ---------- */
+    if (req.files?.["adharImage"]?.[0]) {
+      if (adharImage) await deleteFromS3(adharImage);
+      adharImage = await uploadToS3(req.files["adharImage"][0]);
+    }
+
+    if (req.files?.["panImage"]?.[0]) {
+      if (panImage) await deleteFromS3(panImage);
+      panImage = await uploadToS3(req.files["panImage"][0]);
+    }
+
+    if (req.files?.["reraImage"]?.[0]) {
+      if (reraImage) await deleteFromS3(reraImage);
+      reraImage = await uploadToS3(req.files["reraImage"][0]);
+    }
+
+    const updateSql = `
+      UPDATE salespersons SET
+      fullname=?, contact=?, email=?, intrest=?, address=?, state=?, city=?,
+      pincode=?, experience=?, rerano=?, adharno=?, panno=?,
+      bankname=?, accountholdername=?, accountnumber=?, ifsc=?,
+      adharimage=?, panimage=?, reraimage=?, updated_at=?
+      WHERE salespersonsid=?
+    `;
+
+    db.query(
+      updateSql,
+      [
+        fullname,
+        contact,
+        email,
+        intrest,
+        address,
+        state,
+        city,
+        pincode,
+        experience,
+        rerano,
+        adharno,
+        panno,
+        bankname,
+        accountholdername,
+        accountnumber,
+        ifsc,
+        adharImage || null,
+        panImage || null,
+        reraImage || null,
+        currentdate,
+        salespersonsid,
+      ],
+      (err) => {
+        if (err) {
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        res.status(200).json({
+          message: "Sales person updated successfully",
+        });
+      },
+    );
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server Error", error });
+  }
 };

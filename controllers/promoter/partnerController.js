@@ -3,6 +3,7 @@ import moment from "moment";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
 import { verifyRazorpayPayment } from "../paymentController.js";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 
@@ -131,8 +132,7 @@ export const getAll = (req, res) => {
   });
 };
 
-// **Add New **
-export const add = (req, res) => {
+export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const partnerAdderId = req.promoterUser?.id;
   if (!partnerAdderId) {
@@ -178,37 +178,32 @@ export const add = (req, res) => {
       "SELECT referral FROM onboardingpartner WHERE referral = ?",
       [code],
       (err, results) => {
-        if (err) {
-          return callback(err, null);
-        }
-        if (results.length > 0) {
-          // Code exists, retry
-          return generateUniqueReferralCode(callback);
-        }
-        // Unique code found
+        if (err) return callback(err, null);
+        if (results.length > 0) return generateUniqueReferralCode(callback);
         return callback(null, code);
       }
     );
   };
 
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-
-  const checkSql = `SELECT * FROM onboardingpartner WHERE contact = ? OR email = ?`;
-
-  db.query(checkSql, [contact, email], (checkErr, checkResult) => {
-    if (checkErr) {
-      console.error("Error checking existing Partner:", checkErr);
-      return res.status(500).json({
-        message: "Database error during validation",
-        error: checkErr,
-      });
+  try {
+    // Upload images to S3
+    let adharImageUrl = null;
+    let panImageUrl = null;
+    if (req.files?.["adharImage"]?.[0]) {
+      adharImageUrl = await uploadToS3(req.files["adharImage"][0]);
     }
+    if (req.files?.["panImage"]?.[0]) {
+      panImageUrl = await uploadToS3(req.files["panImage"][0]);
+    }
+
+    // Check if contact/email already exists
+    const checkResult = await new Promise((resolve, reject) => {
+      db.query(
+        `SELECT * FROM onboardingpartner WHERE contact = ? OR email = ?`,
+        [contact, email],
+        (err, result) => (err ? reject(err) : resolve(result))
+      );
+    });
 
     if (checkResult.length > 0) {
       return res.status(409).json({
@@ -216,16 +211,16 @@ export const add = (req, res) => {
       });
     }
 
-    // Now generate a unique referral code
-    generateUniqueReferralCode((referralErr, referralCode) => {
-      if (referralErr) {
-        console.error("Referral code generation failed:", referralErr);
-        return res.status(500).json({
-          message: "Error generating unique referral code",
-          error: referralErr,
-        });
-      }
+    // Generate referral code
+    const referralCode = await new Promise((resolve, reject) => {
+      generateUniqueReferralCode((err, code) => {
+        if (err) return reject(err);
+        resolve(code);
+      });
+    });
 
+    // Insert partner
+    const insertResult = await new Promise((resolve, reject) => {
       const sql = `INSERT INTO onboardingpartner 
       (fullname, contact, email, intrest, partneradder, refrence, referral, address, state, city, pincode, experience, adharno, panno, bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, updated_at, created_at) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
@@ -256,50 +251,42 @@ export const add = (req, res) => {
           currentdate,
           currentdate,
         ],
-        (err, result) => {
-          if (err) {
-            console.error("Error inserting:", err);
-            return res
-              .status(500)
-              .json({ message: "Database error", error: err });
-          }
-
-          // Insert default follow-up
-          db.query(
-            "INSERT INTO partnerFollowup (partnerId, role, followUp, followUpText, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            [
-              result.insertId,
-              "Onboarding Partner",
-              "New",
-              "Newly Added Onboarding Partner",
-              currentdate,
-              currentdate,
-            ],
-            (insertErr, insertResult) => {
-              if (insertErr) {
-                console.error("Error Adding Follow Up:", insertErr);
-                return res
-                  .status(500)
-                  .json({ message: "Database error", error: insertErr });
-              }
-
-              return res.status(201).json({
-                message: "OnBoarding Partner added successfully",
-                Id: result.insertId,
-              });
-            }
-          );
-        }
+        (err, result) => (err ? reject(err) : resolve(result))
       );
     });
-  });
+
+    // Insert default follow-up
+    await new Promise((resolve, reject) => {
+      db.query(
+        "INSERT INTO partnerFollowup (partnerId, role, followUp, followUpText, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+          insertResult.insertId,
+          "Onboarding Partner",
+          "New",
+          "Newly Added Onboarding Partner",
+          currentdate,
+          currentdate,
+        ],
+        (err, result) => (err ? reject(err) : resolve(result))
+      );
+    });
+
+    return res.status(201).json({
+      message: "OnBoarding Partner added successfully",
+      Id: insertResult.insertId,
+    });
+  } catch (error) {
+    console.error("Error adding partner:", error);
+    return res.status(500).json({ message: "Server error", error });
+  }
 };
 
-export const edit = (req, res) => {
+export const edit = async (req, res) => {
   const partnerid = parseInt(req.params.id);
   if (isNaN(partnerid)) {
     return res.status(400).json({ message: "Invalid Partner ID" });
   }
+
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const {
     fullname,
@@ -319,60 +306,73 @@ export const edit = (req, res) => {
     ifsc,
   } = req.body;
 
-  if (!fullname || !contact || !email ) {
+  if (!fullname || !contact || !email) {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Handle uploaded files
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
+  try {
+    // Fetch existing partner to get old image URLs
+    const existingPartner = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT adharimage, panimage FROM onboardingpartner WHERE partnerid = ?",
+        [partnerid],
+        (err, result) => (err ? reject(err) : resolve(result))
+      );
+    });
 
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-
-  let updateSql = `UPDATE onboardingpartner SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, state = ?, city = ?, pincode = ?, experience = ?, adharno = ?, panno = ?, bankname = ?, accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?`;
-  const updateValues = [
-    fullname,
-    contact,
-    email,
-    intrest,
-    address,
-    state,
-    city,
-    pincode,
-    experience,
-    adharno,
-    panno,
-    bankname,
-    accountholdername,
-    accountnumber,
-    ifsc,
-    currentdate,
-  ];
-
-  if (adharImageUrl) {
-    updateSql += `, adharimage = ?`;
-    updateValues.push(adharImageUrl);
-  }
-
-  if (panImageUrl) {
-    updateSql += `, panimage = ?`;
-    updateValues.push(panImageUrl);
-  }
-
-  updateSql += ` WHERE partnerid = ?`;
-  updateValues.push(partnerid);
-
-  db.query(updateSql, updateValues, (updateErr, result) => {
-    if (updateErr) {
-      console.error("Error updating Partner:", updateErr);
-      return res
-        .status(500)
-        .json({ message: "Database error during update", error: updateErr });
+    if (existingPartner.length === 0) {
+      return res.status(404).json({ message: "Partner not found" });
     }
 
-    res.status(200).json({ message: "Partner updated successfully" });
-  });
+    let adharImageUrl = existingPartner[0].adharimage;
+    let panImageUrl = existingPartner[0].panimage;
+
+    // Upload new files to S3 and delete old ones if replaced
+    if (req.files?.["adharImage"]?.[0]) {
+      const newAdharUrl = await uploadToS3(req.files["adharImage"][0]);
+      if (adharImageUrl) await deleteFromS3(adharImageUrl);
+      adharImageUrl = newAdharUrl;
+    }
+
+    if (req.files?.["panImage"]?.[0]) {
+      const newPanUrl = await uploadToS3(req.files["panImage"][0]);
+      if (panImageUrl) await deleteFromS3(panImageUrl);
+      panImageUrl = newPanUrl;
+    }
+
+    // Build update query
+    let updateSql = `UPDATE onboardingpartner SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, state = ?, city = ?, pincode = ?, experience = ?, adharno = ?, panno = ?, bankname = ?, accountholdername = ?, accountnumber = ?, ifsc = ?, adharimage = ?, panimage = ?, updated_at = ? WHERE partnerid = ?`;
+    const updateValues = [
+      fullname,
+      contact,
+      email,
+      intrest,
+      address,
+      state,
+      city,
+      pincode,
+      experience,
+      adharno,
+      panno,
+      bankname,
+      accountholdername,
+      accountnumber,
+      ifsc,
+      adharImageUrl,
+      panImageUrl,
+      currentdate,
+      partnerid,
+    ];
+
+    await new Promise((resolve, reject) => {
+      db.query(updateSql, updateValues, (err, result) =>
+        err ? reject(err) : resolve(result)
+      );
+    });
+
+    return res.status(200).json({ message: "Partner updated successfully" });
+  } catch (error) {
+    console.error("Error updating partner:", error);
+    return res.status(500).json({ message: "Server error", error });
+  }
 };

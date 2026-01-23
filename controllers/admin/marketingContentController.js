@@ -2,6 +2,7 @@ import db from "../../config/dbconnect.js";
 import fs from "fs";
 import path from "path";
 import moment from "moment";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 // **Fetch All **
 export const getAll = (req, res) => {
@@ -31,107 +32,148 @@ export const getById = (req, res) => {
     res.json(result[0]);
   });
 };
+export const add = async (req, res) => {
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const { contentType, contentName } = req.body;
 
-export const add = (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { contentType, contentName } = req.body;
-  const contentFile = req.file
-    ? `uploads/marketing-content/${req.file.filename}`
-    : null;
-
-  if (!contentType || !contentName || !contentFile) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
-  const checkDuplicateSql = `SELECT * FROM marketingContent WHERE contentFile = ?`;
-  db.query(checkDuplicateSql, [contentFile], (err, data) => {
-    if (err) return res.status(500).json({ message: "DB Error", error: err });
-
-    if (data.length > 0) {
-      return res.status(202).json({ message: "Content already exists" });
+    if (!contentType || !contentName || !req.file) {
+      return res.status(400).json({ message: "All fields are required" });
     }
 
-    const sql = `INSERT INTO marketingContent (contentType, contentName, contentFile, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`;
-    db.query(
-      sql,
-      [contentType, contentName, contentFile, currentdate, currentdate],
-      (err, result) => {
-        if (err)
-          return res.status(500).json({ message: "DB Error", error: err });
-        res
-          .status(201)
-          .json({ message: "Content added successfully", id: result.insertId });
-      }
-    );
-  });
-};
+    /* ---------- UPLOAD TO S3 ---------- */
+    const contentFileUrl = await uploadToS3(req.file); // S3 URL
 
-export const update = (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const contentId = req.params.id;
-  const { contentType, contentName } = req.body;
-  const contentFile = req.file
-    ? `uploads/marketing-content/${req.file.filename}`
-    : null;
+    /* ---------- DUPLICATE CHECK ---------- */
+    const checkDuplicateSql = `
+      SELECT id FROM marketingContent WHERE contentFile = ?
+    `;
 
-  const selectSql = "SELECT contentFile FROM marketingContent WHERE id = ?";
-  db.query(selectSql, [contentId], (selectErr, selectResult) => {
-    if (selectErr) {
-      console.error("Error fetching content:", selectErr);
-      return res.status(500).json({ message: "Database error" });
-    }
+    db.query(checkDuplicateSql, [contentFileUrl], (err, data) => {
+      if (err) return res.status(500).json({ message: "DB Error", error: err });
 
-    if (selectResult.length === 0) {
-      return res.status(404).json({ message: "Content not found" });
-    }
-
-    const oldFile = selectResult[0].contentFile;
-
-    // Prepare fields and values
-    const fields = [];
-    const values = [];
-
-    if (contentType) {
-      fields.push("contentType = ?");
-      values.push(contentType);
-    }
-
-    if (contentName) {
-      fields.push("contentName = ?");
-      values.push(contentName);
-    }
-
-    if (contentFile) {
-      fields.push("contentFile = ?");
-      values.push(contentFile);
-    }
-
-    fields.push("updated_at = ?");
-    values.push(currentdate);
-
-    values.push(contentId);
-
-    const updateSql = `UPDATE marketingContent SET ${fields.join(
-      ", "
-    )} WHERE id = ?`;
-
-    db.query(updateSql, values, (updateErr, result) => {
-      if (updateErr) {
-        console.error("Error updating content:", updateErr);
-        return res.status(500).json({ message: "Database update error" });
-      }
-
-      if (contentFile && oldFile && fs.existsSync("." + oldFile)) {
-        fs.unlink("." + oldFile, (err) => {
-          if (err) console.error("Error deleting old file:", err);
+      if (data.length > 0) {
+        return res.status(409).json({
+          message: "Content already exists",
         });
       }
 
-      res.status(200).json({ message: "Content updated successfully" });
+      /* ---------- INSERT ---------- */
+      const sql = `
+        INSERT INTO marketingContent 
+        (contentType, contentName, contentFile, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `;
+
+      db.query(
+        sql,
+        [contentType, contentName, contentFileUrl, currentdate, currentdate],
+        (err, result) => {
+          if (err)
+            return res.status(500).json({ message: "DB Error", error: err });
+
+          return res.status(201).json({
+            message: "Content added successfully",
+            id: result.insertId,
+            fileUrl: contentFileUrl,
+          });
+        },
+      );
     });
-  });
+  } catch (error) {
+    console.error("Marketing content upload error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error,
+    });
+  }
 };
 
+export const update = async (req, res) => {
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const contentId = req.params.id;
+    const { contentType, contentName } = req.body;
+
+    if (!contentId) {
+      return res.status(400).json({ message: "Invalid content ID" });
+    }
+
+    /* ---------- FETCH OLD FILE ---------- */
+    const selectSql = `SELECT contentFile FROM marketingContent WHERE id = ?`;
+    db.query(selectSql, [contentId], async (selectErr, selectResult) => {
+      if (selectErr) {
+        console.error("Error fetching content:", selectErr);
+        return res.status(500).json({ message: "Database error" });
+      }
+
+      if (selectResult.length === 0) {
+        return res.status(404).json({ message: "Content not found" });
+      }
+
+      const oldFileUrl = selectResult[0].contentFile;
+
+      /* ---------- UPLOAD NEW FILE (IF ANY) ---------- */
+      let newFileUrl = null;
+      if (req.file) {
+        newFileUrl = await uploadToS3(req.file);
+      }
+
+      /* ---------- BUILD UPDATE QUERY ---------- */
+      const fields = [];
+      const values = [];
+
+      if (contentType) {
+        fields.push("contentType = ?");
+        values.push(contentType);
+      }
+
+      if (contentName) {
+        fields.push("contentName = ?");
+        values.push(contentName);
+      }
+
+      if (newFileUrl) {
+        fields.push("contentFile = ?");
+        values.push(newFileUrl);
+      }
+
+      fields.push("updated_at = ?");
+      values.push(currentdate);
+
+      values.push(contentId);
+
+      const updateSql = `
+        UPDATE marketingContent 
+        SET ${fields.join(", ")} 
+        WHERE id = ?
+      `;
+
+      db.query(updateSql, values, async (updateErr) => {
+        if (updateErr) {
+          console.error("Error updating content:", updateErr);
+          return res.status(500).json({ message: "Database update error" });
+        }
+
+        /* ---------- DELETE OLD FILE FROM S3 ---------- */
+        if (newFileUrl && oldFileUrl) {
+          await deleteFromS3(oldFileUrl);
+        }
+
+        return res.status(200).json({
+          message: "Content updated successfully",
+          fileUrl: newFileUrl || oldFileUrl,
+        });
+      });
+    });
+  } catch (error) {
+    console.error("Update marketing content error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error,
+    });
+  }
+};
 
 export const del = (req, res) => {
   const Id = parseInt(req.params.id);
@@ -177,6 +219,6 @@ export const del = (req, res) => {
 
         res.status(200).json({ message: "Content deleted successfully" });
       });
-    }
+    },
   );
 };

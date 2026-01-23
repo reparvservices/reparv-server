@@ -427,7 +427,10 @@ export const verifyToken = (req, res, next) => {
     "/project-partner/properties/additionalinfo/",
     "/customerapp/ticket",
     "customerapp/user/google-login",
-    "/customerapp/loans"
+    "/customerapp/loans",
+   "/admin/blog",
+"/admin/partner",
+"/admin/projectpartner"
   ];
 
   // Skip verification for public routes

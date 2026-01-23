@@ -1,5 +1,6 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 // **Fetch All**
 export const getAll = (req, res) => {
@@ -73,53 +74,67 @@ ORDER BY
 
 // **Add New **
 
-export const add = (req, res) => {
-  const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
-  console.log("add");
+export const add = async (req, res) => {
+  try {
+    const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const { userId, postContent, like, projectpartnerid } = req.body;
 
-  const { userId, postContent, like ,projectpartnerid} = req.body;
-  const imageFile = req.file?.filename;
-  console.log(userId);
-
-  if (!userId) {
-    return res.status(400).json({ message: "User ID is required" });
-  }
-
-  if (!imageFile && !postContent) {
-    console.log("err");
-
-    return res
-      .status(400)
-      .json({ message: "Either image or post content is required" });
-  }
-
-  const finalImagePath = imageFile ? `/uploads/${imageFile}` : null;
-
-  const sql = `
-    INSERT INTO territorypartnerposts (userId, image, postContent, likes,projectpartnerid, created_at)
-    VALUES (?, ?, ?, ?, ?,?)
-  `;
-
-  db.query(
-    sql,
-    [userId, finalImagePath, postContent, like || 0,projectpartnerid ||null, currentDate],
-    (err, result) => {
-      if (err) {
-        if (err.code === "ER_DUP_ENTRY") {
-          console.log("Er1", err);
-
-          return res.status(409).json({ message: "Duplicate post" });
-        }
-        console.log("Er2", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
-
-      return res.status(201).json({
-        message: "Post added successfully",
-        postId: result.insertId,
-      });
+    if (!userId) {
+      return res.status(400).json({ message: "User ID is required" });
     }
-  );
+
+    if (!req.file && !postContent) {
+      return res
+        .status(400)
+        .json({ message: "Either image or post content is required" });
+    }
+
+    /* ---------- UPLOAD IMAGE TO S3 ---------- */
+    let imageUrl = null;
+    if (req.file) {
+      imageUrl = await uploadToS3(req.file);
+    }
+
+    const sql = `
+      INSERT INTO territorypartnerposts
+      (userId, image, postContent, likes, projectpartnerid, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    db.query(
+      sql,
+      [
+        userId,
+        imageUrl,
+        postContent || null,
+        like || 0,
+        projectpartnerid || null,
+        currentDate,
+      ],
+      (err, result) => {
+        if (err) {
+          if (err.code === "ER_DUP_ENTRY") {
+            return res.status(409).json({ message: "Duplicate post" });
+          }
+          return res.status(500).json({
+            message: "Database error",
+            error: err,
+          });
+        }
+
+        return res.status(201).json({
+          message: "Post added successfully",
+          postId: result.insertId,
+        });
+      },
+    );
+  } catch (error) {
+    console.error("Add post error:", error);
+    return res.status(500).json({
+      message: "Server error while adding post",
+      error,
+    });
+  }
 };
 
 export const addLike = async (req, res) => {
@@ -157,64 +172,87 @@ export const addLike = async (req, res) => {
           }
 
           return res.status(200).json({ message: "Post liked successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
-export const updatePost = (req, res) => {
-  const postId = req.params.id;
-  const { postContent } = req.body;
+export const updatePost = async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const { postContent } = req.body;
 
-  // If a file was uploaded by multer, get the filename
-  const image = req.file ? req.file.filename : null;
+    if (!postId) {
+      return res.status(400).json({ message: "Post ID is required" });
+    }
 
-  let sql;
-  let values;
+    /* ---------- GET EXISTING POST ---------- */
+    const getSql = `SELECT image FROM territorypartnerposts WHERE postId = ?`;
 
-  if (image && postContent) {
-    const finalImagePath = `/uploads/${image}`;
-    sql = `
-      UPDATE territorypartnerposts
-      SET image = ?, postContent = ?
-      WHERE postId = ?
-    `;
-    values = [finalImagePath, postContent, postId];
-  } else if (image) {
-    const finalImagePath = `/uploads/${image}`;
-    sql = `
-      UPDATE territorypartnerposts
-      SET image = ?
-      WHERE postId = ?
-    `;
-    values = [finalImagePath, postId];
-  } else if (postContent) {
-    sql = `
-      UPDATE territorypartnerposts
-      SET postContent = ?
-      WHERE postId = ?
-    `;
-    values = [postContent, postId];
-  } else {
-    return res.status(400).json({
-      message: "No data provided to update",
+    db.query(getSql, [postId], async (fetchErr, rows) => {
+      if (fetchErr) {
+        return res.status(500).json({
+          message: "Database error while fetching post",
+          error: fetchErr,
+        });
+      }
+
+      if (rows.length === 0) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+
+      let newImageUrl = null;
+
+      /* ---------- UPLOAD NEW IMAGE ---------- */
+      if (req.file) {
+        newImageUrl = await uploadToS3(req.file);
+
+        // 🗑 Delete old image from S3
+        if (rows[0].image) {
+          await deleteFromS3(rows[0].image);
+        }
+      }
+
+      /* ---------- BUILD UPDATE QUERY ---------- */
+      let updateSql = `UPDATE territorypartnerposts SET updated_at = NOW()`;
+      const values = [];
+
+      if (newImageUrl) {
+        updateSql += `, image = ?`;
+        values.push(newImageUrl);
+      }
+
+      if (postContent) {
+        updateSql += `, postContent = ?`;
+        values.push(postContent);
+      }
+
+      if (!newImageUrl && !postContent) {
+        return res.status(400).json({ message: "No data provided to update" });
+      }
+
+      updateSql += ` WHERE postId = ?`;
+      values.push(postId);
+
+      db.query(updateSql, values, (updateErr) => {
+        if (updateErr) {
+          return res.status(500).json({
+            message: "Database error during update",
+            error: updateErr,
+          });
+        }
+
+        return res.status(200).json({
+          message: "Post updated successfully",
+        });
+      });
+    });
+  } catch (error) {
+    console.error("Update post error:", error);
+    return res.status(500).json({
+      message: "Server error while updating post",
+      error,
     });
   }
-
-  db.query(sql, values, (err, result) => {
-    if (err) {
-      console.error("Error updating post:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Post not found" });
-    }
-
-    res.status(200).json({
-      message: "Post updated successfully",
-      updatedRows: result.affectedRows,
-    });
-  });
 };

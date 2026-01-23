@@ -2,6 +2,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import path from "path";
 import fs from "fs";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 export const getAll = (req, res) => {
   const sql = `SELECT
@@ -37,16 +38,16 @@ export const getAll = (req, res) => {
     const formatted = result.map((row) => ({
       ...row,
       productCreatedAt: moment(row.productCreatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       productUpdatedAt: moment(row.productUpdatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       stockCreatedAt: moment(row.stockCreatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       stockUpdatedAt: moment(row.stockUpdatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
     }));
 
@@ -149,182 +150,171 @@ export const getProductSizeList = (req, res) => {
 };
 
 // ADD Product with One Stock
-export const add = (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const {
-    productName,
-    productDescription,
-    productSize,
-    gstPercentage,
-    productQuantity,
-    productPrice,
-    sellingPrice,
-    lotNumber,
-  } = req.body;
+export const add = async (req, res) => {
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-  if (
-    !productName ||
-    !productDescription ||
-    !productSize ||
-    !productPrice ||
-    !gstPercentage ||
-    !productQuantity ||
-    !sellingPrice ||
-    !lotNumber
-  ) {
-    return res.status(400).json({ message: "All Fields are Required" });
-  }
-
-  const gstPrice = (sellingPrice * gstPercentage) / 100;
-  const totalPrice = parseInt(sellingPrice) + parseInt(gstPrice);
-
-  const productImageFile = req.files?.["productImage"]?.[0];
-  const productImageUrl = productImageFile
-    ? `/uploads/${productImageFile.filename}`
-    : null;
-
-  // Step 1: Insert into brandAccessories
-  const insertProductSql = `
-    INSERT INTO brandAccessories (productName, productDescription, productQuantity, productImage, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `;
-
-  db.query(
-    insertProductSql,
-    [
+    const {
       productName,
       productDescription,
+      productSize,
+      gstPercentage,
       productQuantity,
-      productImageUrl,
-      currentdate,
-      currentdate,
-    ],
-    (err, result) => {
-      if (err) {
-        console.error("Error inserting into brandAccessories:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
+      productPrice,
+      sellingPrice,
+      lotNumber,
+    } = req.body;
 
-      const productId = result.insertId;
-
-      // Step 2: Insert into brandAccessoriesStock
-      const insertStockSql = `
-        INSERT INTO brandAccessoriesStock 
-        (productId, productSize, gstPercentage, productQuantity, productPrice, 
-         sellingPrice, lotNumber, totalPrice, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
-
-      db.query(
-        insertStockSql,
-        [
-          productId,
-          productSize,
-          gstPercentage,
-          productQuantity,
-          productPrice,
-          sellingPrice,
-          lotNumber,
-          totalPrice,
-          currentdate,
-          currentdate,
-        ],
-        (err2) => {
-          if (err2) {
-            console.error("Error inserting into brandAccessoriesStock:", err2);
-            return res
-              .status(500)
-              .json({ message: "Database error", error: err2 });
-          }
-
-          return res.status(201).json({
-            message: "Product and stock added successfully",
-            productId,
-          });
-        }
-      );
+    /* 🔴 Validation */
+    if (
+      !productName ||
+      !productDescription ||
+      !productSize ||
+      !productPrice ||
+      !gstPercentage ||
+      !productQuantity ||
+      !sellingPrice ||
+      !lotNumber
+    ) {
+      return res.status(400).json({ message: "All Fields are Required" });
     }
-  );
+
+    /*  Price calculation */
+    const gstPrice = (sellingPrice * gstPercentage) / 100;
+    const totalPrice = Number(sellingPrice) + Number(gstPrice);
+
+    /*  Upload product image to S3 */
+    let productImageUrl = null;
+    if (req.files?.productImage?.[0]) {
+      productImageUrl = await uploadToS3(req.files.productImage[0], "products");
+    }
+
+    /*  Insert into brandAccessories */
+    const insertProductSql = `
+      INSERT INTO brandAccessories
+      (productName, productDescription, productQuantity, productImage, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    const [productResult] = await db
+      .promise()
+      .query(insertProductSql, [
+        productName,
+        productDescription,
+        productQuantity,
+        productImageUrl,
+        currentdate,
+        currentdate,
+      ]);
+
+    const productId = productResult.insertId;
+
+    /*  Insert into brandAccessoriesStock */
+    const insertStockSql = `
+      INSERT INTO brandAccessoriesStock
+      (productId, productSize, gstPercentage, productQuantity,
+       productPrice, sellingPrice, lotNumber, totalPrice,
+       created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    await db
+      .promise()
+      .query(insertStockSql, [
+        productId,
+        productSize,
+        gstPercentage,
+        productQuantity,
+        productPrice,
+        sellingPrice,
+        lotNumber,
+        totalPrice,
+        currentdate,
+        currentdate,
+      ]);
+
+    return res.status(201).json({
+      message: "Product and stock added successfully",
+      productId,
+    });
+  } catch (error) {
+    console.error("Error adding product:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error,
+    });
+  }
 };
+export const edit = async (req, res) => {
+  try {
+    const productId = req.params.id;
+    if (!productId) {
+      return res.status(400).json({ message: "Invalid Product ID" });
+    }
 
-export const edit = (req, res) => {
-  const productId = req.params.id;
-  if (!productId) {
-    return res.status(400).json({ message: "Invalid Product ID" });
-  }
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const { productName, productDescription } = req.body;
 
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { productName, productDescription } = req.body;
+    if (!productName || !productDescription) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
 
-  if (!productName || !productDescription) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
+    /*  Fetch existing product */
+    const [rows] = await db
+      .promise()
+      .query("SELECT productImage FROM brandAccessories WHERE productId = ?", [
+        productId,
+      ]);
 
-  // Step 1: Fetch existing product image
-  db.query(
-    "SELECT productImage FROM brandAccessories WHERE productId = ?",
-    [productId],
-    (err, result) => {
-      if (err) {
-        console.error("Error fetching product:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Product not found" });
+    }
 
-      if (result.length === 0) {
-        return res.status(404).json({ message: "Product not found" });
-      }
+    const oldImageUrl = rows[0].productImage;
 
-      const oldImagePath = result[0].productImage;
+    /*  Upload new image if provided */
+    let newImageUrl = null;
+    if (req.files?.productImage?.[0]) {
+      newImageUrl = await uploadToS3(req.files.productImage[0], "products");
+    }
 
-      // Step 2: Check for new uploaded image
-      const productImageFile = req.files?.["productImage"]?.[0];
-      const newImageUrl = productImageFile
-        ? `/uploads/${productImageFile.filename}`
-        : null;
-
-      // Step 3: Build update query
-      let updateSql = `
+    /*  Build update query */
+    let updateSql = `
       UPDATE brandAccessories 
       SET productName = ?, productDescription = ?, updated_at = ?
     `;
-      const updateValues = [productName, productDescription, currentdate];
+    const updateValues = [productName, productDescription, currentdate];
 
-      if (newImageUrl) {
-        updateSql += `, productImage = ?`;
-        updateValues.push(newImageUrl);
-      }
-
-      updateSql += ` WHERE productId = ?`;
-      updateValues.push(productId);
-
-      // Step 4: Execute update
-      db.query(updateSql, updateValues, (updateErr) => {
-        if (updateErr) {
-          console.error("Error updating product:", updateErr);
-          return res.status(500).json({
-            message: "Database error during update",
-            error: updateErr,
-          });
-        }
-
-        // Step 5: Delete old image if replaced
-        if (newImageUrl && oldImagePath) {
-          const fullPath = path.join("public", oldImagePath);
-          if (fs.existsSync(fullPath)) {
-            fs.unlink(fullPath, (unlinkErr) => {
-              if (unlinkErr && unlinkErr.code !== "ENOENT") {
-                console.error("Failed to delete old image:", unlinkErr);
-              }
-            });
-          }
-        }
-
-        return res
-          .status(200)
-          .json({ message: "Product updated successfully" });
-      });
+    if (newImageUrl) {
+      updateSql += `, productImage = ?`;
+      updateValues.push(newImageUrl);
     }
-  );
+
+    updateSql += ` WHERE productId = ?`;
+    updateValues.push(productId);
+
+    await db.promise().query(updateSql, updateValues);
+
+    /*  Delete old image from S3 (AFTER successful update) */
+    if (newImageUrl && oldImageUrl) {
+      try {
+        await deleteFromS3(oldImageUrl);
+      } catch (s3Err) {
+        console.error("Failed to delete old S3 image:", s3Err);
+        // not blocking response (safe fail)
+      }
+    }
+
+    return res.status(200).json({
+      message: "Product updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating product:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error,
+    });
+  }
 };
 
 // ADD New Stock
@@ -363,7 +353,7 @@ export const addStock = (req, res) => {
     if (err2) {
       console.error(
         "Error updating product Quantity in the brandAccessories:",
-        err2
+        err2,
       );
       return res.status(500).json({ message: "Database error", error: err2 });
     }
@@ -401,7 +391,7 @@ export const addStock = (req, res) => {
         return res.status(201).json({
           message: "New Stock added successfully",
         });
-      }
+      },
     );
   });
 };
@@ -443,9 +433,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Product status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -500,9 +490,9 @@ export const del = (req, res) => {
           return res
             .status(200)
             .json({ message: "Product deleted successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -596,16 +586,16 @@ export const getOrders = (req, res) => {
     const formatted = rows.map((row) => ({
       ...row,
       productCreatedAt: moment(row.productCreatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       productUpdatedAt: moment(row.productUpdatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       orderCreatedAt: moment(row.orderCreatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       orderUpdatedAt: moment(row.orderUpdatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
     }));
 
@@ -670,16 +660,16 @@ export const getAllOrdersByUserId = (req, res) => {
     const formatted = result.map((row) => ({
       ...row,
       productCreatedAt: moment(row.productCreatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       productUpdatedAt: moment(row.productUpdatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       orderCreatedAt: moment(row.orderCreatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       orderUpdatedAt: moment(row.orderUpdatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
     }));
 
@@ -723,16 +713,16 @@ export const getOrderById = (req, res) => {
     const formatted = result.map((row) => ({
       ...row,
       productCreatedAt: moment(row.productCreatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       productUpdatedAt: moment(row.productUpdatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       orderCreatedAt: moment(row.orderCreatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
       orderUpdatedAt: moment(row.orderUpdatedAt).format(
-        "DD MMM YYYY | hh:mm A"
+        "DD MMM YYYY | hh:mm A",
       ),
     }));
 
@@ -797,7 +787,7 @@ export const placeOrder = (req, res) => {
   const generateOrderId = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     return Array.from({ length: 15 }, () =>
-      chars.charAt(Math.floor(Math.random() * chars.length))
+      chars.charAt(Math.floor(Math.random() * chars.length)),
     ).join("");
   };
 
@@ -816,7 +806,7 @@ export const placeOrder = (req, res) => {
         } else {
           callback(newId);
         }
-      }
+      },
     );
   };
 
@@ -879,7 +869,7 @@ export const placeOrder = (req, res) => {
               orderId,
             });
           });
-        }
+        },
       );
     });
   });
@@ -950,9 +940,9 @@ export const changeOrderStatus = (req, res) => {
               .status(200)
               .json({ message: "Order status changed successfully" });
           }
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1064,9 +1054,9 @@ export const deleteOrder = (req, res) => {
               message: "Order deleted and stock restored successfully",
             });
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1247,7 +1237,7 @@ export const addToCart = (req, res) => {
         return res
           .status(201)
           .json({ message: "Order Add To Cart Successfully" });
-      }
+      },
     );
   });
 };
@@ -1316,7 +1306,7 @@ export const placeAllCartItemsIntoOrders = (req, res) => {
   const generateOrderId = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     return Array.from({ length: 15 }, () =>
-      chars.charAt(Math.floor(Math.random() * chars.length))
+      chars.charAt(Math.floor(Math.random() * chars.length)),
     ).join("");
   };
 
@@ -1335,7 +1325,7 @@ export const placeAllCartItemsIntoOrders = (req, res) => {
         } else {
           callback(newId);
         }
-      }
+      },
     );
   };
 
@@ -1380,7 +1370,7 @@ export const placeAllCartItemsIntoOrders = (req, res) => {
                 return db.rollback(() =>
                   res
                     .status(500)
-                    .json({ message: "Failed to clear cart", error: err })
+                    .json({ message: "Failed to clear cart", error: err }),
                 );
               }
 
@@ -1389,7 +1379,7 @@ export const placeAllCartItemsIntoOrders = (req, res) => {
                   return db.rollback(() =>
                     res
                       .status(500)
-                      .json({ message: "Commit failed", error: err })
+                      .json({ message: "Commit failed", error: err }),
                   );
                 }
 
@@ -1423,7 +1413,7 @@ export const placeAllCartItemsIntoOrders = (req, res) => {
                 price,
                 qty,
                 gst,
-              })
+              }),
             );
           }
 
@@ -1437,7 +1427,7 @@ export const placeAllCartItemsIntoOrders = (req, res) => {
               return db.rollback(() =>
                 res
                   .status(500)
-                  .json({ message: "Stock check failed", error: err })
+                  .json({ message: "Stock check failed", error: err }),
               );
             }
 
@@ -1446,7 +1436,7 @@ export const placeAllCartItemsIntoOrders = (req, res) => {
               return db.rollback(() =>
                 res.status(400).json({
                   message: `Insufficient stock for product ${productId}`,
-                })
+                }),
               );
             }
 
@@ -1473,7 +1463,7 @@ export const placeAllCartItemsIntoOrders = (req, res) => {
                   return db.rollback(() =>
                     res
                       .status(500)
-                      .json({ message: "Insert failed", error: err })
+                      .json({ message: "Insert failed", error: err }),
                   );
                 }
 
@@ -1487,13 +1477,13 @@ export const placeAllCartItemsIntoOrders = (req, res) => {
                     return db.rollback(() =>
                       res
                         .status(500)
-                        .json({ message: "Stock update failed", error: err })
+                        .json({ message: "Stock update failed", error: err }),
                     );
                   }
 
                   processNextItem(index + 1);
                 });
-              }
+              },
             );
           });
         };

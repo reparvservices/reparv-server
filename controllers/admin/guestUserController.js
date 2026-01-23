@@ -4,6 +4,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 // **Fetch All **
@@ -55,8 +56,9 @@ export const getById = (req, res) => {
 };
 
 // **Add New **
-export const add = (req, res) => {
+export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
   const {
     fullname,
     contact,
@@ -78,79 +80,107 @@ export const add = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-
-  const checkSql = `SELECT * FROM guestUsers WHERE contact = ? OR email = ?`;
-
-  db.query(checkSql, [contact, email.toLowerCase(),], (checkErr, checkResult) => {
-    if (checkErr) {
-      console.error("Error checking existing user:", checkErr);
-      return res
-        .status(500)
-        .json({ message: "Database error during validation", error: checkErr });
-    }
-
-    if (checkResult.length > 0) {
-      return res.status(409).json({
-        message: "User already exists with this contact or email",
-      });
-    }
-
-    // Only insert if no existing partner
-    const sql = `INSERT INTO guestUsers (fullname, contact, email, address, state, city, pincode, experience, adharno, panno, bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, updated_at, created_at) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  try {
+    /* ---------- DUPLICATE CHECK ---------- */
+    const checkSql = `SELECT id FROM guestUsers WHERE contact = ? OR email = ?`;
 
     db.query(
-      sql,
-      [
-        fullname,
-        contact,
-        email.toLowerCase(),
-        address,
-        state,
-        city,
-        pincode,
-        experience,
-        adharno,
-        panno,
-        bankname,
-        accountholdername,
-        accountnumber,
-        ifsc,
-        adharImageUrl,
-        panImageUrl,
-        currentdate,
-        currentdate,
-      ],
-      (err, result) => {
-        if (err) {
-          console.error("Error inserting:", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
+      checkSql,
+      [contact, email.toLowerCase()],
+      async (checkErr, checkResult) => {
+        if (checkErr)
+          return res.status(500).json({
+            message: "Database error during validation",
+            error: checkErr,
+          });
+
+        if (checkResult.length > 0) {
+          return res.status(409).json({
+            message: "User already exists with this contact or email",
+          });
         }
-        return res.status(201).json({
-          message: "User added successfully",
-          Id: result.insertId,
-        });
-      }
+
+        /* ---------- UPLOAD TO S3 ---------- */
+        let adharImageUrl = null;
+        let panImageUrl = null;
+
+        if (req.files?.adharImage?.[0]) {
+          adharImageUrl = await uploadToS3(
+            req.files.adharImage[0],
+            "documents/adhar",
+          );
+        }
+
+        if (req.files?.panImage?.[0]) {
+          panImageUrl = await uploadToS3(
+            req.files.panImage[0],
+            "documents/pan",
+          );
+        }
+
+        /* ---------- INSERT ---------- */
+        const sql = `
+          INSERT INTO guestUsers
+          (
+            fullname, contact, email, address, state, city, pincode,
+            experience, adharno, panno,
+            bankname, accountholdername, accountnumber, ifsc,
+            adharimage, panimage, updated_at, created_at
+          )
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `;
+
+        db.query(
+          sql,
+          [
+            fullname,
+            contact,
+            email.toLowerCase(),
+            address,
+            state,
+            city,
+            pincode,
+            experience,
+            adharno,
+            panno,
+            bankname,
+            accountholdername,
+            accountnumber,
+            ifsc,
+            adharImageUrl,
+            panImageUrl,
+            currentdate,
+            currentdate,
+          ],
+          (err, result) => {
+            if (err) {
+              return res
+                .status(500)
+                .json({ message: "Database error", error: err });
+            }
+
+            res.status(201).json({
+              message: "User added successfully",
+              id: result.insertId,
+            });
+          },
+        );
+      },
     );
-  });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
-export const edit = (req, res) => {
+export const edit = async (req, res) => {
   const userid = req.params.id;
   if (!userid) {
     return res.status(400).json({ message: "Invalid User ID" });
   }
 
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
   const {
     fullname,
     contact,
@@ -172,32 +202,44 @@ export const edit = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Handle uploaded files
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
+  try {
+    /* ---------- FETCH OLD IMAGES ---------- */
+    const [rows] = await db
+      .promise()
+      .query("SELECT adharimage, panimage FROM guestUsers WHERE id = ?", [
+        userid,
+      ]);
 
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-
-  // First fetch old images (to delete if replaced)
-  const selectSql = `SELECT adharimage, panimage FROM guestUsers WHERE id = ?`;
-  db.query(selectSql, [userid], (selectErr, rows) => {
-    if (selectErr) {
-      console.error("Error fetching old images:", selectErr);
-      return res.status(500).json({ message: "Database error" });
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
     }
 
-    const oldAdhar = rows[0]?.adharimage;
-    const oldPan = rows[0]?.panimage;
+    const oldAdhar = rows[0].adharimage;
+    const oldPan = rows[0].panimage;
 
+    /* ---------- UPLOAD NEW FILES ---------- */
+    let adharImageUrl = null;
+    let panImageUrl = null;
+
+    if (req.files?.adharImage?.[0]) {
+      adharImageUrl = await uploadToS3(
+        req.files.adharImage[0],
+        "documents/adhar",
+      );
+    }
+
+    if (req.files?.panImage?.[0]) {
+      panImageUrl = await uploadToS3(req.files.panImage[0], "documents/pan");
+    }
+
+    /* ---------- UPDATE QUERY ---------- */
     let updateSql = `
-      UPDATE guestUsers 
-      SET fullname = ?, contact = ?, email = ?, address = ?, state = ?, city = ?, 
-          pincode = ?, experience = ?, adharno = ?, panno = ?, bankname = ?, 
-          accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?
+      UPDATE guestUsers SET
+        fullname = ?, contact = ?, email = ?, address = ?, state = ?, city = ?,
+        pincode = ?, experience = ?, adharno = ?, panno = ?, bankname = ?,
+        accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?
     `;
+
     const updateValues = [
       fullname,
       contact,
@@ -229,37 +271,22 @@ export const edit = (req, res) => {
     updateSql += ` WHERE id = ?`;
     updateValues.push(userid);
 
-    db.query(updateSql, updateValues, (updateErr) => {
-      if (updateErr) {
-        console.error("Error updating User:", updateErr);
-        return res
-          .status(500)
-          .json({ message: "Database error during update", error: updateErr });
-      }
+    await db.promise().query(updateSql, updateValues);
 
-      // Delete old Aadhaar image if replaced
-      if (adharImageUrl && oldAdhar) {
-        const oldPath = path.join(process.cwd(), oldAdhar.replace(/^\//, ""));
-        if (fs.existsSync(oldPath)) {
-          fs.unlink(oldPath, (err) => {
-            if (err) console.warn("Failed to delete old Aadhaar image:", err);
-          });
-        }
-      }
+    /* ---------- DELETE OLD S3 IMAGES ---------- */
+    if (adharImageUrl && oldAdhar) {
+      await deleteFromS3(oldAdhar);
+    }
 
-      // Delete old PAN image if replaced
-      if (panImageUrl && oldPan) {
-        const oldPath = path.join(process.cwd(), oldPan.replace(/^\//, ""));
-        if (fs.existsSync(oldPath)) {
-          fs.unlink(oldPath, (err) => {
-            if (err) console.warn("Failed to delete old PAN image:", err);
-          });
-        }
-      }
+    if (panImageUrl && oldPan) {
+      await deleteFromS3(oldPan);
+    }
 
-      res.status(200).json({ message: "User updated successfully" });
-    });
-  });
+    res.status(200).json({ message: "User updated successfully" });
+  } catch (error) {
+    console.error("Edit user error:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
 };
 
 // **Delete **
@@ -321,7 +348,7 @@ export const status = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Status change successfully" });
-      }
+      },
     );
   });
 };
@@ -366,7 +393,7 @@ export const assignLogin = async (req, res) => {
             username,
             password,
             "Guest User",
-            "https://users.reparv.in"
+            "https://users.reparv.in",
           )
             .then(() => {
               res.status(200).json({
@@ -379,7 +406,7 @@ export const assignLogin = async (req, res) => {
                 .status(500)
                 .json({ message: "Login updated but email failed to send." });
             });
-        }
+        },
       );
     });
   } catch (error) {

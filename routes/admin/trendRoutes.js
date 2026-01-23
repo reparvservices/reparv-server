@@ -14,19 +14,11 @@ import {
 
 const router = express.Router();
 
-// Multer Storage Configuration
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
 
+/* ---------- MULTER CONFIG (S3) ---------- */
 const upload = multer({
-  storage,
-  limits: { fileSize: 1 * 1024 * 1024 }, // 1MB limit
+  storage: multer.memoryStorage(), //  IMPORTANT for S3
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
     const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
     if (!allowedTypes.includes(file.mimetype)) {
@@ -35,12 +27,10 @@ const upload = multer({
     cb(null, true);
   },
 });
-
 // Routes
 router.get("/", getAll);
 router.get("/active", getAllActive);
 router.get("/:id", getById);
-
 router.post(
   "/add",
   upload.fields([
@@ -48,7 +38,6 @@ router.post(
   ]),
   add
 );
-
 router.put(
   "/edit/:id",
   upload.fields([

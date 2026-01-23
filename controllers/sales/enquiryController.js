@@ -90,7 +90,7 @@ export const add = async (req, res) => {
           Id: result.insertId,
           propertyCategory: propertyCategory, // Optional: include in response
         });
-      }
+      },
     );
   });
 };
@@ -116,7 +116,7 @@ export const addEnquiry = async (req, res) => {
     state,
     city,
     location,
-    message
+    message,
   } = req.body;
 
   // Validate required fields
@@ -161,7 +161,7 @@ export const addEnquiry = async (req, res) => {
 
     insertData = [
       projectPartnerId, // can be null if not linked
-      salesId,          // salespartner
+      salesId, // salespartner
       customer,
       contact,
       minbudget,
@@ -176,8 +176,8 @@ export const addEnquiry = async (req, res) => {
       currentdate,
       currentdate,
     ];
-  } 
-  
+  }
+
   // Case 2: Enquiry without property ID
   else {
     insertSQL = `
@@ -202,8 +202,8 @@ export const addEnquiry = async (req, res) => {
 
     insertData = [
       projectPartnerId, // can be null if not linked
-      salesId,          // salesbroker
-      salesId,          // salespartner
+      salesId, // salesbroker
+      salesId, // salespartner
       customer,
       contact,
       minbudget,
@@ -324,8 +324,8 @@ export const updateEnquiry = async (req, res) => {
             message: "Enquiry updated successfully",
             affectedRows: result.affectedRows,
           });
-        }
+        },
       );
-    }
+    },
   );
 };

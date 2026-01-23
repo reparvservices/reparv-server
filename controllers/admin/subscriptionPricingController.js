@@ -2,6 +2,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import fs from "fs";
 import path from "path";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 // **Fetch All **
 export const getAll = (req, res) => {
@@ -64,175 +65,326 @@ export const getById = (req, res) => {
 };
 
 // Add Subscription with 3 images
-export const addSubscription = (req, res) => {
+export const addSubscription = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { partnerType, planDuration, planName, totalPrice, features } = req.body;
+  const { partnerType, planDuration, planName, totalPrice, features } =
+    req.body;
 
   if (!partnerType || !planDuration || !planName || !totalPrice || !features) {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  const firstImage = req.files?.firstImage ? "/uploads/subscriptionBanners/" + req.files.firstImage[0].filename : null;
-  const secondImage = req.files?.secondImage ? "/uploads/subscriptionBanners/" + req.files.secondImage[0].filename : null;
-  const thirdImage = req.files?.thirdImage ? "/uploads/subscriptionBanners/" + req.files.thirdImage[0].filename : null;
+  try {
+    // Upload images to S3
+    const firstImage = req.files?.firstImage
+      ? await uploadToS3(req.files.firstImage[0])
+      : null;
 
-  // Check if plan already exists
-  db.query(
-    "SELECT * FROM subscriptionPricing WHERE planName = ? AND planDuration = ?",
-    [planName, planDuration],
-    (err, result) => {
-      if (err) return res.status(500).json({ message: "Database error", error: err });
-      if (result.length > 0) return res.status(202).json({ message: "Subscription Plan already exists!" });
+    const secondImage = req.files?.secondImage
+      ? await uploadToS3(req.files.secondImage[0])
+      : null;
 
-      const insertSQL = `INSERT INTO subscriptionPricing 
-        (partnerType, planDuration, planName, totalPrice, features, firstImage, secondImage, thirdImage, updated_at, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const thirdImage = req.files?.thirdImage
+      ? await uploadToS3(req.files.thirdImage[0])
+      : null;
 
-      db.query(
-        insertSQL,
-        [partnerType, planDuration, planName, totalPrice, features, firstImage, secondImage, thirdImage, currentdate, currentdate],
-        (err, result) => {
-          if (err) return res.status(500).json({ message: "Database error", error: err });
-          return res.status(201).json({ message: "Subscription Plan added successfully", Id: result.insertId });
+    // Check if plan already exists
+    db.query(
+      "SELECT id FROM subscriptionPricing WHERE planName = ? AND planDuration = ?",
+      [planName, planDuration],
+      (err, result) => {
+        if (err) {
+          return res.status(500).json({
+            message: "Database error",
+            error: err,
+          });
         }
-      );
-    }
-  );
+
+        if (result.length > 0) {
+          return res
+            .status(202)
+            .json({ message: "Subscription Plan already exists!" });
+        }
+
+        const insertSQL = `
+          INSERT INTO subscriptionPricing
+          (partnerType, planDuration, planName, totalPrice, features,
+           firstImage, secondImage, thirdImage, updated_at, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        db.query(
+          insertSQL,
+          [
+            partnerType,
+            planDuration,
+            planName,
+            totalPrice,
+            features,
+            firstImage,
+            secondImage,
+            thirdImage,
+            currentdate,
+            currentdate,
+          ],
+          (err, result) => {
+            if (err) {
+              return res.status(500).json({
+                message: "Database error",
+                error: err,
+              });
+            }
+
+            return res.status(201).json({
+              message: "Subscription Plan added successfully",
+              Id: result.insertId,
+            });
+          },
+        );
+      },
+    );
+  } catch (error) {
+    console.error("S3 upload error:", error);
+    return res.status(500).json({
+      message: "Image upload failed",
+      error,
+    });
+  }
 };
 
-// Update Subscription with 3 images
-export const updateSubscription = (req, res) => {
+export const updateSubscription = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { partnerType, planDuration, planName, totalPrice, features } = req.body;
+  const { partnerType, planDuration, planName, totalPrice, features } =
+    req.body;
   const id = parseInt(req.params.id);
 
   if (!partnerType || !planDuration || !planName || !totalPrice || !features) {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  const firstImage = req.files?.firstImage ? "/uploads/subscriptionBanners/" + req.files.firstImage[0].filename : null;
-  const secondImage = req.files?.secondImage ? "/uploads/subscriptionBanners/" + req.files.secondImage[0].filename : null;
-  const thirdImage = req.files?.thirdImage ? "/uploads/subscriptionBanners/" + req.files.thirdImage[0].filename : null;
+  try {
+    db.query(
+      "SELECT * FROM subscriptionPricing WHERE id = ?",
+      [id],
+      async (err, result) => {
+        if (err)
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
 
-  // Fetch existing subscription
-  db.query("SELECT * FROM subscriptionPricing WHERE id = ?", [id], (err, result) => {
-    if (err) return res.status(500).json({ message: "Database error", error: err });
-    if (result.length === 0) return res.status(404).json({ message: "Subscription Plan not found" });
+        if (result.length === 0)
+          return res
+            .status(404)
+            .json({ message: "Subscription Plan not found" });
 
-    const oldData = result[0];
-    let updateSQL = `UPDATE subscriptionPricing SET partnerType=?, planDuration=?, planName=?, totalPrice=?, features=?, updated_at=?`;
-    const params = [partnerType, planDuration, planName, totalPrice, features, currentdate];
+        const oldData = result[0];
 
-    // Replace images if uploaded
-    if (firstImage) {
-      if (oldData.firstImage) {
-        const oldPath = path.join(".", oldData.firstImage);
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      }
-      updateSQL += `, firstImage=?`;
-      params.push(firstImage);
-    }
-    if (secondImage) {
-      if (oldData.secondImage) {
-        const oldPath = path.join(".", oldData.secondImage);
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      }
-      updateSQL += `, secondImage=?`;
-      params.push(secondImage);
-    }
-    if (thirdImage) {
-      if (oldData.thirdImage) {
-        const oldPath = path.join(".", oldData.thirdImage);
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      }
-      updateSQL += `, thirdImage=?`;
-      params.push(thirdImage);
-    }
+        let firstImage = oldData.firstImage;
+        let secondImage = oldData.secondImage;
+        let thirdImage = oldData.thirdImage;
 
-    updateSQL += ` WHERE id=?`;
-    params.push(id);
+        if (req.files?.firstImage) {
+          if (oldData.firstImage) await deleteFromS3(oldData.firstImage);
+          firstImage = await uploadToS3(req.files.firstImage[0]);
+        }
 
-    db.query(updateSQL, params, (err) => {
-      if (err) return res.status(500).json({ message: "Database error", error: err });
-      return res.status(200).json({ message: "Subscription Plan updated successfully" });
-    });
-  });
+        if (req.files?.secondImage) {
+          if (oldData.secondImage) await deleteFromS3(oldData.secondImage);
+          secondImage = await uploadToS3(req.files.secondImage[0]);
+        }
+
+        if (req.files?.thirdImage) {
+          if (oldData.thirdImage) await deleteFromS3(oldData.thirdImage);
+          thirdImage = await uploadToS3(req.files.thirdImage[0]);
+        }
+
+        const updateSQL = `
+          UPDATE subscriptionPricing 
+          SET partnerType=?, planDuration=?, planName=?, totalPrice=?, features=?,
+              firstImage=?, secondImage=?, thirdImage=?, updated_at=?
+          WHERE id=?
+        `;
+
+        db.query(
+          updateSQL,
+          [
+            partnerType,
+            planDuration,
+            planName,
+            totalPrice,
+            features,
+            firstImage,
+            secondImage,
+            thirdImage,
+            currentdate,
+            id,
+          ],
+          (err) => {
+            if (err)
+              return res
+                .status(500)
+                .json({ message: "Database error", error: err });
+
+            return res
+              .status(200)
+              .json({ message: "Subscription Plan updated successfully" });
+          },
+        );
+      },
+    );
+  } catch (error) {
+    return res.status(500).json({ message: "S3 operation failed", error });
+  }
 };
-
-// Add Or Update Subscription with Images
-export const addOrUpdateSubscription = (req, res) => {
+export const addOrUpdateSubscription = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { id, partnerType, planDuration, planName, totalPrice, features } = req.body;
+  const { id, partnerType, planDuration, planName, totalPrice, features } =
+    req.body;
 
   if (!partnerType || !planDuration || !planName || !totalPrice || !features) {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Prepare new image filenames (relative paths)
-  const firstImage = req.files?.firstImage ? "/uploads/subscriptionBanners/" + req.files.firstImage[0].filename : null;
-  const secondImage = req.files?.secondImage ? "/uploads/subscriptionBanners/" + req.files.secondImage[0].filename : null;
-  const thirdImage = req.files?.thirdImage ? "/uploads/subscriptionBanners/" + req.files.thirdImage[0].filename : null;
+  try {
+    if (id) {
+      // UPDATE
+      db.query(
+        "SELECT * FROM subscriptionPricing WHERE id = ?",
+        [id],
+        async (err, result) => {
+          if (err)
+            return res
+              .status(500)
+              .json({ message: "Database error", error: err });
 
-  if (id) {
-    // Update existing subscription
-    db.query("SELECT * FROM subscriptionPricing WHERE id = ?", [id], (err, result) => {
-      if (err) return res.status(500).json({ message: "Database error", error: err });
-      if (result.length === 0) return res.status(404).json({ message: "Subscription Plan not found" });
+          if (result.length === 0)
+            return res
+              .status(404)
+              .json({ message: "Subscription Plan not found" });
 
-      const oldData = result[0];
+          const oldData = result[0];
 
-      // Build dynamic update query
-      let updateSQL = `UPDATE subscriptionPricing SET partnerType=?, planDuration=?, planName=?, totalPrice=?, features=?, updated_at=?`;
-      const params = [partnerType, planDuration, planName, totalPrice, features, currentdate];
+          let firstImage = oldData.firstImage;
+          let secondImage = oldData.secondImage;
+          let thirdImage = oldData.thirdImage;
 
-      // Replace images if new ones are uploaded and delete old files
-      if (firstImage) {
-        const oldPath = path.join("./uploads/subscriptionBanners/", path.basename(oldData.firstImage));
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-        updateSQL += `, firstImage=?`;
-        params.push(firstImage);
-      }
+          if (req.files?.firstImage) {
+            if (oldData.firstImage) await deleteFromS3(oldData.firstImage);
+            firstImage = await uploadToS3(req.files.firstImage[0]);
+          }
 
-      if (secondImage) {
-        const oldPath = path.join("./uploads/subscriptionBanners/", path.basename(oldData.secondImage));
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-        updateSQL += `, secondImage=?`;
-        params.push(secondImage);
-      }
+          if (req.files?.secondImage) {
+            if (oldData.secondImage) await deleteFromS3(oldData.secondImage);
+            secondImage = await uploadToS3(req.files.secondImage[0]);
+          }
 
-      if (thirdImage) {
-        const oldPath = path.join("./uploads/subscriptionBanners/", path.basename(oldData.thirdImage));
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-        updateSQL += `, thirdImage=?`;
-        params.push(thirdImage);
-      }
+          if (req.files?.thirdImage) {
+            if (oldData.thirdImage) await deleteFromS3(oldData.thirdImage);
+            thirdImage = await uploadToS3(req.files.thirdImage[0]);
+          }
 
-      updateSQL += ` WHERE id=?`;
-      params.push(id);
+          const updateSQL = `
+            UPDATE subscriptionPricing
+            SET partnerType=?, planDuration=?, planName=?, totalPrice=?, features=?,
+                firstImage=?, secondImage=?, thirdImage=?, updated_at=?
+            WHERE id=?
+          `;
 
-      db.query(updateSQL, params, (err) => {
-        if (err) return res.status(500).json({ message: "Database error", error: err });
-        return res.status(200).json({ message: "Subscription Plan updated successfully" });
-      });
-    });
-  } else {
-    // Insert new subscription (with images)
-    db.query("SELECT * FROM subscriptionPricing WHERE planName = ? AND planDuration = ?", [planName, planDuration], (err, result) => {
-      if (err) return res.status(500).json({ message: "Database error", error: err });
-      if (result.length > 0) return res.status(202).json({ message: "Subscription Pricing Plan already exists!" });
+          db.query(
+            updateSQL,
+            [
+              partnerType,
+              planDuration,
+              planName,
+              totalPrice,
+              features,
+              firstImage,
+              secondImage,
+              thirdImage,
+              currentdate,
+              id,
+            ],
+            (err) => {
+              if (err)
+                return res
+                  .status(500)
+                  .json({ message: "Database error", error: err });
 
-      const insertSQL = `INSERT INTO subscriptionPricing 
-        (partnerType, planDuration, planName, totalPrice, features, firstImage, secondImage, thirdImage, updated_at, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+              return res
+                .status(200)
+                .json({ message: "Subscription Plan updated successfully" });
+            },
+          );
+        },
+      );
+    } else {
+      // ADD
+      db.query(
+        "SELECT id FROM subscriptionPricing WHERE planName=? AND planDuration=?",
+        [planName, planDuration],
+        async (err, result) => {
+          if (err)
+            return res
+              .status(500)
+              .json({ message: "Database error", error: err });
 
-      db.query(insertSQL, [partnerType, planDuration, planName, totalPrice, features, firstImage, secondImage, thirdImage, currentdate, currentdate], (err, result) => {
-        if (err) return res.status(500).json({ message: "Database error", error: err });
-        return res.status(201).json({ message: "Subscription Plan added successfully", Id: result.insertId });
-      });
-    });
+          if (result.length > 0)
+            return res
+              .status(202)
+              .json({ message: "Subscription Pricing Plan already exists!" });
+
+          const firstImage = req.files?.firstImage
+            ? await uploadToS3(req.files.firstImage[0])
+            : null;
+
+          const secondImage = req.files?.secondImage
+            ? await uploadToS3(req.files.secondImage[0])
+            : null;
+
+          const thirdImage = req.files?.thirdImage
+            ? await uploadToS3(req.files.thirdImage[0])
+            : null;
+
+          const insertSQL = `
+            INSERT INTO subscriptionPricing
+            (partnerType, planDuration, planName, totalPrice, features,
+             firstImage, secondImage, thirdImage, updated_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `;
+
+          db.query(
+            insertSQL,
+            [
+              partnerType,
+              planDuration,
+              planName,
+              totalPrice,
+              features,
+              firstImage,
+              secondImage,
+              thirdImage,
+              currentdate,
+              currentdate,
+            ],
+            (err, result) => {
+              if (err)
+                return res
+                  .status(500)
+                  .json({ message: "Database error", error: err });
+
+              return res.status(201).json({
+                message: "Subscription Plan added successfully",
+                Id: result.insertId,
+              });
+            },
+          );
+        },
+      );
+    }
+  } catch (error) {
+    return res.status(500).json({ message: "S3 operation failed", error });
   }
 };
-
 // **Delete **
 export const del = (req, res) => {
   const Id = parseInt(req.params.id);
@@ -266,10 +418,9 @@ export const del = (req, res) => {
           .status(200)
           .json({ message: "Subscription Pricing deleted successfully" });
       });
-    }
+    },
   );
 };
-
 //**Change status */
 export const highlight = (req, res) => {
   const Id = parseInt(req.params.id);
@@ -307,12 +458,11 @@ export const highlight = (req, res) => {
           res.status(200).json({
             message: "Subscription Plan highlight successfully",
           });
-        }
+        },
       );
-    }
+    },
   );
 };
-
 //**Change status */
 export const status = (req, res) => {
   const Id = parseInt(req.params.id);
@@ -350,8 +500,8 @@ export const status = (req, res) => {
           res.status(200).json({
             message: "Subscription Pricing status change successfully",
           });
-        }
+        },
       );
-    }
+    },
   );
 };

@@ -1,6 +1,7 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 import bcrypt from "bcryptjs";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 function toSlug(text) {
   return text
@@ -59,96 +60,119 @@ export const getById = (req, res) => {
 };
 
 // **Add New **
-export const add = (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { type, tittle, description, content } = req.body;
+export const add = async (req, res) => {
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const { type, tittle, description, content } = req.body;
 
-  if (!tittle || !description || !content) {
-    return res.status(400).json({ message: "All Fields are Required" });
+    /*  Validation */
+    if (!tittle || !description || !content) {
+      return res.status(400).json({ message: "All Fields are Required" });
+    }
+
+    const seoSlug = toSlug(tittle);
+
+    /*  Upload blog image to S3 */
+    const uploadBlogImage = async () => {
+      if (!req.files?.blogImage?.[0]) return null;
+      return await uploadToS3(req.files.blogImage[0], "blogs");
+    };
+
+    const blogImageUrl = await uploadBlogImage();
+
+    /*  Insert blog */
+    const sql = `
+      INSERT INTO blogs 
+      (type, tittle, description, content, seoSlug, image, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const [result] = await db
+      .promise()
+      .query(sql, [
+        type,
+        tittle,
+        description,
+        content,
+        seoSlug,
+        blogImageUrl,
+        currentdate,
+        currentdate,
+      ]);
+
+    return res.status(201).json({
+      message: "Blog added successfully",
+      blogId: result.insertId,
+    });
+  } catch (error) {
+    console.error("Error inserting blog:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error,
+    });
   }
+};
+// **Edit **
+export const edit = async (req, res) => {
+  try {
+    const blogId = req.params.id;
+    if (!blogId) {
+      return res.status(400).json({ message: "Invalid Blog ID" });
+    }
 
-  const seoSlug = toSlug(tittle);
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const { type, tittle, description, content } = req.body;
 
-  const blogImageFile = req.files?.["blogImage"]?.[0];
-  const blogImageUrl = blogImageFile
-    ? `/uploads/${blogImageFile.filename}`
-    : null;
+    /*  Validation */
+    if (!tittle || !description || !content) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
 
-  const sql = `INSERT INTO blogs (type, tittle, description, content, seoSlug, image, created_at, updated_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    /*  Upload new image to S3 (if provided) */
+    let blogImageUrl = null;
+    if (req.files?.blogImage?.[0]) {
+      blogImageUrl = await uploadToS3(req.files.blogImage[0], "blogs");
+    }
 
-  db.query(
-    sql,
-    [
+    /*  Build update query dynamically */
+    let updateSql = `
+      UPDATE blogs 
+      SET type = ?, tittle = ?, description = ?, content = ?, updated_at = ?
+    `;
+    const updateValues = [
       type,
       tittle,
       description,
       content,
-      seoSlug,
-      blogImageUrl,
       currentdate,
-      currentdate,
-    ],
-    (err, result) => {
-      if (err) {
-        console.error("Error inserting blog:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
+    ];
 
-      return res.status(201).json({
-        message: "Blog added successfully",
-        blogId: result.insertId,
-      });
+    if (blogImageUrl) {
+      updateSql += `, image = ?`;
+      updateValues.push(blogImageUrl);
     }
-  );
-};
 
-export const edit = (req, res) => {
-  const blogId = req.params.id;
-  if (!blogId) {
-    return res.status(400).json({ message: "Invalid Blog ID" });
-  }
+    updateSql += ` WHERE id = ?`;
+    updateValues.push(blogId);
 
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { type, tittle, description, content } = req.body;
-
-  if (!tittle || !description || !content) {
-    return res.status(400).json({ message: "all fields are required" });
-  }
-
-  // Handle uploaded image
-  const blogImageFile = req.files?.["blogImage"]?.[0];
-  const blogImageUrl = blogImageFile
-    ? `/uploads/${blogImageFile.filename}`
-    : null;
-
-  // Build update SQL
-  let updateSql = `UPDATE blogs SET type = ?, tittle = ?, description = ?, content = ?, updated_at = ?`;
-  const updateValues = [type, tittle, description, content, currentdate];
-
-  if (blogImageUrl) {
-    updateSql += `, image = ?`;
-    updateValues.push(blogImageUrl);
-  }
-
-  updateSql += ` WHERE id = ?`;
-  updateValues.push(blogId);
-
-  db.query(updateSql, updateValues, (err, result) => {
-    if (err) {
-      console.error("Error updating blog:", err);
-      return res
-        .status(500)
-        .json({ message: "Database error during update", error: err });
-    }
+    const [result] = await db.promise().query(updateSql, updateValues);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Blog not found" });
     }
 
-    return res.status(200).json({ message: "Blog updated successfully" });
-  });
+    return res.status(200).json({
+      message: "Blog updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating blog:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error,
+    });
+  }
 };
+
 
 //**Change status */
 export const status = (req, res) => {
@@ -181,7 +205,7 @@ export const status = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Blog status change successfully" });
-      }
+      },
     );
   });
 };
@@ -214,7 +238,7 @@ export const seoDetails = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Seo Details Add successfully" });
-      }
+      },
     );
   });
 };

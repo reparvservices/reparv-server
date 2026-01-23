@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import { OAuth2Client } from "google-auth-library";
 import e from "express";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 const client = new OAuth2Client(process.env.MOBILE_GOOGLE_LOGIN_CLIENT_ID);
 
 dotenv.config();
@@ -148,13 +149,10 @@ export const getProfile = (req, res) => {
   });
 };
 
-export const update = (req, res) => {
+export const update = async (req, res) => {
   try {
     const { user_id, fullname, email, contact } = req.body;
-    const userimage = req.file ? `/uploads/${req.file.filename}` : null;
-    const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
 
-    //  user_id is mandatory
     if (!user_id) {
       return res.status(400).json({
         success: false,
@@ -162,7 +160,6 @@ export const update = (req, res) => {
       });
     }
 
-    //  Full name is mandatory
     if (!fullname || !fullname.trim()) {
       return res.status(400).json({
         success: false,
@@ -170,7 +167,6 @@ export const update = (req, res) => {
       });
     }
 
-    //  At least ONE must be present
     if (!email && !contact) {
       return res.status(400).json({
         success: false,
@@ -178,62 +174,96 @@ export const update = (req, res) => {
       });
     }
 
-    let sql = `
-      UPDATE mobileusers
-      SET fullname = ?, updated_at = ?
-    `;
-    const params = [fullname, timestamp];
+    const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
 
-    //  Update email only if provided
-    if (email) {
-      sql += `, email = ?`;
-      params.push(email);
-    }
+    // STEP 1: Fetch existing image from DB
+    db.query(
+      "SELECT userimage FROM mobileusers WHERE user_id = ?",
+      [user_id],
+      async (err, result) => {
+        if (err) {
+          console.error(err);
+          return res.status(500).json({
+            success: false,
+            message: "Database error",
+          });
+        }
 
-    // Update contact only if provided
-    if (contact) {
-      sql += `, contact = ?`;
-      params.push(contact);
-    }
+        if (result.length === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "User not found",
+          });
+        }
 
-    //Update image only if uploaded
-    if (userimage) {
-      sql += `, userimage = ?`;
-      params.push(userimage);
-    }
+        const existingImage = result[0].userimage;
+        let newImageUrl = existingImage;
 
-    sql += ` WHERE user_id = ?`;
-    params.push(user_id);
+        // STEP 2: Upload new image to S3 if provided
+        if (req.file) {
+          try {
+            newImageUrl = await uploadToS3(req.file);
 
-    db.query(sql, params, (err, result) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({
-          success: false,
-          message: "Database error",
+            // Delete old image from S3 if it exists
+            if (existingImage) {
+              await deleteFromS3(existingImage);
+            }
+          } catch (s3Err) {
+            console.error("S3 upload/delete error:", s3Err);
+            return res.status(500).json({
+              success: false,
+              message: "S3 upload/delete failed",
+              error: s3Err,
+            });
+          }
+        }
+
+        // STEP 3: Build dynamic SQL for updating
+        let sql = `UPDATE mobileusers SET fullname = ?, updated_at = ?`;
+        const params = [fullname, timestamp];
+
+        if (email) {
+          sql += `, email = ?`;
+          params.push(email);
+        }
+
+        if (contact) {
+          sql += `, contact = ?`;
+          params.push(contact);
+        }
+
+        if (req.file) {
+          sql += `, userimage = ?`;
+          params.push(newImageUrl);
+        }
+
+        sql += ` WHERE user_id = ?`;
+        params.push(user_id);
+
+        // STEP 4: Update DB
+        db.query(sql, params, (updateErr, updateResult) => {
+          if (updateErr) {
+            console.error(updateErr);
+            return res.status(500).json({
+              success: false,
+              message: "Database error",
+            });
+          }
+
+          return res.status(200).json({
+            success: true,
+            message: "Profile updated successfully",
+            data: {
+              user_id,
+              fullname,
+              email: email || null,
+              contact: contact || null,
+              userimage: newImageUrl,
+            },
+          });
         });
       }
-
-      //No user found
-      if (result.affectedRows === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "User not found",
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: "Profile updated successfully",
-        data: {
-          user_id,
-          fullname,
-          email,
-          contact,
-          userimage,
-        },
-      });
-    });
+    );
   } catch (error) {
     console.error(error);
     return res.status(500).json({
@@ -242,7 +272,6 @@ export const update = (req, res) => {
     });
   }
 };
-
 export const googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
@@ -353,3 +382,4 @@ export const googleLogin = async (req, res) => {
     });
   }
 };
+

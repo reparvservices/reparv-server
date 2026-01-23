@@ -124,7 +124,7 @@ export const sendOtp = async (req, res) => {
       await transporter.sendMail(mailOptions);
       console.log(`builder Email sent successfully to ${email}`);
 
-      // ✅ Respond with hash
+      //  Respond with hash
       res.json({ hash: fullHash });
     } catch (error) {
       console.error("Error sending email:", error.message || error);

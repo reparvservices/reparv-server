@@ -5,23 +5,17 @@ import {
   getAll,
   getAllActive,
   add,
-  edit
+  edit,
 } from "../../controllers/projectPartner/territoryPartnerController.js";
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
+// ---------------- MULTER MEMORY STORAGE ----------------
+const storage = multer.memoryStorage(); // store file in memory for S3 upload
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size (5MB)
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
     const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
     if (!allowedTypes.includes(file.mimetype)) {
@@ -41,7 +35,7 @@ router.post(
     { name: "panImage", maxCount: 2 },
     { name: "reraImage", maxCount: 2 },
   ]),
-  add
+  add,
 );
 router.put(
   "/edit/:id",
@@ -50,7 +44,7 @@ router.put(
     { name: "panImage", maxCount: 2 },
     { name: "reraImage", maxCount: 2 },
   ]),
-  edit
+  edit,
 );
 
 export default router;

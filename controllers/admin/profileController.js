@@ -2,6 +2,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 
@@ -33,7 +34,7 @@ export const getProfile = async (req, res) => {
   }
 };
 
-export const editProfile = (req, res) => {
+export const editProfile = async (req, res) => {
   const userId = req.adminUser?.id;
   if (!userId) {
     return res.status(400).json({ message: "Invalid User ID" });
@@ -46,40 +47,43 @@ export const editProfile = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Fetch existing user profile first
-  db.query("SELECT userimage FROM users WHERE id = ?", [userId], (err, result) => {
-    if (err) {
-      console.error("Error fetching user:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-    
-    if (result.length === 0) {
+  try {
+    //  Fetch existing user profile first
+    const rows = await new Promise((resolve, reject) =>
+      db.query("SELECT userimage FROM users WHERE id = ?", [userId], (err, results) =>
+        err ? reject(err) : resolve(results)
+      )
+    );
+
+    if (!rows || rows.length === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const existingImage = result[0].userimage;
-    const finalImagePath = req.file ? `/uploads/${req.file.filename}` : existingImage;
+    let existingImage = rows[0].userimage;
+    let finalImagePath = existingImage;
 
-    let updateSql = `UPDATE users SET name = ?, username = ?, contact = ?, email = ?, userimage = ?, updated_at = ? WHERE id = ?`;
-    const updateValues = [
-      name,
-      username,
-      contact,
-      email,
-      finalImagePath,
-      currentdate,
-      userId,
-    ];
+    //  Upload new file to S3 if provided
+    if (req.file) {
+      finalImagePath = await uploadToS3(req.file, "users"); // store in "users" folder
+    }
 
-    db.query(updateSql, updateValues, (updateErr, updateResult) => {
-      if (updateErr) {
-        console.error("Error updating profile:", updateErr);
-        return res.status(500).json({ message: "Database error during update", error: updateErr });
-      }
+    // 3️ Update DB
+    const updateSql = `
+      UPDATE users 
+      SET name = ?, username = ?, contact = ?, email = ?, userimage = ?, updated_at = ? 
+      WHERE id = ?
+    `;
+    const updateValues = [name, username, contact, email, finalImagePath, currentdate, userId];
 
-      res.status(200).json({ message: "Profile updated successfully" });
-    });
-  });
+    await new Promise((resolve, reject) =>
+      db.query(updateSql, updateValues, (err) => (err ? reject(err) : resolve()))
+    );
+
+    res.status(200).json({ message: "Profile updated successfully" });
+  } catch (err) {
+    console.error("Error updating profile:", err);
+    res.status(500).json({ message: "Server error", error: err });
+  }
 };
 
 export const changePassword = async (req, res) => {

@@ -4,6 +4,7 @@ import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 dotenv.config();
 
@@ -41,7 +42,7 @@ export const getProfile = (req, res) => {
   });
 };
 
-export const editProfile = (req, res) => {
+export const editProfile = async (req, res) => {
   const userId = req.user?.id;
   if (!userId) {
     return res.status(400).json({ message: "Invalid User ID" });
@@ -54,50 +55,66 @@ export const editProfile = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Fetch existing user profile first
-  db.query(
-    "SELECT userimage FROM builders WHERE builderid = ?",
-    [userId],
-    (err, result) => {
-      if (err) {
-        console.error("Error fetching user:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
-
-      if (result.length === 0) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const existingImage = result[0].userimage;
-      const finalImagePath = req.file
-        ? `/uploads/${req.file.filename}`
-        : existingImage;
-
-      let updateSql = `UPDATE builders SET contact_person = ?, username = ?, contact = ?, email = ?, userimage = ?, updated_at = ? WHERE builderid = ?`;
-      const updateValues = [
-        fullname,
-        username,
-        contact,
-        email,
-        finalImagePath,
-        currentdate,
-        userId,
-      ];
-
-      db.query(updateSql, updateValues, (updateErr, updateResult) => {
-        if (updateErr) {
-          console.error("Error updating profile:", updateErr);
-          return res.status(500).json({
-            message: "Database error during update",
-            error: updateErr,
-          });
+  try {
+    // STEP 1: Fetch existing user image
+    db.query(
+      "SELECT userimage FROM builders WHERE builderid = ?",
+      [userId],
+      async (err, result) => {
+        if (err) {
+          console.error("Error fetching user:", err);
+          return res.status(500).json({ message: "Database error", error: err });
         }
 
-        res.status(200).json({ message: "Profile updated successfully" });
-      });
-    }
-  );
+        if (result.length === 0) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        const existingImage = result[0].userimage;
+        let newImageUrl = existingImage;
+
+        // STEP 2: Upload new image to S3 if provided
+        if (req.file) {
+          try {
+            newImageUrl = await uploadToS3(req.file);
+
+            // Delete old image from S3 if exists
+            if (existingImage) {
+              await deleteFromS3(existingImage);
+            }
+          } catch (s3Err) {
+            console.error("S3 upload/delete error:", s3Err);
+            return res.status(500).json({ message: "S3 upload/delete failed", error: s3Err });
+          }
+        }
+
+        // STEP 3: Update user profile in DB
+        const updateSql = `
+          UPDATE builders 
+          SET fullname = ?, username = ?, contact = ?, email = ?, userimage = ?, updated_at = ? 
+          WHERE builderid = ?
+        `;
+        const updateValues = [fullname, username, contact, email, newImageUrl, currentdate, userId];
+
+        db.query(updateSql, updateValues, (updateErr) => {
+          if (updateErr) {
+            console.error("Error updating profile:", updateErr);
+            return res.status(500).json({
+              message: "Database error during update",
+              error: updateErr,
+            });
+          }
+
+          res.status(200).json({ message: "Profile updated successfully" });
+        });
+      }
+    );
+  } catch (error) {
+    console.error("Edit profile error:", error);
+    return res.status(500).json({ message: "Server error", error });
+  }
 };
+
 
 export const changePassword = async (req, res) => {
   const { email, newPassword } = req.body;
@@ -187,7 +204,7 @@ export const sendOtp = async (req, res) => {
       await transporter.sendMail(mailOptions);
       console.log(`builder Email sent successfully to ${email}`);
 
-      // ✅ Respond with hash
+      //  Respond with hash
       res.json({ hash: fullHash });
     } catch (error) {
       console.error("Error sending email:", error.message || error);

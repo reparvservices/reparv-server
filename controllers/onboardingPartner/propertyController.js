@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { convertImagesToWebp } from "../../utils/convertImagesToWebp.js";
 import { sanitize } from "../../utils/sanitize.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 function toSlug(text) {
   return text
@@ -85,293 +86,223 @@ export const getById = (req, res) => {
     res.json(formatted[0]);
   });
 };
-
 export const addProperty = async (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const files = await convertImagesToWebp(req.files);
-  const partnerId = req.onboardingUser?.id;
-  if (!partnerId) {
-    return res.status(401).json({ message: "Unauthorized Access" });
-  }
-  const Id = req.body.propertyid ? parseInt(req.body.propertyid) : null;
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const partnerId = req.onboardingUser?.id;
 
-  const {
-    builderid,
-    projectBy,
-    possessionDate,
-    propertyCategory,
-    propertyApprovedBy,
-    propertyName,
-    address,
-    state,
-    city,
-    pincode,
-    location,
-    distanceFromCityCenter,
-    latitude,
-    longitude,
-    totalSalesPrice,
-    totalOfferPrice,
-    stampDuty,
-    registrationFee,
-    gst,
-    advocateFee,
-    msebWater,
-    maintenance,
-    other,
-    tags,
-    propertyType,
-    builtYear,
-    ownershipType,
-    builtUpArea,
-    carpetArea,
-    parkingAvailability,
-    totalFloors,
-    floorNo,
-    loanAvailability,
-    propertyFacing,
-    reraRegistered,
-    furnishing,
-    waterSupply,
-    powerBackup,
-    locationFeature,
-    sizeAreaFeature,
-    parkingFeature,
-    terraceFeature,
-    ageOfPropertyFeature,
-    amenitiesFeature,
-    propertyStatusFeature,
-    smartHomeFeature,
-    securityBenefit,
-    primeLocationBenefit,
-    rentalIncomeBenefit,
-    qualityBenefit,
-    capitalAppreciationBenefit,
-    ecofriendlyBenefit,
-  } = req.body;
-
-  if (
-    !builderid ||
-    !propertyCategory ||
-    !propertyName ||
-    !address ||
-    !state ||
-    !city ||
-    !pincode ||
-    !location ||
-    !distanceFromCityCenter ||
-    !latitude ||
-    !longitude ||
-    !totalSalesPrice ||
-    !totalOfferPrice ||
-    !stampDuty ||
-    !other ||
-    !tags ||
-    !builtYear ||
-    !ownershipType ||
-    !carpetArea ||
-    !parkingAvailability ||
-    !loanAvailability ||
-    !propertyFacing ||
-    !waterSupply ||
-    !powerBackup ||
-    !locationFeature ||
-    !sizeAreaFeature ||
-    !parkingFeature ||
-    !ageOfPropertyFeature ||
-    !amenitiesFeature ||
-    !propertyStatusFeature ||
-    !securityBenefit ||
-    !primeLocationBenefit ||
-    !rentalIncomeBenefit ||
-    !capitalAppreciationBenefit ||
-    !ecofriendlyBenefit
-  ) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
-  const seoSlug = toSlug(propertyName);
-
-  // Property Registration Fee is 1% or Maximum 30,000 Rs
-  let registrationFees;
-  if (totalOfferPrice > 3000000) {
-    registrationFees = (30000 / totalOfferPrice) * 100;
-  } else {
-    if (
-      ["RentalFlat", "RentalShop", "RentalOffice"].includes(propertyCategory)
-    ) {
-      registrationFees = 0;
-    } else {
-      registrationFees = 1;
+    if (!partnerId) {
+      return res.status(401).json({ message: "Unauthorized Access" });
     }
-  }
 
-  // calculate EMI On OFFER PRICE
-  const emi = calculateEMI(Number(totalOfferPrice));
+    /* ---------- IMAGE HANDLING (S3) ---------- */
+    const uploadImagesToS3 = async (fieldName) => {
+      if (!req.files || !req.files[fieldName]) return null;
 
-  // Format dates to remove time portion
-  let formattedPossessionDate = null;
+      const urls = await Promise.all(
+        req.files[fieldName].map(async (file) => {
+          return await uploadToS3(file); // returns S3 URL
+        })
+      );
 
-  if (possessionDate && possessionDate.trim() !== "") {
-    // Check if it's a valid date
-    if (
+      return JSON.stringify(urls); // store as TEXT / JSON
+    };
+
+    const frontView = await uploadImagesToS3("frontView");
+    const sideView = await uploadImagesToS3("sideView");
+    const kitchenView = await uploadImagesToS3("kitchenView");
+    const hallView = await uploadImagesToS3("hallView");
+    const bedroomView = await uploadImagesToS3("bedroomView");
+    const bathroomView = await uploadImagesToS3("bathroomView");
+    const balconyView = await uploadImagesToS3("balconyView");
+    const nearestLandmark = await uploadImagesToS3("nearestLandmark");
+    const developedAmenities = await uploadImagesToS3("developedAmenities");
+
+    /* ---------- BODY ---------- */
+    const {
+      builderid,
+      projectBy,
+      possessionDate,
+      propertyCategory,
+      propertyApprovedBy,
+      propertyName,
+      address,
+      state,
+      city,
+      pincode,
+      location,
+      distanceFromCityCenter,
+      latitude,
+      longitude,
+      totalSalesPrice,
+      totalOfferPrice,
+      stampDuty,
+      registrationFee,
+      gst,
+      advocateFee,
+      msebWater,
+      maintenance,
+      other,
+      tags,
+      propertyType,
+      builtYear,
+      ownershipType,
+      builtUpArea,
+      carpetArea,
+      parkingAvailability,
+      totalFloors,
+      floorNo,
+      loanAvailability,
+      propertyFacing,
+      reraRegistered,
+      furnishing,
+      waterSupply,
+      powerBackup,
+      locationFeature,
+      sizeAreaFeature,
+      parkingFeature,
+      terraceFeature,
+      ageOfPropertyFeature,
+      amenitiesFeature,
+      propertyStatusFeature,
+      smartHomeFeature,
+      securityBenefit,
+      primeLocationBenefit,
+      rentalIncomeBenefit,
+      qualityBenefit,
+      capitalAppreciationBenefit,
+      ecofriendlyBenefit,
+    } = req.body;
+
+    if (!builderid || !propertyName || !address || !city) {
+      return res.status(400).json({ message: "Required fields missing" });
+    }
+
+    const seoSlug = toSlug(propertyName);
+    const emi = calculateEMI(Number(totalOfferPrice));
+
+    const formattedPossessionDate =
+      possessionDate &&
       moment(possessionDate, ["YYYY-MM-DD", moment.ISO_8601], true).isValid()
-    ) {
-      formattedPossessionDate = moment(possessionDate).format("YYYY-MM-DD");
-    } else {
-      formattedPossessionDate = null; // fallback instead of "Invalid date"
-    }
-  }
+        ? moment(possessionDate).format("YYYY-MM-DD")
+        : null;
 
-  // Convert Property Type Into Array
-  let propertyTypeArray;
+    const propertyTypeJson = JSON.stringify(
+      Array.isArray(propertyType)
+        ? propertyType
+        : typeof propertyType === "string"
+        ? propertyType.split(",").map((i) => i.trim())
+        : []
+    );
 
-  if (Array.isArray(propertyType)) {
-    // already an array
-    propertyTypeArray = propertyType;
-  } else if (typeof propertyType === "string") {
-    // convert comma-separated string into array
-    propertyTypeArray = propertyType
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item !== ""); // remove empty values
-  } else {
-    propertyTypeArray = [];
-  }
-
-  const propertyTypeJson = JSON.stringify(propertyTypeArray);
-
-  // Prepare image URLs
-  const getImagePaths = (field) =>
-    files[field]
-      ? JSON.stringify(files[field].map((f) => `/uploads/${f.filename}`))
-      : null;
-
-  const frontView = getImagePaths("frontView");
-  const sideView = getImagePaths("sideView");
-  const kitchenView = getImagePaths("kitchenView");
-  const hallView = getImagePaths("hallView");
-  const bedroomView = getImagePaths("bedroomView");
-  const bathroomView = getImagePaths("bathroomView");
-  const balconyView = getImagePaths("balconyView");
-  const nearestLandmark = getImagePaths("nearestLandmark");
-  const developedAmenities = getImagePaths("developedAmenities");
-
-  db.query(
-    "SELECT * FROM properties WHERE propertyName = ?",
-    [propertyName],
-    (err, result) => {
-      if (err)
-        return res.status(500).json({ message: "Database error", error: err });
-      if (result.length > 0)
-        return res
-          .status(409)
-          .json({ message: "Property name already exists!" });
-
-      const insertSQL = `
+    /* ---------- INSERT ---------- */
+    const insertSQL = `
       INSERT INTO properties (
-        partnerid, builderid, projectBy, possessionDate, propertyCategory, propertyApprovedBy, propertyName, address, state, city, pincode, location,
-        distanceFromCityCenter, latitude, longitude, totalSalesPrice, totalOfferPrice, emi, stampDuty, registrationFee, gst, advocateFee, 
-        msebWater, maintenance, other, tags, propertyType, builtYear, ownershipType, builtUpArea, carpetArea,
-        parkingAvailability, totalFloors, floorNo, loanAvailability, propertyFacing, reraRegistered, 
-        furnishing, waterSupply, powerBackup, locationFeature, sizeAreaFeature, parkingFeature, terraceFeature,
-        ageOfPropertyFeature, amenitiesFeature, propertyStatusFeature, smartHomeFeature,
-        securityBenefit, primeLocationBenefit, rentalIncomeBenefit, qualityBenefit, capitalAppreciationBenefit, ecofriendlyBenefit,
-        frontView, sideView, kitchenView, hallView, bedroomView, bathroomView, balconyView,
-        nearestLandmark, developedAmenities, seoSlug,
-        updated_at, created_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-      const values = [
-        partnerId,
-        builderid,
-        sanitize(projectBy),
-        sanitize(formattedPossessionDate),
-        propertyCategory,
-        propertyApprovedBy,
-        propertyName,
-        address,
-        state,
-        city,
-        pincode,
-        location,
-        distanceFromCityCenter,
-        latitude,
-        longitude,
-        totalSalesPrice,
-        totalOfferPrice,
-        emi,
-        stampDuty,
-        registrationFees,
-        gst,
-        advocateFee,
-        msebWater,
-        maintenance,
-        other,
-        tags,
-        propertyTypeJson,
-        builtYear,
-        ownershipType,
-        builtUpArea,
-        carpetArea,
-        parkingAvailability,
-        totalFloors,
-        floorNo,
-        loanAvailability,
-        propertyFacing,
-        reraRegistered,
-        furnishing,
-        waterSupply,
-        powerBackup,
-        locationFeature,
-        sizeAreaFeature,
-        parkingFeature,
-        terraceFeature,
-        ageOfPropertyFeature,
-        amenitiesFeature,
-        propertyStatusFeature,
-        smartHomeFeature,
-        securityBenefit,
-        primeLocationBenefit,
-        rentalIncomeBenefit,
-        qualityBenefit,
-        capitalAppreciationBenefit,
+        partnerid, builderid, projectBy, possessionDate, propertyCategory,
+        propertyApprovedBy, propertyName, address, state, city, pincode,
+        location, distanceFromCityCenter, latitude, longitude,
+        totalSalesPrice, totalOfferPrice, emi, stampDuty, registrationFee,
+        gst, advocateFee, msebWater, maintenance, other, tags,
+        propertyType, builtYear, ownershipType, builtUpArea, carpetArea,
+        parkingAvailability, totalFloors, floorNo, loanAvailability,
+        propertyFacing, reraRegistered, furnishing, waterSupply, powerBackup,
+        locationFeature, sizeAreaFeature, parkingFeature, terraceFeature,
+        ageOfPropertyFeature, amenitiesFeature, propertyStatusFeature,
+        smartHomeFeature, securityBenefit, primeLocationBenefit,
+        rentalIncomeBenefit, qualityBenefit, capitalAppreciationBenefit,
         ecofriendlyBenefit,
-        frontView,
-        sideView,
-        kitchenView,
-        hallView,
-        bedroomView,
-        bathroomView,
-        balconyView,
-        nearestLandmark,
-        developedAmenities,
-        seoSlug,
-        currentdate,
-        currentdate,
-      ];
+        frontView, sideView, kitchenView, hallView, bedroomView,
+        bathroomView, balconyView, nearestLandmark, developedAmenities,
+        seoSlug, created_at, updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `;
 
-      db.query(insertSQL, values, (err, result) => {
-        if (err) {
-          if (err.code === "ER_DUP_ENTRY") {
-            // DB caught duplicate propertyName
-            return res
-              .status(409)
-              .json({ message: "Property name already exists!" });
-          }
-          console.error("Error inserting property:", err);
-          return res.status(500).json({ message: "Insert failed", error: err });
-        }
-        res.status(201).json({
-          message: "Property added successfully",
-          id: result.insertId,
-        });
+    const values = [
+      partnerId,
+      builderid,
+      projectBy,
+      formattedPossessionDate,
+      propertyCategory,
+      propertyApprovedBy,
+      propertyName,
+      address,
+      state,
+      city,
+      pincode,
+      location,
+      distanceFromCityCenter,
+      latitude,
+      longitude,
+      totalSalesPrice,
+      totalOfferPrice,
+      emi,
+      stampDuty,
+      registrationFee,
+      gst,
+      advocateFee,
+      msebWater,
+      maintenance,
+      other,
+      tags,
+      propertyTypeJson,
+      builtYear,
+      ownershipType,
+      builtUpArea,
+      carpetArea,
+      parkingAvailability,
+      totalFloors,
+      floorNo,
+      loanAvailability,
+      propertyFacing,
+      reraRegistered,
+      furnishing,
+      waterSupply,
+      powerBackup,
+      locationFeature,
+      sizeAreaFeature,
+      parkingFeature,
+      terraceFeature,
+      ageOfPropertyFeature,
+      amenitiesFeature,
+      propertyStatusFeature,
+      smartHomeFeature,
+      securityBenefit,
+      primeLocationBenefit,
+      rentalIncomeBenefit,
+      qualityBenefit,
+      capitalAppreciationBenefit,
+      ecofriendlyBenefit,
+      frontView,
+      sideView,
+      kitchenView,
+      hallView,
+      bedroomView,
+      bathroomView,
+      balconyView,
+      nearestLandmark,
+      developedAmenities,
+      seoSlug,
+      currentdate,
+      currentdate,
+    ];
+
+    db.query(insertSQL, values, (err, result) => {
+      if (err) {
+        console.error("Insert error:", err);
+        return res.status(500).json({ message: "Insert failed", error: err });
+      }
+
+      res.status(201).json({
+        message: "Property added successfully",
+        id: result.insertId,
       });
-    }
-  );
+    });
+  } catch (error) {
+    console.error("Add property error:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
 };
+
 
 export const update = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");

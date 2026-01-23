@@ -1,6 +1,7 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 import bcrypt from "bcryptjs";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 function toSlug(text) {
   return text
@@ -60,40 +61,56 @@ export const getById = (req, res) => {
 };
 
 // **Add New **
-export const add = (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { trendName, content } = req.body;
-  
-  if (!trendName || !content) {
-    return res.status(400).json({ message: "All Fields are Required" });
-  }
 
-  const seoSlug = toSlug(trendName);
+export const add = async (req, res) => {
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const { trendName, content } = req.body;
 
-  const trendImageFile = req.files?.["trendImage"]?.[0];
-  const trendImageUrl = trendImageFile ? `/uploads/${trendImageFile.filename}` : null;
-
-  const sql = `INSERT INTO trends (trendName, content, seoSlug, image, created_at, updated_at) 
-               VALUES (?, ?, ?, ?, ?, ?)`;
-
-  db.query(
-    sql,
-    [trendName, content, seoSlug, trendImageUrl, currentdate, currentdate],
-    (err, result) => {
-      if (err) {
-        console.error("Error inserting trend:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
-
-      return res.status(201).json({
-        message: "Trend added successfully",
-        trendId: result.insertId,
-      });
+    if (!trendName || !content) {
+      return res.status(400).json({ message: "All Fields are Required" });
     }
-  );
+
+    const seoSlug = toSlug(trendName);
+
+    // Upload image to S3 if provided
+    let trendImageUrl = null;
+    if (req.files?.["trendImage"]?.[0]) {
+      try {
+        trendImageUrl = await uploadToS3(req.files["trendImage"][0]);
+      } catch (s3Err) {
+        console.error("S3 upload error:", s3Err);
+        return res.status(500).json({ message: "S3 upload failed", error: s3Err });
+      }
+    }
+
+    const sql = `
+      INSERT INTO trends (trendName, content, seoSlug, image, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    db.query(
+      sql,
+      [trendName, content, seoSlug, trendImageUrl, currentdate, currentdate],
+      (err, result) => {
+        if (err) {
+          console.error("Error inserting trend:", err);
+          return res.status(500).json({ message: "Database error", error: err });
+        }
+
+        return res.status(201).json({
+          message: "Trend added successfully",
+          trendId: result.insertId,
+        });
+      }
+    );
+  } catch (error) {
+    console.error("Add trend error:", error);
+    return res.status(500).json({ message: "Server error", error });
+  }
 };
 
-export const edit = (req, res) => {
+export const edit = async (req, res) => {
   const trendId = req.params.id;
   if (!trendId) {
     return res.status(400).json({ message: "Invalid Trend ID" });
@@ -103,38 +120,54 @@ export const edit = (req, res) => {
   const { trendName, content } = req.body;
 
   if (!trendName || !content) {
-    return res.status(400).json({ message: "all fields are required" });
+    return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Handle uploaded image
-  const trendImageFile = req.files?.["trendImage"]?.[0];
-  const trendImageUrl = trendImageFile ? `/uploads/${trendImageFile.filename}` : null;
+  try {
+    // STEP 1: Fetch existing trend to get old image
+    db.query("SELECT image FROM trends WHERE id = ?", [trendId], async (err, results) => {
+      if (err) return res.status(500).json({ message: "Database error", error: err });
+      if (results.length === 0) return res.status(404).json({ message: "Trend not found" });
 
-  // Build update SQL
-  let updateSql = `UPDATE trends SET trendName = ?, content = ?, updated_at = ?`;
-  const updateValues = [trendName, content, currentdate];
+      const oldImageUrl = results[0].image;
 
-  if (trendImageUrl) {
-    updateSql += `, image = ?`;
-    updateValues.push(trendImageUrl);
+      // STEP 2: Upload new image to S3 if provided
+      let newImageUrl = oldImageUrl;
+      if (req.files?.["trendImage"]?.[0]) {
+        try {
+          newImageUrl = await uploadToS3(req.files["trendImage"][0]);
+
+          // Delete old image from S3 if exists
+          if (oldImageUrl) {
+            await deleteFromS3(oldImageUrl);
+          }
+        } catch (s3Err) {
+          console.error("S3 upload/delete error:", s3Err);
+          return res.status(500).json({ message: "S3 upload/delete failed", error: s3Err });
+        }
+      }
+
+      // STEP 3: Update trend in DB
+      const updateSql = `
+        UPDATE trends 
+        SET trendName = ?, content = ?, image = ?, updated_at = ?
+        WHERE id = ?
+      `;
+      db.query(updateSql, [trendName, content, newImageUrl, currentdate, trendId], (updateErr, result) => {
+        if (updateErr) {
+          console.error("Error updating trend:", updateErr);
+          return res.status(500).json({ message: "Database error during update", error: updateErr });
+        }
+
+        return res.status(200).json({ message: "Trend updated successfully" });
+      });
+    });
+  } catch (error) {
+    console.error("Edit trend error:", error);
+    return res.status(500).json({ message: "Server error", error });
   }
-
-  updateSql += ` WHERE id = ?`;
-  updateValues.push(trendId);
-
-  db.query(updateSql, updateValues, (err, result) => {
-    if (err) {
-      console.error("Error updating trend:", err);
-      return res.status(500).json({ message: "Database error during update", error: err });
-    }
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Trend not found" });
-    }
-
-    return res.status(200).json({ message: "Trend updated successfully" });
-  });
 };
+
 
 
 //**Change status */

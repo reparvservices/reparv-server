@@ -5,6 +5,7 @@ import sendEmail from "../../utils/nodeMailer.js";
 import { verifyRazorpayPayment } from "../paymentController.js";
 import fs from "fs";
 import path from "path";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 
@@ -126,7 +127,7 @@ export const getById = (req, res) => {
 };
 
 export const add = async (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+  let currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
   let {
     fullname,
@@ -147,23 +148,17 @@ export const add = async (req, res) => {
     accountholdername,
     accountnumber,
     ifsc,
-    password, // ⭐ NEW (optional login creation)
+    password,
   } = req.body;
 
   if (!fullname || !contact || !email || !intrest) {
     return res.status(400).json({ message: "All fields are required!" });
   }
 
-  //  Convert email to lowercase
   email = email?.toLowerCase();
+  if (!username || username.trim() === "") username = null;
 
-  // If username not passed, set null
-  if (!username || username.trim() === "") {
-    username = null;
-  }
-  // ----------------------------------------------------
-  // Referral Code Generator (same logic as before)
-  // ----------------------------------------------------
+  // Referral code generator
   const createReferralCode = () => {
     const chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*";
@@ -187,185 +182,182 @@ export const add = async (req, res) => {
     );
   };
 
-  // ----------------------------------------------------
-  // 📸 Image Upload Handling (same as old logic)
-  // ----------------------------------------------------
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
+  try {
+    //  Upload files to S3 if provided
+    const adharImageFiles = req.files?.["adharImage"] || [];
+    const panImageFiles = req.files?.["panImage"] || [];
+    const reraImageFiles = req.files?.["reraImage"] || [];
 
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
-    : null;
-
-  //  Check Duplicate (same)
-  const checkSql = `SELECT * FROM projectpartner WHERE contact = ? OR email = ? OR username = ?`;
-
-  db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
-    if (checkErr) {
-      return res.status(500).json({
-        message: "Database error during validation",
-        error: checkErr,
-      });
+    let adharImageUrl = null;
+    if (adharImageFiles.length > 0) {
+      adharImageUrl = await uploadToS3(adharImageFiles[0], "documents/adhar");
     }
 
-    if (rows.length > 0) {
-      const dup = rows[0];
-
-      let duplicateField = "";
-      if (dup.contact === contact)
-        duplicateField = "Contact number already exists";
-      else if (dup.email === email) duplicateField = "Email already exists";
-      else if (dup.username === username)
-        duplicateField = "Username already exists";
-
-      return res.status(409).json({
-        message: duplicateField,
-        field: duplicateField.includes("Contact")
-          ? "contact"
-          : duplicateField.includes("Email")
-          ? "email"
-          : "username",
-      });
+    let panImageUrl = null;
+    if (panImageFiles.length > 0) {
+      panImageUrl = await uploadToS3(panImageFiles[0], "documents/pan");
     }
 
-    generateUniqueReferralCode(async (referralErr, referralCode) => {
-      if (referralErr) {
+    let reraImageUrl = null;
+    if (reraImageFiles.length > 0) {
+      reraImageUrl = await uploadToS3(reraImageFiles[0], "documents/rera");
+    }
+
+    //  Check duplicates
+    const checkSql =
+      "SELECT * FROM projectpartner WHERE contact = ? OR email = ? OR username = ?";
+    db.query(checkSql, [contact, email, username], async (checkErr, rows) => {
+      if (checkErr)
         return res.status(500).json({
-          message: "Error generating unique referral code",
-          error: referralErr,
+          message: "Database error during validation",
+          error: checkErr,
+        });
+
+      if (rows.length > 0) {
+        const dup = rows[0];
+        let duplicateField = "";
+        if (dup.contact === contact) duplicateField = "Contact number already exists";
+        else if (dup.email === email) duplicateField = "Email already exists";
+        else if (dup.username === username) duplicateField = "Username already exists";
+
+        return res.status(409).json({
+          message: duplicateField,
+          field: duplicateField.includes("Contact")
+            ? "contact"
+            : duplicateField.includes("Email")
+            ? "email"
+            : "username",
         });
       }
 
-      let hashedPassword = null;
-      let loginstatus = "Inactive";
+      //  Generate unique referral code
+      generateUniqueReferralCode(async (referralErr, referralCode) => {
+        if (referralErr)
+          return res.status(500).json({
+            message: "Error generating unique referral code",
+            error: referralErr,
+          });
 
-      if (password) {
-        hashedPassword = await bcrypt.hash(password, 10);
-        loginstatus = "Active";
-      }
+        let hashedPassword = null;
+        let loginstatus = "Inactive";
 
-      const insertSql = `
-        INSERT INTO projectpartner 
-        (fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, adharno, panno, rerano,
-         bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage,
-         username, password, loginstatus, updated_at, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
+        if (password) {
+          hashedPassword = await bcrypt.hash(password, 10);
+          loginstatus = "Active";
+        }
 
-      db.query(
-        insertSql,
-        [
-          fullname,
-          contact,
-          email,
-          intrest,
-          refrence,
-          referralCode,
-          address,
-          state,
-          city,
-          pincode,
-          experience,
-          adharno,
-          panno,
-          rerano,
-          bankname,
-          accountholdername,
-          accountnumber,
-          ifsc,
-          adharImageUrl,
-          panImageUrl,
-          reraImageUrl,
-          username,
-          hashedPassword,
-          loginstatus,
-          currentdate,
-          currentdate,
-        ],
-        (insertErr, insertResult) => {
-          if (insertErr) {
-            return res.status(500).json({
-              message: "Database error during insert",
-              error: insertErr,
-            });
-          }
+        //  Insert new partner
+        const insertSql = `
+          INSERT INTO projectpartner 
+          (fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, adharno, panno, rerano,
+           bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage,
+           username, password, loginstatus, updated_at, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
 
-          db.query(
-            "UPDATE projectpartner SET status = 'Active' WHERE id = ?",
-            [insertResult.insertId],
-            (updateErr) => {
-              if (updateErr) {
-                console.error("Error updating status:", updateErr);
+        db.query(
+          insertSql,
+          [
+            fullname,
+            contact,
+            email,
+            intrest,
+            refrence,
+            referralCode,
+            address,
+            state,
+            city,
+            pincode,
+            experience,
+            adharno,
+            panno,
+            rerano,
+            bankname,
+            accountholdername,
+            accountnumber,
+            ifsc,
+            adharImageUrl,
+            panImageUrl,
+            reraImageUrl,
+            username,
+            hashedPassword,
+            loginstatus,
+            currentdate,
+            currentdate,
+          ],
+          (insertErr, insertResult) => {
+            if (insertErr)
+              return res.status(500).json({
+                message: "Database error during insert",
+                error: insertErr,
+              });
+
+            //  Update status to Active
+            db.query(
+              "UPDATE projectpartner SET status = 'Active' WHERE id = ?",
+              [insertResult.insertId],
+              (updateErr) => {
+                if (updateErr) console.error("Error updating status:", updateErr);
               }
-            }
-          );
+            );
 
-          // ----------------------------------------------------
-          // 📝 Follow-up (same old logic)
-          // ----------------------------------------------------
-          const followupSql = `
-            INSERT INTO partnerFollowup 
-            (partnerId, role, followUp, followUpText, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `;
+            //  Add follow-up
+            const followupSql = `
+              INSERT INTO partnerFollowup 
+              (partnerId, role, followUp, followUpText, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `;
+            db.query(
+              followupSql,
+              [
+                insertResult.insertId,
+                "Project Partner",
+                "New",
+                "Newly Added Project Partner",
+                currentdate,
+                currentdate,
+              ],
+              async (followupErr) => {
+                if (followupErr)
+                  return res.status(500).json({
+                    message: "Follow-up insert failed",
+                    error: followupErr,
+                  });
 
-          db.query(
-            followupSql,
-            [
-              insertResult.insertId,
-              "Project Partner",
-              "New",
-              "Newly Added Project Partner",
-              currentdate,
-              currentdate,
-            ],
-            async (followupErr) => {
-              if (followupErr) {
-                return res.status(500).json({
-                  message: "Follow-up insert failed",
-                  error: followupErr,
+                // 7️⃣ Send email only if password exists
+                if (password) {
+                  try {
+                    await sendEmail(
+                      email,
+                      username,
+                      password,
+                      "Project Partner",
+                      "https://projectpartner.reparv.in"
+                    );
+                  } catch (err) {
+                    console.error("Email send failed:", err);
+                  }
+                }
+
+                return res.status(201).json({
+                  message: password
+                    ? "Project Partner added & login assigned"
+                    : "Project Partner added successfully",
+                  Id: insertResult.insertId,
                 });
               }
-
-              // ----------------------------------------------------
-              // ✉️ Send Login Email Only When Password Exists
-              // ----------------------------------------------------
-              if (password) {
-                try {
-                  await sendEmail(
-                    email,
-                    username,
-                    password,
-                    "Project Partner",
-                    "https://projectpartner.reparv.in"
-                  );
-                } catch (err) {
-                  console.error("Email send failed:", err);
-                }
-              }
-
-              return res.status(201).json({
-                message: password
-                  ? "Project Partner added & login assigned"
-                  : "Project Partner added successfully",
-                Id: insertResult.insertId,
-              });
-            }
-          );
-        }
-      );
+            );
+          }
+        );
+      });
     });
-  });
+  } catch (err) {
+    console.error("Error adding Project Partner:", err);
+    res.status(500).json({ message: "Server error", error: err });
+  }
 };
 
-export const edit = (req, res) => {
+export const edit = async (req, res) => {
   const partnerid = parseInt(req.params.id);
   if (isNaN(partnerid)) {
     return res.status(400).json({ message: "Invalid Partner ID" });
@@ -395,55 +387,73 @@ export const edit = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Handle uploaded multiple files
-  const adharImageFiles = req.files?.["adharImage"] || [];
-  const panImageFiles = req.files?.["panImage"] || [];
-  const reraImageFiles = req.files?.["reraImage"] || [];
+  try {
+    // 1️⃣ Fetch old images from DB
+    const rows = await new Promise((resolve, reject) =>
+      db.query(
+        "SELECT adharimage, panimage, reraimage FROM projectpartner WHERE id = ?",
+        [partnerid],
+        (err, results) => (err ? reject(err) : resolve(results))
+      )
+    );
 
-  // Map to URLs
-  const adharImageUrls = adharImageFiles.map((f) => `/uploads/${f.filename}`);
-  const panImageUrls = panImageFiles.map((f) => `/uploads/${f.filename}`);
-  const reraImageUrls = reraImageFiles.map((f) => `/uploads/${f.filename}`);
-
-  // Convert to JSON for DB
-  const adharImagesJson =
-    adharImageUrls.length > 0 ? JSON.stringify(adharImageUrls) : null;
-  const panImagesJson =
-    panImageUrls.length > 0 ? JSON.stringify(panImageUrls) : null;
-  const reraImagesJson =
-    reraImageUrls.length > 0 ? JSON.stringify(reraImageUrls) : null;
-
-  // Fetch old images first
-  const selectSql = `SELECT adharimage, panimage, reraimage FROM projectpartner WHERE id = ?`;
-  db.query(selectSql, [partnerid], (selectErr, rows) => {
-    if (selectErr) {
-      console.error("Error fetching old images:", selectErr);
-      return res
-        .status(500)
-        .json({ message: "Error fetching old images", error: selectErr });
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ message: "Project Partner not found" });
     }
 
-    const oldData = rows[0] || {};
+    const oldData = rows[0];
 
-    // Utility: delete old files
-    const deleteOldFiles = (oldImagesJson) => {
-      try {
-        const oldImages = JSON.parse(oldImagesJson || "[]");
-        oldImages.forEach((imgPath) => {
-          const fullPath = path.join(process.cwd(), imgPath);
-          if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-        });
-      } catch (err) {
-        console.error("Error deleting old files:", err);
-      }
-    };
+    // Make sure we parse JSON or default to empty array
+    let oldAdhar = [];
+    let oldPan = [];
+    let oldRera = [];
 
-    // Delete old images only if new ones are uploaded
-    if (adharImagesJson) deleteOldFiles(oldData?.adharimage);
-    if (panImagesJson) deleteOldFiles(oldData?.panimage);
-    if (reraImagesJson) deleteOldFiles(oldData?.reraimage);
+    try {
+      oldAdhar = oldData.adharimage ? JSON.parse(oldData.adharimage) : [];
+    } catch {
+      oldAdhar = oldData.adharimage ? [oldData.adharimage] : [];
+    }
 
-    // Build Update Query
+    try {
+      oldPan = oldData.panimage ? JSON.parse(oldData.panimage) : [];
+    } catch {
+      oldPan = oldData.panimage ? [oldData.panimage] : [];
+    }
+
+    try {
+      oldRera = oldData.reraimage ? JSON.parse(oldData.reraimage) : [];
+    } catch {
+      oldRera = oldData.reraimage ? [oldData.reraimage] : [];
+    }
+
+    // 2️⃣ Upload new files to S3 if provided
+    const adharFile = req.files?.["adharImage"]?.[0];
+    const panFile = req.files?.["panImage"]?.[0];
+    const reraFile = req.files?.["reraImage"]?.[0];
+
+    let newAdharUrls = [...oldAdhar];
+    let newPanUrls = [...oldPan];
+    let newReraUrls = [...oldRera];
+
+    if (adharFile) {
+      const url = await uploadToS3(adharFile, "documents/adhar");
+      for (const oldUrl of oldAdhar) await deleteFromS3(oldUrl);
+      newAdharUrls = [url];
+    }
+
+    if (panFile) {
+      const url = await uploadToS3(panFile, "documents/pan");
+      for (const oldUrl of oldPan) await deleteFromS3(oldUrl);
+      newPanUrls = [url];
+    }
+
+    if (reraFile) {
+      const url = await uploadToS3(reraFile, "documents/rera");
+      for (const oldUrl of oldRera) await deleteFromS3(oldUrl);
+      newReraUrls = [url];
+    }
+
+    // 3️⃣ Build update query
     let updateSql = `
       UPDATE projectpartner 
       SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, 
@@ -472,37 +482,36 @@ export const edit = (req, res) => {
       currentdate,
     ];
 
-    // ---------- UPDATE IMAGE COLUMNS ----------
-    if (adharImagesJson) {
+    if (newAdharUrls.length > 0) {
       updateSql += `, adharimage = ?`;
-      updateValues.push(adharImagesJson);
+      updateValues.push(JSON.stringify(newAdharUrls));
     }
 
-    if (panImagesJson) {
+    if (newPanUrls.length > 0) {
       updateSql += `, panimage = ?`;
-      updateValues.push(panImagesJson);
+      updateValues.push(JSON.stringify(newPanUrls));
     }
 
-    if (reraImagesJson) {
+    if (newReraUrls.length > 0) {
       updateSql += `, reraimage = ?`;
-      updateValues.push(reraImagesJson);
+      updateValues.push(JSON.stringify(newReraUrls));
     }
 
     updateSql += ` WHERE id = ?`;
     updateValues.push(partnerid);
 
-    db.query(updateSql, updateValues, (updateErr) => {
-      if (updateErr) {
-        console.error("Error updating project Partner:", updateErr);
-        return res
-          .status(500)
-          .json({ message: "Database error during update", error: updateErr });
-      }
+    await new Promise((resolve, reject) =>
+      db.query(updateSql, updateValues, (err) => (err ? reject(err) : resolve()))
+    );
 
-      res.status(200).json({ message: "Project Partner updated successfully" });
-    });
-  });
+    res.status(200).json({ message: "Project Partner updated successfully" });
+  } catch (err) {
+    console.error("Error updating Project Partner:", err);
+    res.status(500).json({ message: "Server error", error: err });
+  }
 };
+
+
 
 export const updateBusinessDetails = (req, res) => {
   const partnerid = parseInt(req.params.id);

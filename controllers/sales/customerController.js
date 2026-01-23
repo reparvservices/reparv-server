@@ -111,7 +111,7 @@ export const getPaymentList = (req, res) => {
   });
 };
 
-export const addPayment = (req, res) => {
+export const addPayment = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const enquirerId = parseInt(req.params.id, 10);
 
@@ -121,7 +121,6 @@ export const addPayment = (req, res) => {
   }
 
   const { paymentType, paymentAmount } = req.body;
-  const paymentImage = req.file ? `/uploads/${req.file.filename}` : null;
 
   // Validate input
   if (!paymentType || !paymentAmount) {
@@ -130,49 +129,52 @@ export const addPayment = (req, res) => {
       .json({ message: "Payment Type and Amount are required." });
   }
 
-  // Check if enquirer exists
-  db.query(
-    "SELECT * FROM enquirers WHERE enquirersid = ?",
-    [enquirerId],
-    (err, result) => {
-      if (err) {
-        console.error("Error checking enquirer:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
+  try {
+    // Check if enquirer exists
+    const [enquirer] = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT * FROM enquirers WHERE enquirersid = ?",
+        [enquirerId],
+        (err, result) => {
+          if (err) return reject(err);
+          resolve(result);
+        }
+      );
+    });
 
-      if (result.length === 0) {
-        return res.status(404).json({ message: "Enquirer not found." });
-      }
+    if (!enquirer) {
+      return res.status(404).json({ message: "Enquirer not found." });
+    }
 
-      // Insert payment
+    // Upload payment image to S3 (if provided)
+    let paymentImage = null;
+    if (req.file) {
+      paymentImage = await uploadToS3(req.file, "payments"); 
+      // "payments" can be your S3 folder
+    }
+
+    // Insert payment
+    const insertResult = await new Promise((resolve, reject) => {
       db.query(
         `INSERT INTO customerPayment 
           (enquirerId, paymentType, paymentAmount, paymentImage, created_at, updated_at) 
           VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          enquirerId,
-          paymentType,
-          paymentAmount,
-          paymentImage,
-          currentdate,
-          currentdate,
-        ],
-        (insertErr, insertResult) => {
-          if (insertErr) {
-            console.error("Error inserting payment:", insertErr);
-            return res.status(500).json({
-              message: "Failed to insert payment",
-              error: insertErr,
-            });
-          }
-
-          return res.status(200).json({
-            message: "Payment added successfully.",
-            insertedId: insertResult.insertId,
-            paymentImage, // Optional: return image URL to frontend
-          });
+        [enquirerId, paymentType, paymentAmount, paymentImage, currentdate, currentdate],
+        (err, result) => {
+          if (err) return reject(err);
+          resolve(result);
         }
       );
-    }
-  );
+    });
+
+    return res.status(200).json({
+      message: "Payment added successfully.",
+      insertedId: insertResult.insertId,
+      paymentImage,
+    });
+
+  } catch (error) {
+    console.error("Error in addPayment:", error);
+    return res.status(500).json({ message: "Server error", error });
+  }
 };

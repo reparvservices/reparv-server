@@ -2,6 +2,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import fs from "fs";
 import path from "path";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 export const getAll = (req, res) => {
     const projectPartnerId = req.employeeUser?.projectpartnerid;
@@ -68,13 +69,15 @@ export const getAllActive = (req, res) => {
 };
 
 // **Add New Territory Partner **
-export const add = (req, res) => {
+
+export const add = async (req, res) => {
   const projectPartnerId = req.employeeUser?.projectpartnerid;
   if (!projectPartnerId) {
     return res.status(401).json({
       message: "Unauthorized Access — Employee is not linked to any Project Partner.",
     });
   }
+
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const {
     fullname,
@@ -125,131 +128,141 @@ export const add = (req, res) => {
     );
   };
 
-  // Handle uploaded files safely
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
+  try {
+    // STEP 1: Upload files to S3 (if provided)
+    let adharImageUrl = null;
+    let panImageUrl = null;
+    let reraImageUrl = null;
 
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
-    : null;
-
-  // Check for duplicates
-  const checkSql = `SELECT * FROM territorypartner WHERE contact = ? OR email = ?`;
-
-  db.query(checkSql, [contact, email], (checkErr, checkResult) => {
-    if (checkErr) {
-      console.error("Error checking existing Territory Partner:", checkErr);
-      return res.status(500).json({
-        message: "Database error during validation",
-        error: checkErr,
-      });
+    if (req.files?.["adharImage"]?.[0]) {
+      adharImageUrl = await uploadToS3(req.files["adharImage"][0]);
+    }
+    if (req.files?.["panImage"]?.[0]) {
+      panImageUrl = await uploadToS3(req.files["panImage"][0]);
+    }
+    if (req.files?.["reraImage"]?.[0]) {
+      reraImageUrl = await uploadToS3(req.files["reraImage"][0]);
     }
 
-    if (checkResult.length > 0) {
-      return res.status(409).json({
-        message: "Territory Partner already exists with this Contact or Email.",
-      });
-    }
-
-    // Generate unique referral code before inserting
-    generateUniqueReferralCode((referralErr, referralCode) => {
-      if (referralErr) {
-        console.error("Error generating referral:", referralErr);
+    // STEP 2: Check duplicates
+    const checkSql = `SELECT * FROM territorypartner WHERE contact = ? OR email = ?`;
+    db.query(checkSql, [contact, email], (checkErr, checkResult) => {
+      if (checkErr) {
+        console.error("Error checking existing Territory Partner:", checkErr);
         return res.status(500).json({
-          message: "Referral code generation failed",
-          error: referralErr,
+          message: "Database error during validation",
+          error: checkErr,
         });
       }
 
-      // Insert new territory partner
-      const insertSql = `
-        INSERT INTO territorypartner 
-        (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, adharno, panno, rerano, 
-         bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
-      `;
+      if (checkResult.length > 0) {
+        return res.status(409).json({
+          message: "Territory Partner already exists with this Contact or Email.",
+        });
+      }
 
-      db.query(
-        insertSql,
-        [
-          projectPartnerId,
-          fullname,
-          contact,
-          email,
-          intrest,
-          refrence,
-          referralCode,
-          address,
-          state,
-          city,
-          pincode,
-          experience,
-          adharno,
-          panno,
-          rerano,
-          bankname,
-          accountholdername,
-          accountnumber,
-          ifsc,
-          adharImageUrl,
-          panImageUrl,
-          reraImageUrl,
-          currentdate,
-          currentdate,
-        ],
-        (insertErr, insertResult) => {
-          if (insertErr) {
-            console.error("Error inserting Territory Partner:", insertErr);
-            return res.status(500).json({
-              message: "Database error during insertion",
-              error: insertErr,
-            });
-          }
+      // STEP 3: Generate unique referral code
+      generateUniqueReferralCode((referralErr, referralCode) => {
+        if (referralErr) {
+          console.error("Error generating referral:", referralErr);
+          return res.status(500).json({
+            message: "Referral code generation failed",
+            error: referralErr,
+          });
+        }
 
-          // Insert follow-up for the new Territory Partner
-          const followupSql = `
-            INSERT INTO partnerFollowup 
-            (partnerId, role, followUp, followUpText, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `;
+        // STEP 4: Insert new territory partner
+        const insertSql = `
+          INSERT INTO territorypartner 
+          (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, adharno, panno, rerano, 
+           bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+        `;
 
-          db.query(
-            followupSql,
-            [
-              insertResult.insertId,
-              "Territory Partner",
-              "New",
-              "Newly Added Territory Partner",
-              currentdate,
-              currentdate,
-            ],
-            (followupErr) => {
-              if (followupErr) {
-                console.error("Error adding follow-up:", followupErr);
-                return res.status(500).json({
-                  message: "Follow-up insert failed",
-                  error: followupErr,
-                });
-              }
-
-              return res.status(201).json({
-                message: "Territory Partner added successfully",
-                Id: insertResult.insertId,
+        db.query(
+          insertSql,
+          [
+            projectPartnerId,
+            fullname,
+            contact,
+            email,
+            intrest,
+            refrence,
+            referralCode,
+            address,
+            state,
+            city,
+            pincode,
+            experience,
+            adharno,
+            panno,
+            rerano,
+            bankname,
+            accountholdername,
+            accountnumber,
+            ifsc,
+            adharImageUrl,
+            panImageUrl,
+            reraImageUrl,
+            currentdate,
+            currentdate,
+          ],
+          (insertErr, insertResult) => {
+            if (insertErr) {
+              console.error("Error inserting Territory Partner:", insertErr);
+              return res.status(500).json({
+                message: "Database error during insertion",
+                error: insertErr,
               });
             }
-          );
-        }
-      );
+
+            // STEP 5: Insert follow-up for the new Territory Partner
+            const followupSql = `
+              INSERT INTO partnerFollowup 
+              (partnerId, role, followUp, followUpText, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `;
+
+            db.query(
+              followupSql,
+              [
+                insertResult.insertId,
+                "Territory Partner",
+                "New",
+                "Newly Added Territory Partner",
+                currentdate,
+                currentdate,
+              ],
+              (followupErr) => {
+                if (followupErr) {
+                  console.error("Error adding follow-up:", followupErr);
+                  return res.status(500).json({
+                    message: "Follow-up insert failed",
+                    error: followupErr,
+                  });
+                }
+
+                return res.status(201).json({
+                  message: "Territory Partner added successfully",
+                  Id: insertResult.insertId,
+                });
+              }
+            );
+          }
+        );
+      });
     });
-  });
+  } catch (err) {
+    console.error("Error uploading images to S3:", err);
+    return res.status(500).json({
+      message: "Error uploading images to S3",
+      error: err,
+    });
+  }
 };
 
-export const edit = (req, res) => {
+
+export const edit = async (req, res) => {
   const partnerid = parseInt(req.params.id);
   if (isNaN(partnerid)) {
     return res.status(400).json({ message: "Invalid Partner ID" });
@@ -279,113 +292,106 @@ export const edit = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Handle uploaded files (single file each)
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
+  try {
+    // STEP 1: Fetch old images
+    db.query(
+      "SELECT adharimage, panimage, reraimage FROM territorypartner WHERE id = ?",
+      [partnerid],
+      async (selectErr, results) => {
+        if (selectErr) {
+          console.error("Error fetching old images:", selectErr);
+          return res
+            .status(500)
+            .json({ message: "Database error while fetching old images" });
+        }
 
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
-    : null;
+        if (results.length === 0) {
+          return res.status(404).json({ message: "Partner not found" });
+        }
 
-  // STEP 1: Fetch old images
-  db.query(
-    "SELECT adharimage, panimage, reraimage FROM territorypartner WHERE id = ?",
-    [partnerid],
-    (selectErr, results) => {
-      if (selectErr) {
-        console.error("Error fetching old images:", selectErr);
-        return res
-          .status(500)
-          .json({ message: "Database error while fetching old images" });
-      }
+        const oldData = results[0];
 
-      if (results.length === 0) {
-        return res.status(404).json({ message: "Partner not found" });
-      }
+        // STEP 2: Upload new files to S3 if provided
+        const adharImageFile = req.files?.["adharImage"]?.[0];
+        const panImageFile = req.files?.["panImage"]?.[0];
+        const reraImageFile = req.files?.["reraImage"]?.[0];
 
-      const oldData = results[0];
+        let adharImageUrl = oldData?.adharimage;
+        let panImageUrl = oldData?.panimage;
+        let reraImageUrl = oldData?.reraimage;
 
-      // Helper to delete old file
-      const deleteOldFile = (filePath) => {
-        try {
-          if (filePath) {
-            const absPath = path.join(process.cwd(), "public", filePath);
-            if (fs.existsSync(absPath)) {
-              fs.unlinkSync(absPath);
-            }
+        if (adharImageFile) {
+          if (adharImageUrl) await deleteFromS3(adharImageUrl);
+          adharImageUrl = await uploadToS3(adharImageFile);
+        }
+
+        if (panImageFile) {
+          if (panImageUrl) await deleteFromS3(panImageUrl);
+          panImageUrl = await uploadToS3(panImageFile);
+        }
+
+        if (reraImageFile) {
+          if (reraImageUrl) await deleteFromS3(reraImageUrl);
+          reraImageUrl = await uploadToS3(reraImageFile);
+        }
+
+        // STEP 3: Prepare SQL
+        const updateSql = `
+          UPDATE territorypartner
+          SET fullname=?, contact=?, email=?, intrest=?,
+              address=?, state=?, city=?, pincode=?, experience=?,
+              adharno=?, panno=?, rerano=?, bankname=?,
+              accountholdername=?, accountnumber=?, ifsc=?,
+              adharimage=?, panimage=?, reraimage=?, updated_at=?
+          WHERE id=?
+        `;
+
+        const updateValues = [
+          fullname,
+          contact,
+          email,
+          intrest,
+          address,
+          state,
+          city,
+          pincode,
+          experience,
+          adharno,
+          panno,
+          rerano,
+          bankname,
+          accountholdername,
+          accountnumber,
+          ifsc,
+          adharImageUrl,
+          panImageUrl,
+          reraImageUrl,
+          currentdate,
+          partnerid,
+        ];
+
+        // STEP 4: Update DB
+        db.query(updateSql, updateValues, (updateErr) => {
+          if (updateErr) {
+            console.error("Error updating Territory Partner:", updateErr);
+            return res.status(500).json({
+              message: "Database error during update",
+              error: updateErr,
+            });
           }
-        } catch (err) {
-          console.error("Error deleting file:", err);
-        }
-      };
 
-      // STEP 2: Prepare SQL
-      let updateSql = `UPDATE territorypartner 
-        SET fullname = ?, contact = ?, email = ?, intrest = ?,
-        address = ?, state = ?, city = ?, pincode = ?, experience = ?, 
-        adharno = ?, panno = ?, rerano = ?, bankname = ?, 
-        accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?`;
-      const updateValues = [
-        fullname,
-        contact,
-        email,
-        intrest,
-        address,
-        state,
-        city,
-        pincode,
-        experience,
-        adharno,
-        panno,
-        rerano,
-        bankname,
-        accountholdername,
-        accountnumber,
-        ifsc,
-        currentdate,
-      ];
-
-      // Replace old files only if new ones uploaded
-      if (adharImageUrl) {
-        updateSql += `, adharimage = ?`;
-        updateValues.push(adharImageUrl);
-        deleteOldFile(oldData?.adharimage);
-      }
-
-      if (panImageUrl) {
-        updateSql += `, panimage = ?`;
-        updateValues.push(panImageUrl);
-        deleteOldFile(oldData?.panimage);
-      }
-
-      if (reraImageUrl) {
-        updateSql += `, reraimage = ?`;
-        updateValues.push(reraImageUrl);
-        deleteOldFile(oldData?.reraimage);
-      }
-
-      updateSql += ` WHERE id = ?`;
-      updateValues.push(partnerid);
-
-      // STEP 3: Update DB
-      db.query(updateSql, updateValues, (updateErr) => {
-        if (updateErr) {
-          console.error("Error updating Territory Partner:", updateErr);
-          return res.status(500).json({
-            message: "Database error during update",
-            error: updateErr,
+          res.status(200).json({
+            message: "Territory Partner updated successfully",
           });
-        }
-
-        res
-          .status(200)
-          .json({ message: "Territory Partner updated successfully" });
-      });
-    }
-  );
+        });
+      }
+    );
+  } catch (err) {
+    console.error("Error in S3 operations:", err);
+    return res.status(500).json({
+      message: "Error uploading or deleting images from S3",
+      error: err,
+    });
+  }
 };
+

@@ -1,4 +1,5 @@
 import express from "express";
+import multer from "multer";
 import {
   getAll,
   getById,
@@ -11,50 +12,67 @@ import {
   editAdditionalInfo,
   propertyInfo,
 } from "../../controllers/guestUser/propertyController.js";
-import multer from "multer";
-import path from "path";
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
-
+/* =======================
+   MULTER (MEMORY STORAGE)
+======================= */
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
-    fileSize: 1024 * 1024 * 2,
+    fileSize: 1024 * 1024 * 2, // 2MB
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/jpg",
+      "image/webp",
+    ];
+
     if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error("Only JPEG, PNG, and JPG images are allowed"));
+      return cb(
+        new Error("Only JPEG, PNG, JPG, and WEBP images are allowed")
+      );
     }
     cb(null, true);
   },
 });
 
+/* =======================
+   MULTER ERROR HANDLER
+======================= */
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({ success: false, error: "Each image must be under 2MB." });
+      return res.status(400).json({
+        success: false,
+        error: "Each image must be under 2MB.",
+      });
     }
-    return res.status(400).json({ success: false, error: err.message });
+    return res.status(400).json({
+      success: false,
+      error: err.message,
+    });
   } else if (err) {
-    return res.status(400).json({ success: false, error: err.message || "Upload failed." });
+    return res.status(400).json({
+      success: false,
+      error: err.message || "Upload failed.",
+    });
   }
   next();
 });
+
+/* =======================
+   ROUTES
+======================= */
 
 router.get("/", getAll);
 router.get("/:id", getById);
 router.get("/images/:id", getImages);
 router.delete("/images/delete/:id", deleteImages);
+
 router.post(
   "/add",
   upload.fields([
@@ -82,12 +100,19 @@ router.put(
     { name: "kitchenView", maxCount: 3 },
     { name: "bedroomView", maxCount: 3 },
     { name: "bathroomView", maxCount: 3 },
-    { name: "balconyView", maxCount: 3},
+    { name: "balconyView", maxCount: 3 },
   ]),
   update
 );
-router.post("/addimages",upload.array("images[]"), addImages);
+
+router.post(
+  "/addimages",
+  upload.array("images[]", 10),
+  addImages
+);
+
 router.get("/propertyinfo/:id", propertyInfo);
+
 router.post(
   "/additionalinfoadd",
   upload.fields([
@@ -100,6 +125,7 @@ router.post(
   ]),
   additionalInfoAdd
 );
+
 router.put(
   "/editadditionalinfo/:id",
   upload.fields([

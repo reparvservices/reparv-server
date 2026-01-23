@@ -19,19 +19,10 @@ import {
 } from "../../controllers/admin/projectPartnerController.js";
 
 const router = express.Router();
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
-
+/* ---------- MULTER CONFIG (S3) ---------- */
 const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, //  Limit file size (5MB)
+  storage: multer.memoryStorage(), //  IMPORTANT for S3
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
     const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
     if (!allowedTypes.includes(file.mimetype)) {
@@ -40,7 +31,6 @@ const upload = multer({
     cb(null, true);
   },
 });
-
 router.get("/active", getAllActive);
 router.get("/get/in/:city", getAllByCity);
 router.get("/get/:id", getById);
@@ -53,12 +43,12 @@ router.post(
     { name: "panImage", maxCount: 2 },
     { name: "reraImage", maxCount: 2 },
   ]),
-  add
+  add,
 );
 router.put(
   "/business-details/edit/:id",
   upload.single("businessLogo"),
-  updateBusinessDetails
+  updateBusinessDetails,
 );
 router.put(
   "/edit/:id",
@@ -67,7 +57,7 @@ router.put(
     { name: "panImage", maxCount: 2 },
     { name: "reraImage", maxCount: 2 },
   ]),
-  edit
+  edit,
 );
 router.put("/status/:id", status);
 router.put("/update/paymentid/:id", updatePaymentId);

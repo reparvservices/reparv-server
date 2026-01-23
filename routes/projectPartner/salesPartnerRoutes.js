@@ -1,27 +1,20 @@
 import express from "express";
 import multer from "multer";
-import path from "path";
 import {
   getAll,
   getAllActive,
   add,
-  edit
+  edit,
 } from "../../controllers/projectPartner/salespersonController.js";
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
+// Memory storage for S3 upload
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size (5MB)
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
   fileFilter: (req, file, cb) => {
     const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
     if (!allowedTypes.includes(file.mimetype)) {
@@ -31,8 +24,10 @@ const upload = multer({
   },
 });
 
+// Routes
 router.get("/active", getAllActive); // specific path first
 router.get("/", getAll);
+
 router.post(
   "/add",
   upload.fields([
@@ -40,8 +35,9 @@ router.post(
     { name: "panImage", maxCount: 2 },
     { name: "reraImage", maxCount: 2 },
   ]),
-  add
+  add,
 );
+
 router.put(
   "/edit/:id",
   upload.fields([
@@ -49,7 +45,7 @@ router.put(
     { name: "panImage", maxCount: 2 },
     { name: "reraImage", maxCount: 2 },
   ]),
-  edit
+  edit,
 );
 
 export default router;

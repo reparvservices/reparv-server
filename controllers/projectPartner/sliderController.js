@@ -2,6 +2,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import fs from "fs";
 import path from "path";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 // **Fetch All **
 export const getAll = (req, res) => {
@@ -21,30 +22,33 @@ export const getAll = (req, res) => {
   });
 };
 
-// **Add Slider Images **
-export const addImages = (req, res) => {
+// ---------------- ADD MULTIPLE SLIDER IMAGES ----------------
+export const addImages = async (req, res) => {
   const userId = req.projectPartnerUser.id;
-  if (!userId) {
+  if (!userId)
     return res
       .status(401)
       .json({ message: "Unauthorized Access, Please Login Again!" });
-  }
+
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
   try {
-    const files = req.files; // Array of uploaded files
-    const imagePaths = files.map((file) => file.filename); // Get filenames
+    const files = req.files || [];
+    if (!files.length)
+      return res.status(400).json({ message: "No images uploaded" });
 
-    // Insert each image as a separate row
-    const insertSQL = `INSERT INTO sliders (projectpartnerid, image, updated_at, created_at) 
-                         VALUES ?`;
+    // Upload all images to S3 in parallel
+    const imageUrls = await Promise.all(files.map((file) => uploadToS3(file)));
 
-    const values = imagePaths.map((filename) => [
+    // Prepare insert values
+    const values = imageUrls.map((url) => [
       userId,
-      filename,
+      url,
       currentdate,
       currentdate,
     ]);
+
+    const insertSQL = `INSERT INTO sliders (projectpartnerid, image, updated_at, created_at) VALUES ?`;
 
     db.query(insertSQL, [values], (err, result) => {
       if (err) {
@@ -53,52 +57,72 @@ export const addImages = (req, res) => {
       }
       res
         .status(200)
-        .json({ message: "Images uploaded SuccessFully", images: imagePaths });
+        .json({ message: "Images uploaded successfully", images: imageUrls });
     });
   } catch (err) {
     console.error("Upload error:", err);
-    res.status(500).json({ error: "Upload failed" });
+    res.status(500).json({ message: "Upload failed", error: err });
   }
 };
 
-// **Add Slider Image **
-export const addSmallScreenImage = (req, res) => {
+// ---------------- ADD/UPDATE MOBILE SLIDER IMAGE ----------------
+export const addSmallScreenImage = async (req, res) => {
   const userId = req.projectPartnerUser.id;
-  if (!userId) {
+  if (!userId)
     return res
       .status(401)
       .json({ message: "Unauthorized Access, Please Login Again!" });
-  }
+
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const Id = parseInt(req.params.id);
-
-  if (!Id) {
-    return res.status(400).json({ message: "Invalid Slider Image Id" });
-  }
+  if (!Id) return res.status(400).json({ message: "Invalid Slider Image Id" });
 
   try {
-    const imagePath = req.file ? req.file.filename : null;
+    const file = req.file;
+    if (!file) return res.status(400).json({ message: "No image uploaded" });
 
-    if (!imagePath) {
-      return res.status(400).json({ message: "No image uploaded" });
-    }
+    // Upload new image to S3
+    const newImageUrl = await uploadToS3(file);
 
-    const updateSQL = `UPDATE sliders SET mobileimage = ?, updated_at = ? WHERE id = ?`;
+    // Fetch old image to delete from S3 if exists
+    db.query(
+      "SELECT mobileimage FROM sliders WHERE id = ?",
+      [Id],
+      async (err, results) => {
+        if (err) {
+          console.error("Error fetching old image:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
 
-    db.query(updateSQL, [imagePath, currentdate, Id], (err, result) => {
-      if (err) {
-        console.error("Error updating image:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
+        const oldImageUrl = results[0]?.mobileimage;
+        if (oldImageUrl) await deleteFromS3(oldImageUrl);
 
-      res.status(200).json({
-        message: "Image uploaded successfully",
-        image: imagePath,
-      });
-    });
+        // Update DB with new image URL
+        const updateSQL = `UPDATE sliders SET mobileimage = ?, updated_at = ? WHERE id = ?`;
+        db.query(
+          updateSQL,
+          [newImageUrl, currentdate, Id],
+          (updateErr, result) => {
+            if (updateErr) {
+              console.error("Error updating image:", updateErr);
+              return res
+                .status(500)
+                .json({ message: "Database error", error: updateErr });
+            }
+
+            res.status(200).json({
+              message: "Image uploaded successfully",
+              image: newImageUrl,
+            });
+          },
+        );
+      },
+    );
   } catch (err) {
     console.error("Upload error:", err);
-    res.status(500).json({ error: "Upload failed" });
+    res.status(500).json({ message: "Upload failed", error: err });
   }
 };
 
@@ -135,7 +159,7 @@ export const status = (req, res) => {
         res
           .status(200)
           .json({ message: `Slider Image status changed to ${newStatus}` });
-      }
+      },
     );
   });
 };

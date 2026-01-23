@@ -12,7 +12,13 @@ router.get("/", getAll);
 // Follow
 router.post("/add/follow", (req, res) => {
   const { follower_id, follower_type, following_id, following_type } = req.body;
-  console.log("Follow request ---------->:", follower_id, follower_type, following_id, following_type);
+  console.log(
+    "Follow request ---------->:",
+    follower_id,
+    follower_type,
+    following_id,
+    following_type,
+  );
 
   if (!follower_id || !following_id || !follower_type || !following_type) {
     return res.status(400).json({ error: "Missing follow data" });
@@ -22,25 +28,35 @@ router.post("/add/follow", (req, res) => {
   //   INSERT INTO userFollowers (follower_id, follower_type, following_id, following_type)
   //   VALUES (?, ?, ?, ?)
   // `;
-const sql = `
+  const sql = `
   INSERT IGNORE INTO userFollowers (follower_id, follower_type, following_id, following_type)
   VALUES (?, ?, ?, ?)
 `;
 
-  db.query(sql, [follower_id, follower_type, following_id, following_type], (err) => {
-    if (err) {
-      console.error("Follow error:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
-    console.log("Followed successfully");
-    res.json({ status: "Followed successfully" });
-  });
+  db.query(
+    sql,
+    [follower_id, follower_type, following_id, following_type],
+    (err) => {
+      if (err) {
+        console.error("Follow error:", err);
+        return res.status(500).json({ error: "Database error" });
+      }
+      console.log("Followed successfully");
+      res.json({ status: "Followed successfully" });
+    },
+  );
 });
 
 // Unfollow
 router.post("/add/unfollow", (req, res) => {
   const { follower_id, follower_type, following_id, following_type } = req.body;
-  console.log("Unfollow request:", follower_id, follower_type, following_id, following_type);
+  console.log(
+    "Unfollow request:",
+    follower_id,
+    follower_type,
+    following_id,
+    following_type,
+  );
 
   if (!follower_id || !following_id || !follower_type || !following_type) {
     return res.status(400).json({ error: "Missing unfollow data" });
@@ -51,18 +67,22 @@ router.post("/add/unfollow", (req, res) => {
     WHERE follower_id = ? AND follower_type = ? AND following_id = ? AND following_type = ?
   `;
 
-  db.query(sql, [follower_id, follower_type, following_id, following_type], (err, result) => {
-    if (err) {
-      console.error("Unfollow error:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
+  db.query(
+    sql,
+    [follower_id, follower_type, following_id, following_type],
+    (err, result) => {
+      if (err) {
+        console.error("Unfollow error:", err);
+        return res.status(500).json({ error: "Database error" });
+      }
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Not following this user" });
-    }
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Not following this user" });
+      }
 
-    res.json({ status: "Unfollowed successfully" });
-  });
+      res.json({ status: "Unfollowed successfully" });
+    },
+  );
 });
 
 // ================== FOLLOWERS ==================
@@ -102,11 +122,31 @@ router.get("/add/:id/:type/followers", (req, res) => {
 
   // Table mapping for all user types
   const tableMap = {
-    sales: { table: "salespersons", idField: "salespersonsid", nameField: "fullname" },
-    territory: { table: "territorypartner", idField: "id", nameField: "fullname" },
-    onboarding: { table: "onboardingpartner", idField: "partnerid", nameField: "fullname" },
-    projectpartner: { table: "projectpartner", idField: "id", nameField: "fullname" },
-    builder: { table: "builders", idField: "builderid", nameField: "contact_person" },
+    sales: {
+      table: "salespersons",
+      idField: "salespersonsid",
+      nameField: "fullname",
+    },
+    territory: {
+      table: "territorypartner",
+      idField: "id",
+      nameField: "fullname",
+    },
+    onboarding: {
+      table: "onboardingpartner",
+      idField: "partnerid",
+      nameField: "fullname",
+    },
+    projectpartner: {
+      table: "projectpartner",
+      idField: "id",
+      nameField: "fullname",
+    },
+    builder: {
+      table: "builders",
+      idField: "builderid",
+      nameField: "contact_person",
+    },
   };
 
   // First get list of follower ids + types
@@ -127,22 +167,24 @@ router.get("/add/:id/:type/followers", (req, res) => {
     }
 
     // Now fetch details for each follower based on type
-    const promises = rows.map(row => {
-      const meta = tableMap[row.follower_type];
-      if (!meta) return null;
+    const promises = rows
+      .map((row) => {
+        const meta = tableMap[row.follower_type];
+        if (!meta) return null;
 
-      return new Promise((resolve, reject) => {
-        const q = `
+        return new Promise((resolve, reject) => {
+          const q = `
           SELECT ${meta.idField} AS id, ${meta.nameField} AS fullname, userimage
           FROM ${meta.table}
           WHERE ${meta.idField} = ?
         `;
-        db.query(q, [row.follower_id], (err2, result) => {
-          if (err2) return reject(err2);
-          resolve(result[0]); // only one user per id
+          db.query(q, [row.follower_id], (err2, result) => {
+            if (err2) return reject(err2);
+            resolve(result[0]); // only one user per id
+          });
         });
-      });
-    }).filter(Boolean);
+      })
+      .filter(Boolean);
 
     try {
       const results = await Promise.all(promises);
@@ -190,11 +232,31 @@ router.get("/add/:id/:type/following", (req, res) => {
 
   // table mapping
   const tableMap = {
-    sales: { table: "salespersons", idField: "salespersonsid", nameField: "fullname" },
-    territory: { table: "territorypartner", idField: "id", nameField: "fullname" },
-    onboarding: { table: "onboardingpartner", idField: "partnerid", nameField: "fullname" },
-    projectpartner: { table: "projectpartner", idField: "id", nameField: "fullname" },
-    builder: { table: "builders", idField: "builderid", nameField: "contact_person" },
+    sales: {
+      table: "salespersons",
+      idField: "salespersonsid",
+      nameField: "fullname",
+    },
+    territory: {
+      table: "territorypartner",
+      idField: "id",
+      nameField: "fullname",
+    },
+    onboarding: {
+      table: "onboardingpartner",
+      idField: "partnerid",
+      nameField: "fullname",
+    },
+    projectpartner: {
+      table: "projectpartner",
+      idField: "id",
+      nameField: "fullname",
+    },
+    builder: {
+      table: "builders",
+      idField: "builderid",
+      nameField: "contact_person",
+    },
   };
 
   // first get following list (ids + types)
@@ -215,22 +277,24 @@ router.get("/add/:id/:type/following", (req, res) => {
     }
 
     // Now fetch details from respective tables
-    const promises = rows.map(row => {
-      const meta = tableMap[row.following_type];
-      if (!meta) return null;
+    const promises = rows
+      .map((row) => {
+        const meta = tableMap[row.following_type];
+        if (!meta) return null;
 
-      return new Promise((resolve, reject) => {
-        const q = `
+        return new Promise((resolve, reject) => {
+          const q = `
           SELECT ${meta.idField} AS id, ${meta.nameField} AS fullname, userimage
           FROM ${meta.table}
           WHERE ${meta.idField} = ?
         `;
-        db.query(q, [row.following_id], (err2, result) => {
-          if (err2) return reject(err2);
-          resolve(result[0]); // single record
+          db.query(q, [row.following_id], (err2, result) => {
+            if (err2) return reject(err2);
+            resolve(result[0]); // single record
+          });
         });
-      });
-    }).filter(Boolean);
+      })
+      .filter(Boolean);
 
     try {
       const results = await Promise.all(promises);
@@ -241,7 +305,6 @@ router.get("/add/:id/:type/following", (req, res) => {
     }
   });
 });
-
 
 // ================== FOLLOWING POSTS ==================
 
@@ -311,7 +374,7 @@ router.get("/:id/followers", (req, res) => {
         return res.status(500).json({ error: "Internal server error" });
       }
       res.json(result);
-    }
+    },
   );
 });
 
@@ -333,7 +396,7 @@ router.get("/:id/following", (req, res) => {
         return res.status(500).json({ error: "Internal server error" });
       }
       res.json(result);
-    }
+    },
   );
 });
 

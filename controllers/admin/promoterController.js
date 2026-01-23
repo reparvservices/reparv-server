@@ -3,6 +3,7 @@ import moment from "moment";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
 import { verifyRazorpayPayment } from "../paymentController.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 
@@ -77,9 +78,9 @@ export const getById = (req, res) => {
 };
 
 // **Add New Promoter **
-export const add = (req, res) => {
+export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const {
+  let {
     fullname,
     contact,
     email,
@@ -103,6 +104,9 @@ export const add = (req, res) => {
     return res.status(400).json({ message: "All fields are required!" });
   }
 
+  email = email.toLowerCase();
+
+  // Generate referral code
   const createReferralCode = () => {
     const chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*";
@@ -126,28 +130,15 @@ export const add = (req, res) => {
     );
   };
 
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
-
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
-    : null;
-
-  const checkSql = `SELECT * FROM promoter WHERE contact = ? OR email = ?`;
-
-  db.query(checkSql, [contact, email], (checkErr, checkResult) => {
-    if (checkErr) {
-      console.error("Error checking existing Promoter:", checkErr);
-      return res.status(500).json({
-        message: "Database error during validation",
-        error: checkErr,
-      });
-    }
+  try {
+    // 1️⃣ Check duplicate contact/email
+    const checkResult = await new Promise((resolve, reject) =>
+      db.query(
+        "SELECT * FROM promoter WHERE contact = ? OR email = ?",
+        [contact, email],
+        (err, results) => (err ? reject(err) : resolve(results))
+      )
+    );
 
     if (checkResult.length > 0) {
       return res.status(409).json({
@@ -155,7 +146,8 @@ export const add = (req, res) => {
       });
     }
 
-    generateUniqueReferralCode((referralErr, referralCode) => {
+    // 2️⃣ Generate unique referral code
+    generateUniqueReferralCode(async (referralErr, referralCode) => {
       if (referralErr) {
         console.error("Referral code generation failed:", referralErr);
         return res.status(500).json({
@@ -164,90 +156,100 @@ export const add = (req, res) => {
         });
       }
 
+      // 3️⃣ Upload files to S3
+      let adharImageUrl = null;
+      let panImageUrl = null;
+      let reraImageUrl = null;
+
+      if (req.files?.["adharImage"]?.[0]) {
+        adharImageUrl = await uploadToS3(req.files["adharImage"][0], "documents/adhar");
+      }
+
+      if (req.files?.["panImage"]?.[0]) {
+        panImageUrl = await uploadToS3(req.files["panImage"][0], "documents/pan");
+      }
+
+      if (req.files?.["reraImage"]?.[0]) {
+        reraImageUrl = await uploadToS3(req.files["reraImage"][0], "documents/rera");
+      }
+
+      // 4️⃣ Insert into DB
       const insertSql = `
         INSERT INTO promoter 
-        (fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, adharno, panno, rerano, bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
+        (fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience,
+         adharno, panno, rerano, bankname, accountholdername, accountnumber, ifsc,
+         adharimage, panimage, reraimage, updated_at, created_at) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
-      db.query(
-        insertSql,
-        [
-          fullname,
-          contact,
-          email,
-          intrest,
-          refrence,
-          referralCode,
-          address,
-          state,
-          city,
-          pincode,
-          experience,
-          adharno,
-          panno,
-          rerano,
-          bankname,
-          accountholdername,
-          accountnumber,
-          ifsc,
-          adharImageUrl,
-          panImageUrl,
-          reraImageUrl,
-          currentdate,
-          currentdate,
-        ],
-        (insertErr, insertResult) => {
-          if (insertErr) {
-            console.error("Error inserting Promoter:", insertErr);
-            return res.status(500).json({
-              message: "Database error during insert",
-              error: insertErr,
-            });
-          }
+      const insertValues = [
+        fullname,
+        contact,
+        email,
+        intrest,
+        refrence,
+        referralCode,
+        address,
+        state,
+        city,
+        pincode,
+        experience,
+        adharno,
+        panno,
+        rerano,
+        bankname,
+        accountholdername,
+        accountnumber,
+        ifsc,
+        adharImageUrl,
+        panImageUrl,
+        reraImageUrl,
+        currentdate,
+        currentdate,
+      ];
 
-          const followupSql = `
-            INSERT INTO partnerFollowup 
-            (partnerId, role, followUp, followUpText, created_at, updated_at) 
-            VALUES (?, ?, ?, ?, ?, ?)
-          `;
-
-          db.query(
-            followupSql,
-            [
-              insertResult.insertId,
-              "Promoter",
-              "New",
-              "Newly Added Promoter",
-              currentdate,
-              currentdate,
-            ],
-            (followupErr) => {
-              if (followupErr) {
-                console.error("Error adding follow-up:", followupErr);
-                return res.status(500).json({
-                  message: "Follow-up insert failed",
-                  error: followupErr,
-                });
-              }
-
-              return res.status(201).json({
-                message: "Promoter added successfully",
-                Id: insertResult.insertId,
-              });
-            }
-          );
-        }
+      const insertResult = await new Promise((resolve, reject) =>
+        db.query(insertSql, insertValues, (err, result) => (err ? reject(err) : resolve(result)))
       );
+
+      // 5️⃣ Add follow-up
+      const followupSql = `
+        INSERT INTO partnerFollowup 
+        (partnerId, role, followUp, followUpText, created_at, updated_at) 
+        VALUES (?, ?, ?, ?, ?, ?)
+      `;
+      await new Promise((resolve, reject) =>
+        db.query(
+          followupSql,
+          [
+            insertResult.insertId,
+            "Promoter",
+            "New",
+            "Newly Added Promoter",
+            currentdate,
+            currentdate,
+          ],
+          (err) => (err ? reject(err) : resolve())
+        )
+      );
+
+      return res.status(201).json({
+        message: "Promoter added successfully",
+        Id: insertResult.insertId,
+      });
     });
-  });
+  } catch (err) {
+    console.error("Error adding Promoter:", err);
+    res.status(500).json({ message: "Server error", error: err });
+  }
 };
 
-export const edit = (req, res) => {
+export const edit = async (req, res) => {
   const partnerid = parseInt(req.params.id);
   if (isNaN(partnerid)) {
     return res.status(400).json({ message: "Invalid Partner ID" });
   }
+
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const {
     fullname,
@@ -272,69 +274,101 @@ export const edit = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Handle uploaded files
-  const adharImageFile = req.files?.["adharImage"]?.[0];
-  const panImageFile = req.files?.["panImage"]?.[0];
-  const reraImageFile = req.files?.["reraImage"]?.[0];
+  try {
+    // 1️⃣ Fetch existing promoter
+    const [rows] = await new Promise((resolve, reject) =>
+      db.query(
+        "SELECT adharimage, panimage, reraimage FROM promoter WHERE id = ?",
+        [partnerid],
+        (err, results) => (err ? reject(err) : resolve(results))
+      )
+    );
 
-  const adharImageUrl = adharImageFile
-    ? `/uploads/${adharImageFile.filename}`
-    : null;
-  const panImageUrl = panImageFile ? `/uploads/${panImageFile.filename}` : null;
-  const reraImageUrl = reraImageFile
-    ? `/uploads/${reraImageFile.filename}`
-    : null;
-
-  let updateSql = `UPDATE promoter SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, state = ?, city = ?, pincode = ?, experience = ?, adharno = ?, panno = ?, rerano = ?, bankname = ?, accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?`;
-  const updateValues = [
-    fullname,
-    contact,
-    email,
-    intrest,
-    address,
-    state,
-    city,
-    pincode,
-    experience,
-    adharno,
-    panno,
-    rerano,
-    bankname,
-    accountholdername,
-    accountnumber,
-    ifsc,
-    currentdate,
-  ];
-
-  if (adharImageUrl) {
-    updateSql += `, adharimage = ?`;
-    updateValues.push(adharImageUrl);
-  }
-
-  if (panImageUrl) {
-    updateSql += `, panimage = ?`;
-    updateValues.push(panImageUrl);
-  }
-
-  if (reraImageUrl) {
-    updateSql += `, reraimage = ?`;
-    updateValues.push(reraImageUrl);
-  }
-
-  updateSql += ` WHERE id = ?`;
-  updateValues.push(partnerid);
-
-  db.query(updateSql, updateValues, (updateErr, result) => {
-    if (updateErr) {
-      console.error("Error updating Promoter:", updateErr);
-      return res
-        .status(500)
-        .json({ message: "Database error during update", error: updateErr });
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ message: "Promoter not found" });
     }
 
+    const oldData = rows[0];
+
+    // 2️⃣ Upload new files to S3 if provided
+    const adharFile = req.files?.["adharImage"]?.[0];
+    const panFile = req.files?.["panImage"]?.[0];
+    const reraFile = req.files?.["reraImage"]?.[0];
+
+    let newAdharUrl = oldData.adharimage || null;
+    let newPanUrl = oldData.panimage || null;
+    let newReraUrl = oldData.reraimage || null;
+
+    // Upload to S3 and replace old URLs
+    if (adharFile) {
+      newAdharUrl = await uploadToS3(adharFile, "documents/adhar");
+    }
+
+    if (panFile) {
+      newPanUrl = await uploadToS3(panFile, "documents/pan");
+    }
+
+    if (reraFile) {
+      newReraUrl = await uploadToS3(reraFile, "documents/rera");
+    }
+
+    // 3️⃣ Build update query
+    let updateSql = `
+      UPDATE promoter
+      SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, 
+          state = ?, city = ?, pincode = ?, experience = ?, adharno = ?, 
+          panno = ?, rerano = ?, bankname = ?, accountholdername = ?, 
+          accountnumber = ?, ifsc = ?, updated_at = ?
+    `;
+    const updateValues = [
+      fullname,
+      contact,
+      email.toLowerCase(),
+      intrest,
+      address,
+      state,
+      city,
+      pincode,
+      experience,
+      adharno,
+      panno,
+      rerano,
+      bankname,
+      accountholdername,
+      accountnumber,
+      ifsc,
+      currentdate,
+    ];
+
+    if (newAdharUrl) {
+      updateSql += `, adharimage = ?`;
+      updateValues.push(newAdharUrl);
+    }
+
+    if (newPanUrl) {
+      updateSql += `, panimage = ?`;
+      updateValues.push(newPanUrl);
+    }
+
+    if (newReraUrl) {
+      updateSql += `, reraimage = ?`;
+      updateValues.push(newReraUrl);
+    }
+
+    updateSql += ` WHERE id = ?`;
+    updateValues.push(partnerid);
+
+    await new Promise((resolve, reject) =>
+      db.query(updateSql, updateValues, (err) => (err ? reject(err) : resolve()))
+    );
+
     res.status(200).json({ message: "Promoter updated successfully" });
-  });
+  } catch (err) {
+    console.error("Error updating Promoter:", err);
+    res.status(500).json({ message: "Server error", error: err });
+  }
 };
+
 
 // **Delete **
 export const del = (req, res) => {

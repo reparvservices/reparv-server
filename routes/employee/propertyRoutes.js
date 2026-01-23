@@ -1,4 +1,6 @@
 import express from "express";
+import multer from "multer";
+import path from "path";
 import {
   getAll,
   getById,
@@ -24,58 +26,96 @@ import {
   addCsvFileForPlot,
   uploadBrochureAndVideoLink,
 } from "../../controllers/employee/propertyController.js";
-import multer from "multer";
-import path from "path";
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: {
-    fileSize: 1024 * 1024 * 2,
-  },
+/* ---------- MULTER MEMORY STORAGE FOR IMAGES ---------- */
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
-    if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error("Only JPEG, PNG, and JPG images are allowed"));
+    const allowed = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+    if (!allowed.includes(file.mimetype)) {
+      return cb(new Error("Only JPEG, PNG, JPG, WEBP allowed"));
     }
     cb(null, true);
   },
 });
 
+/* ---------- MULTER STORAGE FOR BROCHURE UPLOAD ---------- */
+const brochureStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "./uploads/brochures/");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
+});
+const brochureUpload = multer({
+  storage: brochureStorage,
+  limits: { fileSize: 300 * 1024 * 1024 }, // 300MB
+  fileFilter: (req, file, cb) => {
+    const allowedFileTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+    if (!allowedFileTypes.includes(file.mimetype)) {
+      return cb(new Error("Only JPG, PNG, WEBP images or PDF files are allowed."));
+    }
+    cb(null, true);
+  },
+});
+
+/* ---------- MULTER MEMORY STORAGE FOR CSV ---------- */
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ["text/csv", "application/vnd.ms-excel"];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error("Only CSV files are allowed"));
+    }
+    cb(null, true);
+  },
+});
+const uploadCsvMiddleware = (req, res, next) => {
+  csvUpload.single("csv")(req, res, (err) => {
+    if (err instanceof multer.MulterError) return res.status(400).json({ message: err.message });
+    if (err) return res.status(400).json({ message: err.message });
+    next();
+  });
+};
+
+/* ---------- GLOBAL MULTER ERROR HANDLER ---------- */
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
-      return res
-        .status(400)
-        .json({ success: false, error: "Each image must be under 2MB." });
+      return res.status(400).json({ success: false, error: "Each file must be under allowed size." });
     }
     return res.status(400).json({ success: false, error: err.message });
   } else if (err) {
-    return res
-      .status(400)
-      .json({ success: false, error: err.message || "Upload failed." });
+    return res.status(400).json({ success: false, error: err.message || "Upload failed." });
   }
   next();
 });
 
-router.get("/", getAll);
-router.get("/:id", getById);
+/* ---------- ROUTES ---------- */
+
+// Specific routes first
 router.get("/images/get/:id", getImages);
 router.delete("/images/delete/:id", deleteImages);
+router.get("/propertyinfo/:id", propertyInfo);
+router.get("/location/get/:id", getPropertyLocation);
+router.get("/additionalinfo/get/:id", fetchAdditionalInfo);
+
+// Generic GET routes after specific
+router.get("/", getAll);
+router.get("/:id", getById);
+
+// Property Name Check
 router.post("/check-property-name", checkPropertyName);
+
+// Add Property
 router.post(
   "/add",
-  upload.fields([
+  imageUpload.fields([
     { name: "frontView", maxCount: 3 },
     { name: "nearestLandmark", maxCount: 3 },
     { name: "developedAmenities", maxCount: 3 },
@@ -89,9 +129,10 @@ router.post(
   addProperty
 );
 
+// Edit Property
 router.put(
   "/edit/:id",
-  upload.fields([
+  imageUpload.fields([
     { name: "frontView", maxCount: 3 },
     { name: "nearestLandmark", maxCount: 3 },
     { name: "developedAmenities", maxCount: 3 },
@@ -104,10 +145,11 @@ router.put(
   ]),
   update
 );
-// Update Images
+
+// Update Images Only
 router.put(
   "/images/edit/:id",
-  upload.fields([
+  imageUpload.fields([
     { name: "frontView", maxCount: 3 },
     { name: "nearestLandmark", maxCount: 3 },
     { name: "developedAmenities", maxCount: 3 },
@@ -121,16 +163,18 @@ router.put(
   updateImages
 );
 
+// Status, SEO, Reject, Commission, Approve, Delete
 router.put("/status/:id", status);
 router.put("/seo/:id", seoDetails);
 router.put("/reject/:id", addRejectReason);
 router.put("/commission/:id", setPropertyCommission);
 router.put("/approve/:id", approve);
 router.delete("/delete/:id", del);
-router.get("/propertyinfo/:id", propertyInfo);
+
+// Property Additional Info
 router.post(
   "/additionalinfoadd",
-  upload.fields([
+  imageUpload.fields([
     { name: "owneradhar", maxCount: 1 },
     { name: "ownerpan", maxCount: 1 },
     { name: "schedule", maxCount: 1 },
@@ -140,9 +184,10 @@ router.post(
   ]),
   additionalInfoAdd
 );
+
 router.put(
   "/editadditionalinfo/:id",
-  upload.fields([
+  imageUpload.fields([
     { name: "owneradhar", maxCount: 1 },
     { name: "ownerpan", maxCount: 1 },
     { name: "schedule", maxCount: 1 },
@@ -153,86 +198,14 @@ router.put(
   editAdditionalInfo
 );
 
-// property location update
-router.get("/location/get/:id", getPropertyLocation);
+// Update Property Location
 router.put("/location/edit/:id", changePropertyLocation);
 
-// === Multer Setting for Upload Brochure ===
-const brochureStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/brochures/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
+// Brochure Upload
+router.put("/brochure/upload/:id", brochureUpload.single("brochureFile"), uploadBrochureAndVideoLink);
 
-const brochureUpload = multer({
-  storage: brochureStorage,
-  limits: { fileSize: 300 * 1024 * 1024 }, // 300 MB
-  fileFilter: (req, file, cb) => {
-    const allowedFileTypes = [
-      "image/jpeg",
-      "image/png",
-      "image/webp",
-      "application/pdf",
-    ];
-
-    if (!allowedFileTypes.includes(file.mimetype)) {
-      return cb(
-        new Error("Only JPG, PNG, WEBP images or PDF files are allowed.")
-      );
-    }
-
-    cb(null, true);
-  },
-});
-
-// === Route for Brochure Upload (and Video Link in Body) ===
-router.put(
-  "/brochure/upload/:id",
-  brochureUpload.single("brochureFile"),
-  uploadBrochureAndVideoLink
-);
-
-// multer for Upload Property Additional Information
-const uploadForCsv = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ["text/csv", "application/vnd.ms-excel"];
-    if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error("Only CSV files are allowed"));
-    }
-    cb(null, true);
-  },
-});
-
-const uploadCsvMiddleware = (req, res, next) => {
-  uploadForCsv.single("csv")(req, res, (err) => {
-    if (err instanceof multer.MulterError) {
-      // Multer-specific error (e.g. file too large)
-      return res.status(400).json({ message: err.message });
-    } else if (err) {
-      // Other errors
-      return res.status(400).json({ message: err.message });
-    }
-    next();
-  });
-};
-
-// Fetch & Upload CSV File
-router.get("/additionalinfo/get/:id", fetchAdditionalInfo);
-router.post(
-  "/additionalinfo/flat/csv/add/:propertyid",
-  uploadCsvMiddleware,
-  addCsvFileForFlat
-);
-router.post(
-  "/additionalinfo/plot/csv/add/:propertyid",
-  uploadCsvMiddleware,
-  addCsvFileForPlot
-);
+// CSV Upload for Flat/Plot
+router.post("/additionalinfo/flat/csv/add/:propertyid", uploadCsvMiddleware, addCsvFileForFlat);
+router.post("/additionalinfo/plot/csv/add/:propertyid", uploadCsvMiddleware, addCsvFileForPlot);
 
 export default router;
-

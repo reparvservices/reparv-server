@@ -17,18 +17,10 @@ import {
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
-
+/* ---------- MULTER CONFIG (S3) ---------- */
 const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size (5MB)
+  storage: multer.memoryStorage(), //  IMPORTANT for S3
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
     const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
     if (!allowedTypes.includes(file.mimetype)) {
@@ -37,7 +29,7 @@ const upload = multer({
     cb(null, true);
   },
 });
-
+/* ---------- ROUTES ---------- */
 router.get("/active", getAllActive);
 router.get("/get/:id", getById);
 router.get("/:partnerlister", getAll);
@@ -48,16 +40,16 @@ router.post(
     { name: "adharImage", maxCount: 2 },
     { name: "panImage", maxCount: 2 },
   ]),
-  add
+  add,
 );
 router.put(
-    "/edit/:id",
-    upload.fields([
-      { name: "adharImage", maxCount: 2 },
-      { name: "panImage", maxCount: 2 },
-    ]),
-    edit
-  );
+  "/edit/:id",
+  upload.fields([
+    { name: "adharImage", maxCount: 2 },
+    { name: "panImage", maxCount: 2 },
+  ]),
+  edit,
+);
 router.put("/status/:id", status);
 router.put("/update/paymentid/:id", updatePaymentId);
 router.get("/followup/list/:id", fetchFollowUpList);
