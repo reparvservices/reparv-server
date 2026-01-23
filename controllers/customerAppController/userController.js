@@ -6,6 +6,7 @@ import nodemailer from "nodemailer";
 import { OAuth2Client } from "google-auth-library";
 import e from "express";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
+import { sendOtpSMS } from "../../utils/OtpSender.js";
 const client = new OAuth2Client(process.env.MOBILE_GOOGLE_LOGIN_CLIENT_ID);
 
 dotenv.config();
@@ -20,12 +21,11 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-export const add = (req, res) => {
+const generateOtp = () => Math.floor(100000 + Math.random() * 900000);
+
+export const add = async (req, res) => {
   try {
-    console.log(req.body);
-    
     const { fullname, contact } = req.body;
-    const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
 
     if (!fullname || !contact) {
       return res.status(400).json({
@@ -34,80 +34,256 @@ export const add = (req, res) => {
       });
     }
 
-    const checkSql =
-      "SELECT user_id, fullname, contact FROM mobileusers WHERE contact = ?";
+    const otp = generateOtp();
+    const otpExpiry = moment().add(5, "minutes").format("YYYY-MM-DD HH:mm:ss");
+    const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
 
-    db.query(checkSql, [contact], (checkErr, users) => {
-      if (checkErr) {
-        return res.status(500).json({
-          success: false,
-          message: "Database error",
-        });
+    const checkSql = "SELECT user_id FROM mobileusers WHERE contact = ?";
+
+    db.query(checkSql, [contact], async (err, users) => {
+      if (err) {
+        return res.status(500).json({ success: false, message: "DB error" });
       }
 
+      // ✅ Existing user
       if (users.length > 0) {
-        const user = users[0];
+        const userId = users[0].user_id;
 
-        const token = jwt.sign(
-          { id: user.user_id, contact: user.contact },
-          process.env.JWT_SECRET,
-          { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+        db.query(
+          "UPDATE mobileusers SET otp=?, otp_expires_at=? WHERE user_id=?",
+          [otp, otpExpiry, userId],
         );
+
+        await sendOtpSMS({ phone: contact, otp });
 
         return res.status(200).json({
           success: true,
-          message: "Login successful",
-          token,
-          user: {
-            id: user.user_id,
-            fullname: user.fullname,
-            contact: user.contact,
-          },
+          message: "OTP sent successfully",
         });
       }
 
-      const insertSql = `
-        INSERT INTO mobileusers (fullname, contact, created_at, updated_at)
-        VALUES (?, ?, ?, ?)
-      `;
-
+      // 🆕 New user
       db.query(
-        insertSql,
-        [fullname, contact, timestamp, timestamp],
-        (insertErr, result) => {
+        `INSERT INTO mobileusers (fullname, contact, created_at, updated_at, otp, otp_expires_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [fullname, contact, timestamp, timestamp, otp, otpExpiry],
+        async (insertErr) => {
           if (insertErr) {
-            return res.status(500).json({
-              success: false,
-              message: "Database error",
-            });
+            return res
+              .status(500)
+              .json({ success: false, message: "DB error" });
           }
 
-          const token = jwt.sign(
-            { id: result.insertId, contact },
-            process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
-          );
+          await sendOtpSMS({ phone: contact, otp });
 
           return res.status(201).json({
             success: true,
-            message: "Signup successful",
-            token,
-            user: {
-              id: result.insertId,
-              fullname,
-              contact,
-            },
+            message: "Signup successful, OTP sent",
           });
-        }
+        },
       );
     });
-  } catch {
+  } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
     });
   }
 };
+
+export const verifyOtp = (req, res) => {
+  try {
+    const { contact, otp } = req.body;
+
+    if (!contact || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Contact and OTP required",
+      });
+    }
+
+    const sql =
+      "SELECT user_id, fullname, contact, otp, otp_expires_at FROM mobileusers WHERE contact=?";
+
+    db.query(sql, [contact], (err, users) => {
+      if (err) {
+        return res.status(500).json({ success: false, message: "DB error" });
+      }
+
+      if (users.length === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "User not found" });
+      }
+
+      const user = users[0];
+
+      if (user.otp !== otp) {
+        return res.status(401).json({ success: false, message: "Invalid OTP" });
+      }
+
+      if (moment().isAfter(moment(user.otp_expires_at))) {
+        return res.status(401).json({ success: false, message: "OTP expired" });
+      }
+
+      const token = jwt.sign(
+        { id: user.user_id, contact: user.contact },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
+      );
+
+      db.query(
+        "UPDATE mobileusers SET otp=NULL, otp_expires_at=NULL WHERE user_id=?",
+        [user.user_id],
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "OTP verified successfully",
+        token,
+        user: {
+          id: user.user_id,
+          fullname: user.fullname,
+          contact: user.contact,
+        },
+      });
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const resendOtp = async (req, res) => {
+  try {
+    const { contact } = req.body;
+
+    if (!contact) {
+      return res.status(400).json({
+        success: false,
+        message: "Contact is required",
+      });
+    }
+
+    const otp = generateOtp();
+    const otpExpiry = moment().add(5, "minutes").format("YYYY-MM-DD HH:mm:ss");
+
+    db.query(
+      "UPDATE mobileusers SET otp=?, otp_expires_at=? WHERE contact=?",
+      [otp, otpExpiry, contact],
+      async (err, result) => {
+        if (err || result.affectedRows === 0) {
+          return res.status(500).json({
+            success: false,
+            message: "Failed to resend OTP",
+          });
+        }
+
+        await sendOtpSMS({ phone: contact, otp });
+
+        return res.status(200).json({
+          success: true,
+          message: "OTP resent successfully",
+        });
+      },
+    );
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+// export const add = (req, res) => {
+//   try {
+//     console.log(req.body);
+
+//     const { fullname, contact } = req.body;
+//     const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
+
+//     if (!fullname || !contact) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Full name and contact are required",
+//       });
+//     }
+
+//     const checkSql =
+//       "SELECT user_id, fullname, contact FROM mobileusers WHERE contact = ?";
+
+//     db.query(checkSql, [contact], (checkErr, users) => {
+//       if (checkErr) {
+//         return res.status(500).json({
+//           success: false,
+//           message: "Database error",
+//         });
+//       }
+
+//       if (users.length > 0) {
+//         const user = users[0];
+
+//         const token = jwt.sign(
+//           { id: user.user_id, contact: user.contact },
+//           process.env.JWT_SECRET,
+//           { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+//         );
+
+//         return res.status(200).json({
+//           success: true,
+//           message: "Login successful",
+//           token,
+//           user: {
+//             id: user.user_id,
+//             fullname: user.fullname,
+//             contact: user.contact,
+//           },
+//         });
+//       }
+
+//       const insertSql = `
+//         INSERT INTO mobileusers (fullname, contact, created_at, updated_at)
+//         VALUES (?, ?, ?, ?)
+//       `;
+
+//       db.query(
+//         insertSql,
+//         [fullname, contact, timestamp, timestamp],
+//         (insertErr, result) => {
+//           if (insertErr) {
+//             return res.status(500).json({
+//               success: false,
+//               message: "Database error",
+//             });
+//           }
+
+//           const token = jwt.sign(
+//             { id: result.insertId, contact },
+//             process.env.JWT_SECRET,
+//             { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+//           );
+
+//           return res.status(201).json({
+//             success: true,
+//             message: "Signup successful",
+//             token,
+//             user: {
+//               id: result.insertId,
+//               fullname,
+//               contact,
+//             },
+//           });
+//         }
+//       );
+//     });
+//   } catch {
+//     return res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//     });
+//   }
+// };
 
 export const getProfile = (req, res) => {
   const { id } = req.query;
@@ -262,7 +438,7 @@ export const update = async (req, res) => {
             },
           });
         });
-      }
+      },
     );
   } catch (error) {
     console.error(error);
@@ -320,7 +496,7 @@ export const googleLogin = async (req, res) => {
         const jwtToken = jwt.sign(
           { id: user.user_id, email: user.email },
           process.env.JWT_SECRET,
-          { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+          { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
         );
 
         return res.status(200).json({
@@ -357,7 +533,7 @@ export const googleLogin = async (req, res) => {
           const jwtToken = jwt.sign(
             { id: result.insertId, email },
             process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+            { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
           );
 
           return res.status(201).json({
@@ -371,7 +547,7 @@ export const googleLogin = async (req, res) => {
               picture,
             },
           });
-        }
+        },
       );
     });
   } catch (err) {
@@ -382,4 +558,3 @@ export const googleLogin = async (req, res) => {
     });
   }
 };
-
