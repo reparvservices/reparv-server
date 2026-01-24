@@ -93,6 +93,7 @@ import userLoginRoutes from "./routes/user/userRoutes.js";
 import userProfileRoutes from "./routes/user/profileRoutes.js";
 import userDashboardRoutes from "./routes/user/dashboardRoutes.js";
 import userPropertyRoutes from "./routes/user/propertyRoutes.js";
+import userEnquirersRoutes from "./routes/user/enquirerRoutes.js";
 import userMapRoutes from "./routes/user/mapRoutes.js";
 import userBuilderRoutes from "./routes/user/builderRoutes.js";
 import userAuthRoutes from "./routes/user/authRoutes.js"
@@ -576,6 +577,7 @@ app.use("/user/profile", userProfileRoutes);
 app.use("/user/dashboard", userDashboardRoutes);
 app.use("/user/builders", userBuilderRoutes);
 app.use("/user/properties", userPropertyRoutes);
+app.use("/user/enquirers", userEnquirersRoutes);
 app.use("/user/map", userMapRoutes);
 app.use("/user/auth", userAuthRoutes);
 
