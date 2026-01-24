@@ -140,7 +140,7 @@ router.post("/verify-otp", async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Authentication successful",
+      message: "Authentication Successful",
       token,
       user: userData,
     });
