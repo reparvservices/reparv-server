@@ -53,7 +53,7 @@ export const submitEmiForm = (req, res) => {
 
     const sql = `
       INSERT INTO loanemiforperson (
-        customerId, employmentType, fullname, dateOfBirth, contactNo, panNumber, aadhaarNumber, email,
+        user_id, employmentType, fullname, dateOfBirth, contactNo, panNumber, aadhaarNumber, email,
         state, city, pincode, employmentSector, workexperienceYear, workexperienceMonth,
         salaryType, grossPay, netPay, pfDeduction, otherIncome,
         yearIncome, monthIncome, ongoingEmi,
