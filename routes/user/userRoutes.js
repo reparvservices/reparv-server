@@ -2,6 +2,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import db from "../../config/dbconnect.js";
 import moment from "moment";
+import { sendOtpSMS } from "../../utils/sendOtpSMS.js";
 
 const router = express.Router();
 
@@ -14,10 +15,8 @@ const generateOtp = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
 
 /* ======================================================
-   SEND OTP
+   SEND OTP (SMS)
 ====================================================== */
-import axios from "axios";
-
 router.post("/send-otp", async (req, res) => {
   try {
     const { contact } = req.body;
@@ -30,31 +29,21 @@ router.post("/send-otp", async (req, res) => {
 
     otpStore.set(contact, {
       otp,
-      expiresAt: Date.now() + 5 * 60 * 1000, // 5 min
+      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
     });
 
-    // WhatsApp OTP Message
-    const message = `Your Reparv OTP is ${otp}. Valid for 5 minutes.`;
+    await sendOtpSMS(contact, otp);
 
-    // Kinex API Call
-    const response = await axios.get(
-      "http://wapi.kinextechnologies.in/wapp/api/send",
-      {
-        params: {
-          apikey: process.env.KINEX_API_KEY,
-          mobile: contact,
-          msg: message,
-        },
-      }
-    );
-
-    // Optional: log response for debugging
-    console.log("Kinex Response:", response.data);
-
-    return res.json({ message: "OTP sent successfully" });
+    return res.json({
+      success: true,
+      message: "OTP sent successfully",
+    });
   } catch (err) {
     console.error("Send OTP Error:", err);
-    res.status(500).json({ message: "Failed to send OTP" });
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send OTP",
+    });
   }
 });
 
@@ -98,10 +87,10 @@ router.post("/verify-otp", async (req, res) => {
       );
     });
 
-    let userData;
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    let userData;
 
-    /* ---------------- REGISTER IF NOT EXISTS ---------------- */
+    /* ---------------- REGISTER ---------------- */
     if (!user) {
       const insertResult = await new Promise((resolve, reject) => {
         db.query(
@@ -132,10 +121,6 @@ router.post("/verify-otp", async (req, res) => {
     }
 
     /* ---------------- JWT ---------------- */
-    if (!process.env.JWT_SECRET) {
-      return res.status(500).json({ message: "JWT secret not configured" });
-    }
-
     const token = jwt.sign(
       { id: userData.id, contact: userData.contact },
       process.env.JWT_SECRET,
@@ -143,10 +128,6 @@ router.post("/verify-otp", async (req, res) => {
     );
 
     /* ---------------- SESSION ---------------- */
-    if (!req.session) {
-      return res.status(500).json({ message: "Session not configured" });
-    }
-
     req.session.user = userData;
 
     /* ---------------- COOKIE ---------------- */
@@ -158,7 +139,8 @@ router.post("/verify-otp", async (req, res) => {
     });
 
     return res.json({
-      message: "Authentication successful",
+      success: true,
+      message: "Authentication Successful",
       token,
       user: userData,
     });
@@ -173,10 +155,7 @@ router.post("/verify-otp", async (req, res) => {
 ====================================================== */
 router.get("/session-data", (req, res) => {
   if (req.session?.user) {
-    return res.json({
-      message: "Session Active",
-      user: req.session.user,
-    });
+    return res.json({ user: req.session.user });
   }
   return res.status(401).json({ message: "No active session" });
 });
@@ -185,23 +164,11 @@ router.get("/session-data", (req, res) => {
    LOGOUT
 ====================================================== */
 router.post("/logout", (req, res) => {
-  res.clearCookie("userToken", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  });
+  res.clearCookie("userToken");
 
-  if (req.session) {
-    req.session.destroy((err) => {
-      if (err) {
-        console.error("Logout Error:", err);
-        return res.status(500).json({ message: "Logout failed" });
-      }
-      return res.json({ message: "Logout successful" });
-    });
-  } else {
+  req.session?.destroy(() => {
     return res.json({ message: "Logout successful" });
-  }
+  });
 });
 
 export default router;

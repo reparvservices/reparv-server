@@ -1,17 +1,41 @@
 import db from "../../config/dbconnect.js";
 
 export const getCount = (req, res) => {
-  const query =`SELECT
-  (SELECT COUNT(propertyid) FROM properties WHERE guestUserId = ?) AS totalProperty`;
+  const query = `
+    SELECT
+      (SELECT COUNT(propertyid)
+       FROM properties
+       WHERE guestUserId = ?) AS totalProperty,
 
-  db.query(query,[req.guestUser?.id], (err, results) => {
-    if (err) {
-      console.error("Error fetching dashboard stats:", err);
-      return res.status(500).json({ error: "Database error" });
+      (SELECT COUNT(enquirersid)
+       FROM enquirers
+       WHERE propertyid IN (
+         SELECT propertyid
+         FROM properties
+         WHERE guestUserId = ?
+       )) AS totalEnquiry,
+
+      (SELECT IFNULL(SUM(pa.views), 0)
+       FROM property_analytics pa
+       WHERE pa.property_id IN (
+         SELECT propertyid
+         FROM properties
+         WHERE guestUserId = ?
+       )) AS totalViews
+  `;
+
+  db.query(
+    query,
+    [req.guestUser?.id, req.guestUser?.id, req.guestUser?.id],
+    (err, results) => {
+      if (err) {
+        console.error("Error fetching dashboard stats:", err);
+        return res.status(500).json({ error: "Database error" });
+      }
+
+      res.json(results[0]);
     }
-
-    return res.json(results[0]);
-  });
+  );
 };
 
 // **Get Partner Properties with Enquiry/Booking Status**
