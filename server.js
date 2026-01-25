@@ -97,7 +97,7 @@ import userEnquirersRoutes from "./routes/user/enquirerRoutes.js";
 import userMapRoutes from "./routes/user/mapRoutes.js";
 import userBuilderRoutes from "./routes/user/builderRoutes.js";
 import userAuthRoutes from "./routes/user/authRoutes.js"
-
+import userEmiRoutes from "./routes/user/emiRoutes.js"
 
 // builder
 import builderLoginRoutes from "./routes/builder/loginRoutes.js";
@@ -580,6 +580,7 @@ app.use("/user/properties", userPropertyRoutes);
 app.use("/user/enquirers", userEnquirersRoutes);
 app.use("/user/map", userMapRoutes);
 app.use("/user/auth", userAuthRoutes);
+app.use("/user/emi", userEmiRoutes);
 
 // Builder Routes
 app.use("/builder", builderLoginRoutes);
