@@ -109,6 +109,7 @@ router.post("/verify-otp", async (req, res) => {
         id: insertResult.insertId,
         fullname: fullname?.trim() || "Guest User",
         contact,
+        email: user.email,
         role: "Guest User",
       };
     } else {
@@ -116,13 +117,14 @@ router.post("/verify-otp", async (req, res) => {
         id: user.id,
         fullname: user.fullname,
         contact: user.contact,
+        email: user.email,
         role: "Guest User",
       };
     }
 
     /* ---------------- JWT ---------------- */
     const token = jwt.sign(
-      { id: userData.id, contact: userData.contact },
+      { id: userData.id, contact: userData.contact, email: userData.email },
       process.env.JWT_SECRET,
       { expiresIn: "10d" }
     );
