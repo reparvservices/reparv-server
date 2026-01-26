@@ -1,5 +1,5 @@
 import db from "../../config/dbconnect.js";
-import { uploadToS3 } from "../../utils/uploadToS3.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 export const submitEmiForm = async (req, res) => {
   try {
