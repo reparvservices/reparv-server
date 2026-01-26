@@ -1,6 +1,7 @@
 import db from "../../config/dbconnect.js";
+import { uploadToS3 } from "../../utils/uploadToS3.js";
 
-export const submitEmiForm = (req, res) => {
+export const submitEmiForm = async (req, res) => {
   try {
     const ID = req.guestUser?.id || null;
     if (!ID) {
@@ -38,13 +39,27 @@ export const submitEmiForm = (req, res) => {
       businessOtherIncome,
     } = req.body;
 
-    // Images from multer
-    const panImage = req.files?.panImage?.[0]?.filename || null;
-    const aadhaarFrontImage =
-      req.files?.aadhaarFrontImage?.[0]?.filename || null;
-    const aadhaarBackImage = req.files?.aadhaarBackImage?.[0]?.filename || null;
+    // Helper for S3 upload
+    const uploadImagesToS3 = async (fieldFiles) => {
+      if (!fieldFiles || fieldFiles.length === 0) return null;
+      const uploadedUrls = [];
+      for (const file of fieldFiles) {
+        const url = await uploadToS3(file);
+        uploadedUrls.push(url);
+      }
+      return uploadedUrls[0]; // single image expected
+    };
 
-    // Validation (backend safety)
+    // Upload images to S3
+    const panImage = await uploadImagesToS3(req.files?.panImage);
+    const aadhaarFrontImage = await uploadImagesToS3(
+      req.files?.aadhaarFrontImage
+    );
+    const aadhaarBackImage = await uploadImagesToS3(
+      req.files?.aadhaarBackImage
+    );
+
+    // Validation
     if (!panImage || !aadhaarFrontImage || !aadhaarBackImage) {
       return res.status(400).json({
         message: "PAN image and Aadhaar front & back images are required",
@@ -90,17 +105,18 @@ export const submitEmiForm = (req, res) => {
       businessExperienceYears,
       businessExperienceMonths,
       businessOtherIncome,
-      panImage,
-      aadhaarFrontImage,
-      aadhaarBackImage,
+      panImage,              // S3 URL
+      aadhaarFrontImage,     // S3 URL
+      aadhaarBackImage,      // S3 URL
     ];
 
     db.query(sql, values, (err, result) => {
       if (err) {
         console.error("Error inserting EMI form:", err);
-        return res
-          .status(500)
-          .json({ message: "Database insert error", error: err });
+        return res.status(500).json({
+          message: "Database insert error",
+          error: err,
+        });
       }
 
       res.status(201).json({
