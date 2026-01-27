@@ -75,7 +75,7 @@ export const add = async (req, res) => {
     /*  Upload blog image to S3 */
     const uploadBlogImage = async () => {
       if (!req.files?.blogImage?.[0]) return null;
-      return await uploadToS3(req.files.blogImage[0], "blogs");
+      return await uploadToS3(req.files.blogImage[0]);
     };
 
     const blogImageUrl = await uploadBlogImage();
@@ -112,6 +112,7 @@ export const add = async (req, res) => {
     });
   }
 };
+
 // **Edit **
 export const edit = async (req, res) => {
   try {
@@ -131,7 +132,7 @@ export const edit = async (req, res) => {
     /*  Upload new image to S3 (if provided) */
     let blogImageUrl = null;
     if (req.files?.blogImage?.[0]) {
-      blogImageUrl = await uploadToS3(req.files.blogImage[0], "blogs");
+      blogImageUrl = await uploadToS3(req.files.blogImage[0]);
     }
 
     /*  Build update query dynamically */
@@ -139,13 +140,7 @@ export const edit = async (req, res) => {
       UPDATE blogs 
       SET type = ?, tittle = ?, description = ?, content = ?, updated_at = ?
     `;
-    const updateValues = [
-      type,
-      tittle,
-      description,
-      content,
-      currentdate,
-    ];
+    const updateValues = [type, tittle, description, content, currentdate];
 
     if (blogImageUrl) {
       updateSql += `, image = ?`;
@@ -172,7 +167,6 @@ export const edit = async (req, res) => {
     });
   }
 };
-
 
 //**Change status */
 export const status = (req, res) => {
@@ -205,7 +199,7 @@ export const status = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Blog status change successfully" });
-      },
+      }
     );
   });
 };
@@ -238,7 +232,7 @@ export const seoDetails = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Seo Details Add successfully" });
-      },
+      }
     );
   });
 };

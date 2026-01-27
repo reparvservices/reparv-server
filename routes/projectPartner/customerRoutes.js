@@ -1,26 +1,20 @@
 import express from "express";
 import multer from "multer";
-import path from "path";
 import {
   getAll,
   getById,
   addPayment,
   getPaymentList,
 } from "../../controllers/projectPartner/customerController.js";
+
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
+// Use memory storage for multer (so we can directly upload to S3)
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
-  limits: { fileSize: 2 * 1024 * 1024 }, // Limit file size (2MB)
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
   fileFilter: (req, file, cb) => {
     const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
     if (!allowedTypes.includes(file.mimetype)) {
@@ -33,5 +27,8 @@ const upload = multer({
 router.get("/", getAll);
 router.get("/:id", getById);
 router.get("/payment/get/:id", getPaymentList);
+
+// Use memory upload; controller will handle S3
 router.post("/payment/add/:id", upload.single("paymentImage"), addPayment);
+
 export default router;

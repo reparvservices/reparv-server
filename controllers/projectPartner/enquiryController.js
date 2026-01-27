@@ -1,60 +1,74 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
-import fs from "fs";
 import csv from "csv-parser";
+import { uploadToS3 } from "../../utils/imageUpload.js"; // Your S3 helper
+import { Readable } from "stream";
 
-// * Add CSV Enquiries (without Property ID)
 export const addCSVEnquiry = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: "CSV file is required" });
   }
-  const Id = req.projectPartnerUser?.id;
-  if (!Id) {
+
+  const userId = req.projectPartnerUser?.id;
+  if (!userId) {
     return res.status(400).json({ message: "Invalid Id" });
   }
 
-  const results = [];
+  try {
+    // Upload CSV to S3
+    const csvUrl = await uploadToS3(req.file); // Returns the S3 URL
 
-  fs.createReadStream(req.file.path)
-    .pipe(csv())
-    .on("data", (row) => results.push(row))
-    .on("end", () => {
-      const values = results.map((row) => [
-        "CSV File",
-        row.customer || null,
-        row.contact || null,
-        row.minbudget || null,
-        row.maxbudget || null,
-        row.category || null,
-        row.location || null,
-        row.state || null,
-        row.city || null,
-        row.status || "New",
-        row.message || null,
-        Id,
-        Id
-      ]);
-
-      const query = `
-        INSERT INTO enquirers (
-          source, customer, contact, minbudget,  maxbudget, category, location,
-          state, city, status, message, projectpartner, projectpartnerid
-        ) VALUES ?
-      `;
-
-      db.query(query, [values], (err) => {
-        fs.unlinkSync(req.file.path); // Clean up
-        if (err) {
-          console.error(err);
-          return res
-            .status(500)
-            .json({ message: "Database insert failed", error: err });
+    const results = [];
+    const stream = Readable.from(req.file.buffer); // Use memory buffer instead of disk
+    stream
+      .pipe(csv())
+      .on("data", (row) => results.push(row))
+      .on("end", () => {
+        if (results.length === 0) {
+          return res.status(400).json({ message: "CSV is empty" });
         }
-        res.json({
-          message: "CSV data inserted into enquirers table successfully!",
+
+        const values = results.map((row) => [
+          "CSV File",
+          row.customer || null,
+          row.contact || null,
+          row.minbudget || null,
+          row.maxbudget || null,
+          row.category || null,
+          row.location || null,
+          row.state || null,
+          row.city || null,
+          row.status || "New",
+          row.message || null,
+          userId,
+          userId,
+        ]);
+
+        const query = `
+          INSERT INTO enquirers (
+            source, customer, contact, minbudget, maxbudget, category, location,
+            state, city, status, message, projectpartner, projectpartnerid
+          ) VALUES ?
+        `;
+
+        db.query(query, [values], (err) => {
+          if (err) {
+            console.error(err);
+            return res
+              .status(500)
+              .json({ message: "Database insert failed", error: err });
+          }
+
+          res.json({
+            message: "CSV data inserted into enquirers table successfully!",
+            csvUrl, // Optional: S3 link
+          });
         });
       });
-    });
+  } catch (err) {
+    console.error("CSV processing error:", err);
+    res.status(500).json({ message: "Server error", error: err });
+  }
 };
 
 // * Add Normal Enquiry (with or without Property ID)
