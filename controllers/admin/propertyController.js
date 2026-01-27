@@ -903,6 +903,70 @@ export const hotDeal = (req, res) => {
   );
 };
 
+export const setTopPicks = async (req, res) => {
+  const propertyId = req.params.id;
+
+  if (!propertyId) {
+    return res.status(400).json({ message: "Property ID is required" });
+  }
+
+  try {
+    // 1. Get existing property to check old banner
+    const property = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT topPicksBanner FROM properties WHERE propertyid = ?",
+        [propertyId],
+        (err, result) => {
+          if (err) return reject(err);
+          if (result.length === 0) return resolve(null);
+          resolve(result[0]);
+        }
+      );
+    });
+
+    if (!property) {
+      return res.status(404).json({ message: "Property not found" });
+    }
+
+    let bannerUrl = property.topPicksBanner; // default: old banner
+
+    // 2. If new banner uploaded, upload to S3
+    if (req.files?.banner && req.files.banner.length > 0) {
+      const file = req.files.banner[0];
+      const s3Result = await uploadToS3(file);
+      bannerUrl = s3Result.Location; // new S3 URL
+    }
+
+    const topPicksStatus = req.body.topPicksStatus;
+    const updatedAt = moment().format("YYYY-MM-DD HH:mm:ss");
+
+    // 3. Update property record
+    db.query(
+      `UPDATE properties SET topPicksStatus = ?, topPicksBanner = ?, updated_at = ? WHERE propertyid = ?`,
+      [topPicksStatus, bannerUrl, updatedAt, propertyId],
+      (err, result) => {
+        if (err) {
+          console.error("Error updating top picks:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        return res.status(200).json({
+          message: "Top Picks updated successfully",
+          data: {
+            topPicksStatus,
+            topPicksBanner: bannerUrl,
+          },
+        });
+      }
+    );
+  } catch (error) {
+    console.error("Error in setTopPicks:", error);
+    return res.status(500).json({ message: "Internal server error", error });
+  }
+};
+
 // get Property Location Latitude and Longitude
 export const getPropertyLocation = (req, res) => {
   const Id = parseInt(req.params.id);

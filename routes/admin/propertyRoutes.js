@@ -27,6 +27,7 @@ import {
   deleteBrochureFile,
   hotDeal,
   changeProjectPartner,
+  setTopPicks,
 } from "../../controllers/admin/propertyController.js";
 
 const router = express.Router();
@@ -122,6 +123,9 @@ router.put(
 
 router.put("/status/:id", status);
 router.put("/set/hotdeal/:id", hotDeal);
+router.put("/set/top-picks/:id", upload.fields([
+    { name: "banner", maxCount: 1 }
+  ]), setTopPicks);
 router.put("/seo/:id", seoDetails);
 router.put("/assign/to/project-partner/:id", changeProjectPartner);
 router.put("/reject/:id", addRejectReason);
