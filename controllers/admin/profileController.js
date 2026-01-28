@@ -64,7 +64,7 @@ export const editProfile = async (req, res) => {
 
     //  Upload new file to S3 if provided
     if (req.file) {
-      finalImagePath = await uploadToS3(req.file, "users"); // store in "users" folder
+      finalImagePath = await uploadToS3(req.file);
     }
 
     // 3️ Update DB

@@ -1,12 +1,20 @@
 import db from "../../config/dbconnect.js";
 
 export const getCount = (req, res) => {
+  const guestUserId = req.guestUser?.id;
+
+  if (!guestUserId) {
+    return res.status(401).json({ message: "Unauthorized access" });
+  }
+
   const query = `
     SELECT
+      -- Total properties added by the guest user
       (SELECT COUNT(propertyid)
        FROM properties
        WHERE guestUserId = ?) AS totalProperty,
 
+      -- Total enquiries for those properties
       (SELECT COUNT(enquirersid)
        FROM enquirers
        WHERE propertyid IN (
@@ -15,18 +23,28 @@ export const getCount = (req, res) => {
          WHERE guestUserId = ?
        )) AS totalEnquiry,
 
+      -- Total views for those properties
       (SELECT IFNULL(SUM(pa.views), 0)
        FROM property_analytics pa
        WHERE pa.property_id IN (
          SELECT propertyid
          FROM properties
          WHERE guestUserId = ?
-       )) AS totalViews
+       )) AS totalViews,
+
+      -- Total likes for those properties
+      (SELECT COUNT(DISTINCT w.user_id)
+       FROM user_property_wishlist w
+       WHERE w.property_id IN (
+         SELECT propertyid
+         FROM properties
+         WHERE guestUserId = ?
+       )) AS totalLikes
   `;
 
   db.query(
     query,
-    [req.guestUser?.id, req.guestUser?.id, req.guestUser?.id],
+    [guestUserId, guestUserId, guestUserId, guestUserId],
     (err, results) => {
       if (err) {
         console.error("Error fetching dashboard stats:", err);
@@ -37,6 +55,7 @@ export const getCount = (req, res) => {
     }
   );
 };
+
 
 // **Get Partner Properties with Enquiry/Booking Status**
 export const getProperties = (req, res) => {

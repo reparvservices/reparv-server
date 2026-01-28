@@ -21,7 +21,9 @@ export const getById = (req, res) => {
 
       COUNT(DISTINCT CASE 
         WHEN pi.status = 'Booked' THEN pi.propertyinfoid 
-      END) AS bookedCount
+      END) AS bookedCount,
+
+      COUNT(DISTINCT w.user_id) AS likes
 
     FROM properties p
 
@@ -29,10 +31,13 @@ export const getById = (req, res) => {
       ON p.propertyid = pi.propertyid
 
     LEFT JOIN projectpartner pp 
-      ON p.propertyid = pp.id
+      ON p.projectpartnerid = pp.id
 
     LEFT JOIN guestUsers gu 
-      ON p.propertyid = gu.id
+      ON p.guestUserId = gu.id
+
+    LEFT JOIN user_property_wishlist w
+      ON w.property_id = p.propertyid
 
     WHERE p.seoSlug = ?
     GROUP BY p.propertyid;
@@ -64,6 +69,7 @@ export const getById = (req, res) => {
       possessionDate: row.possessionDate
         ? moment.utc(row.possessionDate).format("DD MMM YYYY")
         : null,
+      likes: Number(row.likes) || 0,
     };
 
     res.json(response);

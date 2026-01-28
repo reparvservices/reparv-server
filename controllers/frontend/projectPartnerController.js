@@ -54,22 +54,28 @@ export const getAllProperties = (req, res) => {
     return res.status(400).json({ message: "Missing required fields." });
   }
 
-  // Base SQL
   let sql = `
-    SELECT * FROM properties
-    WHERE projectpartnerid = ?
-    AND city = ?
+    SELECT 
+      properties.*,
+      COUNT(DISTINCT user_property_wishlist.user_id) AS likes 
+    FROM properties
+    LEFT JOIN user_property_wishlist
+      ON user_property_wishlist.property_id = properties.propertyid
+    WHERE properties.projectpartnerid = ?
+      AND properties.city = ?
   `;
 
   const params = [projectPartnerId, selectedCity];
 
-  // If propertyCategory present → add filter
   if (propertyCategory && propertyCategory.trim() !== "") {
-    sql += ` AND propertyCategory = ?`;
+    sql += ` AND properties.propertyCategory = ?`;
     params.push(propertyCategory);
   }
 
-  sql += ` ORDER BY propertyid DESC`;
+  sql += `
+    GROUP BY properties.propertyid
+    ORDER BY properties.propertyid DESC
+  `;
 
   db.query(sql, params, (err, result) => {
     if (err) {
@@ -77,7 +83,6 @@ export const getAllProperties = (req, res) => {
       return res.status(500).json({ message: "Database error" });
     }
 
-    // Safely parse JSON fields
     const formatted = result.map((row) => {
       let parsedType = [];
       try {
@@ -92,6 +97,7 @@ export const getAllProperties = (req, res) => {
       return {
         ...row,
         propertyType: parsedType,
+        likes: Number(row.likes) || 0,
       };
     });
 
@@ -106,24 +112,32 @@ export const getHotDealProperties = (req, res) => {
     return res.status(400).json({ message: "Missing required fields." });
   }
 
-  // Base SQL
   let sql = `
-    SELECT properties.*,
-           builders.company_name 
-           FROM properties 
-           LEFT JOIN builders ON properties.builderid = builders.builderid 
-           WHERE projectpartnerid = ? AND city = ? AND hotDeal = ?
+    SELECT 
+      properties.*,
+      builders.company_name,
+      COUNT(DISTINCT user_property_wishlist.user_id) AS likes 
+    FROM properties
+    LEFT JOIN builders 
+      ON properties.builderid = builders.builderid
+    LEFT JOIN user_property_wishlist
+      ON user_property_wishlist.property_id = properties.propertyid
+    WHERE properties.projectpartnerid = ?
+      AND properties.city = ?
+      AND properties.hotDeal = ?
   `;
 
   const params = [projectPartnerId, selectedCity, "Active"];
 
-  // If propertyCategory present → add filter
   if (propertyCategory && propertyCategory.trim() !== "") {
-    sql += ` AND propertyCategory = ?`;
+    sql += ` AND properties.propertyCategory = ?`;
     params.push(propertyCategory);
   }
 
-  sql += ` ORDER BY propertyid DESC`;
+  sql += `
+    GROUP BY properties.propertyid
+    ORDER BY properties.propertyid DESC
+  `;
 
   db.query(sql, params, (err, result) => {
     if (err) {
@@ -131,7 +145,6 @@ export const getHotDealProperties = (req, res) => {
       return res.status(500).json({ message: "Database error" });
     }
 
-    // Safely parse JSON fields
     const formatted = result.map((row) => {
       let parsedType = [];
       try {
@@ -146,6 +159,7 @@ export const getHotDealProperties = (req, res) => {
       return {
         ...row,
         propertyType: parsedType,
+        likes: Number(row.likes) || 0,
       };
     });
 
@@ -160,23 +174,29 @@ export const getPremiumProperties = (req, res) => {
     return res.status(400).json({ message: "Missing required fields." });
   }
 
-  // Base Query
   let sql = `
-    SELECT * FROM properties
-    WHERE projectpartnerid = ?
-    AND city = ?
+    SELECT 
+      properties.*,
+      COUNT(DISTINCT user_property_wishlist.user_id) AS likes 
+    FROM properties
+    LEFT JOIN user_property_wishlist
+      ON user_property_wishlist.property_id = properties.propertyid
+    WHERE properties.projectpartnerid = ?
+      AND properties.city = ?
   `;
 
   const params = [projectPartnerId, selectedCity];
 
-  // Optional category filter
   if (propertyCategory && propertyCategory.trim() !== "") {
-    sql += ` AND propertyCategory = ?`;
+    sql += ` AND properties.propertyCategory = ?`;
     params.push(propertyCategory);
   }
 
-  // Sort highest totalPrice first and pick top 5
-  sql += ` ORDER BY totalOfferPrice DESC LIMIT 5`;
+  sql += `
+    GROUP BY properties.propertyid
+    ORDER BY properties.totalOfferPrice DESC
+    LIMIT 5
+  `;
 
   db.query(sql, params, (err, result) => {
     if (err) {
@@ -184,7 +204,6 @@ export const getPremiumProperties = (req, res) => {
       return res.status(500).json({ message: "Database error" });
     }
 
-    // Safely parse JSON fields
     const formatted = result.map((row) => {
       let parsedType = [];
       try {
@@ -199,6 +218,7 @@ export const getPremiumProperties = (req, res) => {
       return {
         ...row,
         propertyType: parsedType,
+        likes: Number(row.likes) || 0,
       };
     });
 

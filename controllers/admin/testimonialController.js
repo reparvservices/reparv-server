@@ -1,6 +1,6 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
-import { uploadToS3 } from "../../utils/imageUpload.js";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 // **Fetch All **
 export const getAll = (req, res) => {
@@ -43,14 +43,13 @@ export const add = async (req, res) => {
       });
     }
 
-    /* ---------- UPLOAD IMAGE TO S3 ---------- */
     let clientImageUrl = null;
 
     if (req.file) {
-      clientImageUrl = await uploadToS3(req.file); // returns full S3 URL
+      const s3Result = await uploadToS3(req.file);
+      clientImageUrl = s3Result; // ONLY URL
     }
 
-    /* ---------- INSERT INTO DB ---------- */
     const insertSQL = `
       INSERT INTO testimonials
       (url, message, client, clientimage, updated_at, created_at)
@@ -62,32 +61,26 @@ export const add = async (req, res) => {
       [url, message, client, clientImageUrl, currentdate, currentdate],
       (err, result) => {
         if (err) {
-          console.error("Error inserting testimonial:", err);
-          return res.status(500).json({
-            message: "Database error",
-            error: err,
-          });
+          console.error("DB insert error:", err);
+          return res.status(500).json({ message: "Database error" });
         }
 
-        return res.status(201).json({
+        res.status(201).json({
           message: "Testimonial added successfully",
           id: result.insertId,
         });
-      },
+      }
     );
   } catch (error) {
     console.error("Testimonial upload error:", error);
-    return res.status(500).json({
-      message: "Upload failed",
-      error,
-    });
+    res.status(500).json({ message: "Upload failed" });
   }
 };
 
 export const update = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-    const Id = req.params.id ? parseInt(req.params.id) : null;
+    const Id = parseInt(req.params.id);
 
     const { url, message, client } = req.body;
 
@@ -97,52 +90,52 @@ export const update = async (req, res) => {
         .json({ message: "Client Name and Video URL are required!" });
     }
 
-    // Fetch existing testimonial
-    db.query("SELECT * FROM testimonials WHERE id = ?", [Id], async (err, result) => {
-      if (err)
-        return res.status(500).json({ message: "Database error", error: err });
+    db.query(
+      "SELECT * FROM testimonials WHERE id = ?",
+      [Id],
+      async (err, result) => {
+        if (err) return res.status(500).json({ message: "DB error" });
+        if (!result.length)
+          return res.status(404).json({ message: "Testimonial not found" });
 
-      if (result.length === 0)
-        return res.status(404).json({ message: "Testimonial not found" });
+        const oldData = result[0];
+        let finalImageUrl = oldData.clientimage;
 
-      const oldData = result[0];
-      let finalImageUrl = oldData.clientimage; // default to old image
+        if (req.file) {
+          try {
+            if (oldData.clientimage) {
+              await deleteFromS3(oldData.clientimage); // expects URL
+            }
 
-      // If new image uploaded, upload to S3 & delete old S3 image
-      if (req.file) {
-        try {
-          // Delete old image from S3
-          if (oldData.clientimage) {
-            await deleteFromS3(oldData.clientimage);
+            const s3Result = await uploadToS3(req.file);
+            finalImageUrl = s3Result;
+          } catch (s3Err) {
+            console.error("S3 error:", s3Err);
+            return res.status(500).json({ message: "S3 upload failed" });
           }
-
-          // Upload new image to S3
-          finalImageUrl = await uploadToS3(req.file);
-        } catch (s3Err) {
-          console.error("S3 upload/delete error:", s3Err);
-          return res.status(500).json({ message: "S3 upload failed", error: s3Err });
         }
+
+        const sql = `
+          UPDATE testimonials
+          SET url = ?, message = ?, client = ?, clientimage = ?, updated_at = ?
+          WHERE id = ?
+        `;
+
+        db.query(
+          sql,
+          [url, message, client, finalImageUrl, currentdate, Id],
+          (updateErr) => {
+            if (updateErr)
+              return res.status(500).json({ message: "Update failed" });
+
+            res.json({ message: "Testimonial updated successfully" });
+          }
+        );
       }
-
-      // Update testimonial in DB
-      const sql = `
-        UPDATE testimonials
-        SET url = ?, message = ?, client = ?, clientimage = ?, updated_at = ?
-        WHERE id = ?
-      `;
-
-      db.query(sql, [url, message, client, finalImageUrl, currentdate, Id], (updateErr) => {
-        if (updateErr) {
-          console.error("Error updating testimonial:", updateErr);
-          return res.status(500).json({ message: "Database error", error: updateErr });
-        }
-
-        res.status(200).json({ message: "Testimonial updated successfully" });
-      });
-    });
+    );
   } catch (error) {
-    console.error("Update testimonial error:", error);
-    return res.status(500).json({ message: "Server error", error });
+    console.error("Update error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 

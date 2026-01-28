@@ -48,24 +48,6 @@ const upload = multer({
   },
 });
 
-/* ================= ERROR HANDLER ================= */
-router.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    if (err.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({
-        success: false,
-        error: "Each image must be under 2MB.",
-      });
-    }
-    return res.status(400).json({ success: false, error: err.message });
-  } else if (err) {
-    return res
-      .status(400)
-      .json({ success: false, error: err.message || "Upload failed." });
-  }
-  next();
-});
-
 /* ================= ROUTES ================= */
 router.get("/get/:lister", getAll);
 router.get("/:id", getById);
@@ -123,9 +105,26 @@ router.put(
 
 router.put("/status/:id", status);
 router.put("/set/hotdeal/:id", hotDeal);
-router.put("/set/top-picks/:id", upload.fields([
-    { name: "banner", maxCount: 1 }
-  ]), setTopPicks);
+
+const topPicksUpload = multer({
+  storage: memoryStorage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file) return cb(null, true);
+
+    const allowed = ["image/jpeg", "image/png", "image/jpg"];
+    if (!allowed.includes(file.mimetype)) {
+      return cb(new Error("Invalid banner image format"));
+    }
+    cb(null, true);
+  },
+});
+router.put(
+  "/set/top-picks/:id",
+  topPicksUpload.single("topPicksBanner"),
+  setTopPicks
+);
+
 router.put("/seo/:id", seoDetails);
 router.put("/assign/to/project-partner/:id", changeProjectPartner);
 router.put("/reject/:id", addRejectReason);
@@ -224,5 +223,23 @@ router.post(
   uploadCsvMiddleware,
   addCsvFileForPlot
 );
+
+router.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({
+      success: false,
+      error: err.message,
+    });
+  }
+
+  if (err) {
+    return res.status(400).json({
+      success: false,
+      error: err.message || "Upload failed",
+    });
+  }
+
+  next();
+});
 
 export default router;

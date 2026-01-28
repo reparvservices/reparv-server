@@ -1,47 +1,53 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 
-// get all for Similar Properties
 export const getAll = (req, res) => {
   const { city, propertyCategory, propertyType, minBudget, maxBudget } = req.query;
 
   let sql = `
-    SELECT * 
-    FROM properties p 
+    SELECT p.*, 
+           COUNT(DISTINCT w.user_id) AS likes
+    FROM properties p
+    LEFT JOIN user_property_wishlist w
+      ON w.property_id = p.propertyid
     WHERE p.status='Active' 
-    AND p.approve='Approved'
+      AND p.approve='Approved'
   `;
   const params = [];
 
-  // Filter by propertyCategory (ignore if 'properties' or empty)
+  // propertyCategory
   if (propertyCategory && propertyCategory.trim() && propertyCategory !== "properties") {
     sql += ` AND LOWER(p.propertyCategory) = LOWER(?)`;
     params.push(propertyCategory.trim());
   }
 
-  // Handle propertyType (stored as JSON array in DB)
+  // propertyType safely
   if (propertyType && propertyType.trim()) {
     const types = propertyType.split(",").map((t) => t.trim()).filter(Boolean);
     if (types.length > 0) {
-      const orConditions = types.map(() => "JSON_CONTAINS(p.propertyType, ?)").join(" OR ");
+      const orConditions = types
+        .map(() => `(p.propertyType IS NOT NULL AND p.propertyType != '' AND JSON_CONTAINS(p.propertyType, ?))`)
+        .join(" OR ");
       sql += ` AND (${orConditions})`;
       types.forEach((cat) => params.push(JSON.stringify(cat)));
     }
   }
 
-  // Filter by city if provided
+  // city
   if (city && city.trim()) {
     sql += ` AND LOWER(p.city) = LOWER(?)`;
     params.push(city.trim());
   }
 
-  // Filter by budget if provided
-  if (minBudget && maxBudget) {
+  // budget
+  const min = parseInt(minBudget);
+  const max = parseInt(maxBudget);
+  if (!isNaN(min) && !isNaN(max)) {
     sql += ` AND p.totalOfferPrice BETWEEN ? AND ?`;
-    params.push(parseInt(minBudget), parseInt(maxBudget));
+    params.push(min, max);
   }
 
-  sql += ` ORDER BY RAND()`;
+  sql += ` GROUP BY p.propertyid ORDER BY RAND()`;
 
   db.query(sql, params, (err, result) => {
     if (err) {
@@ -49,7 +55,6 @@ export const getAll = (req, res) => {
       return res.status(500).json({ message: "Database error", error: err });
     }
 
-    // Safely parse JSON fields
     const formatted = result.map((row) => {
       let parsedType = [];
       try {
@@ -72,21 +77,28 @@ export const getAll = (req, res) => {
 };
 
 
+
 // Get All Properties By Slug
 export const getAllBySlug = (req, res) => {
   const { city, propertyCategory, propertyType } = req.query;
 
   let sql = `
-    SELECT p.*, 
-           c.heading,
-           c.content,
-           c.metaTitle, 
-           c.metaDescription
+    SELECT 
+      p.*, 
+      c.heading,
+      c.content,
+      c.metaTitle, 
+      c.metaDescription,
+      COUNT(DISTINCT w.user_id) AS likes
     FROM properties p
-    LEFT JOIN cities c ON p.city = c.city
+    LEFT JOIN cities c 
+      ON p.city = c.city
+    LEFT JOIN user_property_wishlist w
+      ON w.property_id = p.propertyid
     WHERE p.status = 'Active' 
       AND p.approve = 'Approved'
   `;
+
   const params = [];
 
   if (propertyCategory && propertyCategory !== "properties") {
@@ -96,7 +108,7 @@ export const getAllBySlug = (req, res) => {
 
   // Handle propertyType (stored as JSON array in DB)
   if (propertyType && propertyType !== "properties") {
-    const types = propertyType.split(","); // e.g. "Flat,Villa" -> ["Flat","Villa"]
+    const types = propertyType.split(",");
     const orConditions = types
       .map(() => "JSON_CONTAINS(p.propertyType, ?)")
       .join(" OR ");
@@ -109,26 +121,35 @@ export const getAllBySlug = (req, res) => {
     params.push(city);
   }
 
-  sql += ` ORDER BY RAND()`;
+  sql += `
+    GROUP BY p.propertyid
+    ORDER BY RAND()
+  `;
 
   db.query(sql, params, (err, result) => {
     if (err) {
       console.error("Error fetching:", err);
-      return res.status(500).json({ message: "Database error", error: err });
+      return res.status(500).json({
+        message: "Database error",
+        error: err,
+      });
     }
-    // safely parse JSON fields
+
+    // Safely parse JSON fields
     const formatted = result.map((row) => {
-      let parsedType = null;
+      let parsedType = [];
       try {
-        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
+        if (row.propertyType) {
+          parsedType = JSON.parse(row.propertyType);
+        }
       } catch (e) {
         console.warn("Invalid JSON in propertyType:", row.propertyType);
-        parsedType = [];
       }
 
       return {
         ...row,
-        propertyType: parsedType,
+        propertyType: Array.isArray(parsedType) ? parsedType : [],
+        likes: Number(row.likes) || 0,
       };
     });
 
@@ -139,45 +160,58 @@ export const getAllBySlug = (req, res) => {
 // **Fetch Single by ID**
 export const getById = (req, res) => {
   const Id = req.params.id;
+
   const sql = `
-      SELECT 
-        properties.*,
-        COUNT(CASE WHEN propertiesinfo.status = 'Available' THEN 1 END) AS availableCount,
-        COUNT(CASE WHEN propertiesinfo.status = 'Booked' THEN 1 END) AS bookedCount
-      FROM properties
-      LEFT JOIN propertiesinfo ON properties.propertyid = propertiesinfo.propertyid
-      WHERE properties.propertyid = ?
-      GROUP BY properties.propertyid;
+    SELECT 
+      p.*,
+      COUNT(DISTINCT CASE 
+        WHEN pi.status = 'Available' THEN pi.id 
+      END) AS availableCount,
+      COUNT(DISTINCT CASE 
+        WHEN pi.status = 'Booked' THEN pi.id 
+      END) AS bookedCount,
+      COUNT(DISTINCT w.user_id) AS likes
+    FROM properties p
+    LEFT JOIN propertiesinfo pi 
+      ON p.propertyid = pi.propertyid
+    LEFT JOIN user_property_wishlist w
+      ON w.property_id = p.propertyid
+    WHERE p.propertyid = ?
+    GROUP BY p.propertyid;
   `;
 
   db.query(sql, [Id], (err, result) => {
     if (err) {
       console.error("Error fetching:", err);
-      return res.status(500).json({ message: "Database error", error: err });
+      return res.status(500).json({
+        message: "Database error",
+        error: err,
+      });
     }
+
     if (result.length === 0) {
       return res.status(404).json({ message: "property info not found" });
     }
 
     // safely parse JSON + format dates
-    const formatted = result.map((row) => {
-      let parsedType = [];
-      try {
-        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
+    const row = result[0];
+    let parsedType = [];
+    try {
+      parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
+    } catch (e) {
+      console.warn("Invalid JSON in propertyType:", row.propertyType);
+    }
 
-      return {
-        ...row,
-        propertyType: parsedType,
-        possessionDate: row.possessionDate
-          ? moment.utc(row.possessionDate).format("DD MMM YYYY")
-          : null,
-      };
-    });
+    const formatted = {
+      ...row,
+      propertyType: Array.isArray(parsedType) ? parsedType : [],
+      possessionDate: row.possessionDate
+        ? moment.utc(row.possessionDate).format("DD MMM YYYY")
+        : null,
+      likes: Number(row.likes) || 0,
+    };
 
-    res.json(formatted[0]);
+    res.json(formatted);
   });
 };
 
@@ -424,6 +458,6 @@ export const getAdditionalInfo = (req, res) => {
       return res.status(404).json({ message: "No data found" });
     }
 
-    res.status(200).json(result[0]); 
+    res.status(200).json(result[0]);
   });
 };

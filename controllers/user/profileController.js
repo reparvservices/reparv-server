@@ -52,7 +52,7 @@ export const editProfile = async (req, res) => {
     // If new image uploaded, push to S3
     if (req.file) {
       const s3Result = await uploadToS3(req.file.buffer, req.file.originalname);
-      finalImagePath = s3Result.Location; // URL returned from S3
+      finalImagePath = s3Result; // URL returned from S3
     }
 
     const updateSql = `

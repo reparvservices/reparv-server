@@ -911,61 +911,44 @@ export const setTopPicks = async (req, res) => {
   }
 
   try {
-    // 1. Get existing property to check old banner
-    const property = await new Promise((resolve, reject) => {
-      db.query(
-        "SELECT topPicksBanner FROM properties WHERE propertyid = ?",
-        [propertyId],
-        (err, result) => {
-          if (err) return reject(err);
-          if (result.length === 0) return resolve(null);
-          resolve(result[0]);
-        }
-      );
-    });
+    // 1️⃣ Get existing banner
+    const [rows] = await db.promise().query(
+      "SELECT topPicksBanner FROM properties WHERE propertyid = ?",
+      [propertyId]
+    );
 
-    if (!property) {
+    if (rows.length === 0) {
       return res.status(404).json({ message: "Property not found" });
     }
 
-    let bannerUrl = property.topPicksBanner; // default: old banner
+    let bannerUrl = rows[0].topPicksBanner;
 
-    // 2. If new banner uploaded, upload to S3
-    if (req.files?.banner && req.files.banner.length > 0) {
-      const file = req.files.banner[0];
-      const s3Result = await uploadToS3(file);
+    // 2️⃣ If new banner uploaded, upload to S3
+    if (req.file) {
+      const s3Result = await uploadToS3(req.file);
       bannerUrl = s3Result; // new S3 URL
     }
 
-    const topPicksStatus = req.body.topPicksStatus;
-    const updatedAt = moment().format("YYYY-MM-DD HH:mm:ss");
+    const { topPicksStatus } = req.body;
 
-    // 3. Update property record
-    db.query(
-      `UPDATE properties SET topPicksStatus = ?, topPicksBanner = ?, updated_at = ? WHERE propertyid = ?`,
-      [topPicksStatus, bannerUrl, updatedAt, propertyId],
-      (err, result) => {
-        if (err) {
-          console.error("Error updating top picks:", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-        }
-
-        return res.status(200).json({
-          message: "Top Picks updated successfully",
-          data: {
-            topPicksStatus,
-            topPicksBanner: bannerUrl,
-          },
-        });
-      }
+    // 3️⃣ Update DB
+    await db.promise().query(
+      `UPDATE properties 
+       SET topPicksStatus = ?, topPicksBanner = ?, updated_at = NOW()
+       WHERE propertyid = ?`,
+      [topPicksStatus, bannerUrl, propertyId]
     );
+
+    return res.status(200).json({
+      message: "Top Picks updated successfully",
+      data: { topPicksStatus, topPicksBanner: bannerUrl },
+    });
   } catch (error) {
-    console.error("Error in setTopPicks:", error);
-    return res.status(500).json({ message: "Internal server error", error });
+    console.error("setTopPicks error:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
+
 
 // get Property Location Latitude and Longitude
 export const getPropertyLocation = (req, res) => {
