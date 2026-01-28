@@ -112,7 +112,7 @@ const topPicksUpload = multer({
   fileFilter: (req, file, cb) => {
     if (!file) return cb(null, true);
 
-    const allowed = ["image/jpeg", "image/png", "image/jpg"];
+    const allowed = ["image/jpeg", "image/png", "image/jpg", "image/webp",];
     if (!allowed.includes(file.mimetype)) {
       return cb(new Error("Invalid banner image format"));
     }
