@@ -934,7 +934,7 @@ export const setTopPicks = async (req, res) => {
     if (req.files?.banner && req.files.banner.length > 0) {
       const file = req.files.banner[0];
       const s3Result = await uploadToS3(file);
-      bannerUrl = s3Result.Location; // new S3 URL
+      bannerUrl = s3Result; // new S3 URL
     }
 
     const topPicksStatus = req.body.topPicksStatus;
@@ -2075,3 +2075,4 @@ export const fetchAdditionalInfo = (req, res) => {
     res.json(result); // Return only the first property
   });
 };
+
