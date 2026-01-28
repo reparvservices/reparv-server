@@ -340,7 +340,6 @@ export const verifyToken = (req, res, next) => {
     "/user/send-otp",
     "/user/verify-otp",
     "/user/auth/google",
-    "/user/properties",
     "/admin/faqs",
     "/admin/authorities",
     "/admin/states",
