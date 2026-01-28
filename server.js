@@ -95,8 +95,7 @@ import userDashboardRoutes from "./routes/user/dashboardRoutes.js";
 import userPropertyRoutes from "./routes/user/propertyRoutes.js";
 import userMapRoutes from "./routes/user/mapRoutes.js";
 import userBuilderRoutes from "./routes/user/builderRoutes.js";
-import userAuthRoutes from "./routes/user/authRoutes.js"
-
+import userAuthRoutes from "./routes/user/authRoutes.js";
 
 // builder
 import builderLoginRoutes from "./routes/builder/loginRoutes.js";
@@ -263,7 +262,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: { secure: false, httpOnly: true }, // Use `secure: true` in production with HTTPS
-  })
+  }),
 );
 
 app.use(express.json({ limit: "200mb" }));
@@ -304,7 +303,7 @@ app.use(
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
-  })
+  }),
 );
 // Use the same custom CORS for preflight requests
 app.options(
@@ -320,7 +319,7 @@ app.options(
     },
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     credentials: true,
-  })
+  }),
 );
 app.use(cookieParser());
 
@@ -429,10 +428,11 @@ export const verifyToken = (req, res, next) => {
     "customerapp/user/google-login",
     "/customerapp/loans",
     "/admin/faqs",
-   "/admin/blog",
-"/admin/partner",
-"/admin/projectpartner",
-"/user/properties"
+    "/admin/blog",
+    "/admin/partner",
+    "/admin/projectpartner",
+    "/user/properties",
+    
   ];
 
   // Skip verification for public routes
@@ -488,8 +488,6 @@ app.get("/get-cookie", (req, res) => {
   console.log("Cookies:", req.cookies); //  Print cookies in terminal
   res.json({ cookies: req.cookies }); // Send cookie data in response
 });
-
-
 
 // Use Login & Auth Routes
 app.use("/admin", loginRoutes);
@@ -658,7 +656,7 @@ app.use("/project-partner/dashboard", projectPartnerDashboardRoutes);
 app.use("/project-partner/properties", projectPartnerPropertyRoutes);
 app.use(
   "/project-partner/property/additional-info",
-  projectPartnerPropertyAdditionalInfoRoutes
+  projectPartnerPropertyAdditionalInfoRoutes,
 );
 app.use("/project-partner/map", projectPartnerMapRoutes);
 app.use("/project-partner/customers", projectPartnerCustomerRoutes);
@@ -748,7 +746,6 @@ app.use("/builderapp/community", builderCommunityRoute);
 app.use("/builderapp/ticket", builderTicketRoute);
 app.use("/builderapp/post", builderpostRoute);
 
-
 app.post("/api/saveSheetData", async (req, res) => {
   try {
     const { rows } = req.body;
@@ -806,7 +803,7 @@ app.post("/api/saveSheetData", async (req, res) => {
           customer,
           contact,
           city,
-          'Ads'
+          "Ads",
         ]);
 
         console.log("Inserted:", adsid, customer);

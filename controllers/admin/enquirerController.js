@@ -2,6 +2,7 @@ import axios from "axios";
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 import { sanitize } from "../../utils/sanitize.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 // * Fetch All Enquiries
 export const getAll = (req, res) => {
@@ -714,130 +715,140 @@ export const visitScheduled = (req, res) => {
   );
 };
 
-export const token = (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { paymenttype, tokenamount, remark, dealamount, enquiryStatus } =
-    req.body;
-  const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+export const token = async (req, res) => {
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const { paymenttype, tokenamount, remark, dealamount, enquiryStatus } =
+      req.body;
 
-  if (
-    !paymenttype ||
-    !tokenamount ||
-    !remark ||
-    !dealamount ||
-    !enquiryStatus
-  ) {
-    return res.status(400).json({ message: "Please add all required fields!" });
-  }
-
-  const Id = parseInt(req.params.id);
-  if (isNaN(Id)) {
-    return res.status(400).json({ message: "Invalid Enquiry ID" });
-  }
-
-  // Step 1: Get Enquirer (to access propertyid)
-  db.query(
-    "SELECT * FROM enquirers WHERE enquirersid = ?",
-    [Id],
-    (err, enquirerResult) => {
-      if (err)
-        return res.status(500).json({ message: "Database error", error: err });
-      if (enquirerResult.length === 0)
-        return res.status(404).json({ message: "Enquirer not found" });
-
-      const enquirer = enquirerResult[0];
-      const propertyId = enquirer.propertyid;
-
-      // Step 2: Get Property data
-      db.query(
-        "SELECT commissionType, commissionAmount, commissionPercentage FROM properties WHERE propertyid = ?",
-        [propertyId],
-        (err, propertyResult) => {
-          if (err)
-            return res
-              .status(500)
-              .json({ message: "Property fetch error", error: err });
-          if (propertyResult.length === 0)
-            return res.status(404).json({ message: "Property not found" });
-
-          const property = propertyResult[0];
-          let { commissionType, commissionAmount, commissionPercentage } =
-            property;
-
-          commissionType = commissionType || "";
-          commissionPercentage = Number(commissionPercentage) || 0;
-          let finalCommissionAmount = Number(commissionAmount) || 0;
-
-          // If type is percentage, calculate commissionAmount from dealamount
-          if (commissionType.toLowerCase() === "percentage") {
-            finalCommissionAmount =
-              (Number(dealamount) * commissionPercentage) / 100;
-          }
-
-          // Split commission
-          const reparvCommission = (finalCommissionAmount * 40) / 100;
-
-          const grossSalesCommission = (finalCommissionAmount * 40) / 100;
-          const salesCommission =
-            grossSalesCommission - (grossSalesCommission * 2) / 100;
-
-          const grossTerritoryCommission = (finalCommissionAmount * 20) / 100;
-          const territoryCommission =
-            grossTerritoryCommission - (grossTerritoryCommission * 2) / 100;
-
-          const TDS =
-            (grossSalesCommission * 2) / 100 +
-            (grossTerritoryCommission * 2) / 100;
-
-          // Step 3: Insert into propertyfollowup
-          const insertSQL = `
-          INSERT INTO propertyfollowup (
-            enquirerid, paymenttype, tokenamount, remark, dealamount, status, 
-            totalcommission, reparvcommission, salescommission, territorycommission, tds, paymentimage,
-            updated_at, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-
-          db.query(
-            insertSQL,
-            [
-              Id,
-              paymenttype,
-              tokenamount,
-              remark,
-              dealamount,
-              enquiryStatus,
-              finalCommissionAmount,
-              reparvCommission,
-              salesCommission,
-              territoryCommission,
-              TDS,
-              imagePath,
-              currentdate,
-              currentdate,
-            ],
-            (err, insertResult) => {
-              if (err)
-                return res
-                  .status(500)
-                  .json({ message: "Insert error", error: err });
-
-              res.status(201).json({
-                message: "Token added successfully",
-                followupId: insertResult.insertId,
-                commissionBreakdown: {
-                  totalCommission: finalCommissionAmount,
-                  salesCommission,
-                  reparvCommission,
-                  territoryCommission,
-                },
-              });
-            }
-          );
-        }
-      );
+    if (
+      !paymenttype ||
+      !tokenamount ||
+      !remark ||
+      !dealamount ||
+      !enquiryStatus
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Please add all required fields!" });
     }
-  );
+
+    const Id = parseInt(req.params.id);
+    if (isNaN(Id)) {
+      return res.status(400).json({ message: "Invalid Enquiry ID" });
+    }
+
+    /* Upload payment image to S3 */
+    let paymentImage = null;
+    if (req.file) {
+      paymentImage = await uploadToS3(req.file,);
+    }
+
+    // Step 1: Get Enquirer
+    const [enquirerResult] = await db
+      .promise()
+      .query("SELECT propertyid FROM enquirers WHERE enquirersid = ?", [Id]);
+
+    if (enquirerResult.length === 0) {
+      return res.status(404).json({ message: "Enquirer not found" });
+    }
+
+    const propertyId = enquirerResult[0].propertyid;
+
+    // Step 2: Get Property commission data
+    const [propertyResult] = await db.promise().query(
+      `SELECT commissionType, commissionAmount, commissionPercentage
+         FROM properties WHERE propertyid = ?`,
+      [propertyId]
+    );
+
+    if (propertyResult.length === 0) {
+      return res.status(404).json({ message: "Property not found" });
+    }
+
+    let { commissionType, commissionAmount, commissionPercentage } =
+      propertyResult[0];
+
+    commissionType = commissionType || "";
+    commissionPercentage = Number(commissionPercentage) || 0;
+    let finalCommissionAmount = Number(commissionAmount) || 0;
+
+    // Percentage-based commission
+    if (commissionType.toLowerCase() === "percentage") {
+      finalCommissionAmount = (Number(dealamount) * commissionPercentage) / 100;
+    }
+
+    // Commission split
+    const reparvCommission = (finalCommissionAmount * 40) / 100;
+
+    const grossSalesCommission = (finalCommissionAmount * 40) / 100;
+    const salesCommission =
+      grossSalesCommission - (grossSalesCommission * 2) / 100;
+
+    const grossTerritoryCommission = (finalCommissionAmount * 20) / 100;
+    const territoryCommission =
+      grossTerritoryCommission - (grossTerritoryCommission * 2) / 100;
+
+    const TDS =
+      (grossSalesCommission * 2) / 100 + (grossTerritoryCommission * 2) / 100;
+
+    // Step 3: Insert propertyfollowup
+    const insertSQL = `
+      INSERT INTO propertyfollowup (
+        enquirerid,
+        paymenttype,
+        tokenamount,
+        remark,
+        dealamount,
+        status,
+        totalcommission,
+        reparvcommission,
+        salescommission,
+        territorycommission,
+        tds,
+        paymentimage,
+        updated_at,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const [insertResult] = await db
+      .promise()
+      .query(insertSQL, [
+        Id,
+        paymenttype,
+        tokenamount,
+        remark,
+        dealamount,
+        enquiryStatus,
+        finalCommissionAmount,
+        reparvCommission,
+        salesCommission,
+        territoryCommission,
+        TDS,
+        paymentImage,
+        currentdate,
+        currentdate,
+      ]);
+
+    return res.status(201).json({
+      message: "Token added successfully",
+      followupId: insertResult.insertId,
+      paymentImage,
+      commissionBreakdown: {
+        totalCommission: finalCommissionAmount,
+        salesCommission,
+        reparvCommission,
+        territoryCommission,
+      },
+    });
+  } catch (error) {
+    console.error("Token insert error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error,
+    });
+  }
 };
 
 export const newToken = (req, res) => {

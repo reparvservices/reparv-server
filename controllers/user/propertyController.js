@@ -20,15 +20,30 @@ const calculateEMI = (principal, rate = 9, years = 20) => {
 
 // **Fetch All Properties**
 export const getAll = (req, res) => {
-  const sql = `SELECT properties.*, builders.company_name FROM properties 
-               LEFT JOIN builders ON properties.builderid = builders.builderid 
-               WHERE properties.guestUserId = ? 
-               ORDER BY properties.propertyid DESC`;
+  const sql = `
+    SELECT 
+      properties.*,
+      property_analytics.views AS views,
+      property_analytics.share AS share,
+      builders.company_name
+    FROM properties
+    LEFT JOIN property_analytics
+      ON properties.propertyid = property_analytics.property_id
+    LEFT JOIN builders
+      ON properties.builderid = builders.builderid
+    WHERE properties.guestUserId = ?
+    ORDER BY properties.propertyid DESC
+  `;
+
   db.query(sql, [req.guestUser?.id], (err, result) => {
     if (err) {
       console.error("Error fetching properties:", err);
-      return res.status(500).json({ message: "Database error", error: err });
+      return res.status(500).json({
+        message: "Database error",
+        error: err,
+      });
     }
+
     res.json(result);
   });
 };
@@ -153,7 +168,7 @@ export const addProperty = async (req, res) => {
           guestUserId, propertyCategory,
           propertyName, totalSalesPrice,
           totalOfferPrice, builtUpArea, carpetArea, address,
-          state, city, projectBy, contact, email
+          state, city, projectBy, contact, email,
           frontView, sideView, kitchenView, hallView, 
           bedroomView, bathroomView, balconyView,
           nearestLandmark, developedAmenities,

@@ -96,6 +96,7 @@ export const getImages = (req, res) => {
     res.json(result);
   });
 };
+
 export const addProperty = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -132,12 +133,15 @@ export const addProperty = async (req, res) => {
             .json({ message: "Property name already exists!" });
         }
 
+        /* ---------- CONVERT IMAGES TO WebP ---------- */
+        const files = await convertImagesToWebp(req.files);
+
         /* ---------- UPLOAD IMAGES TO S3 (FIELD-WISE) ---------- */
         const uploadFieldToS3 = async (field) => {
-          if (!req.files || !req.files[field]) return null;
+          if (!files || !files[field]) return null;
 
           const urls = [];
-          for (const file of req.files[field]) {
+          for (const file of files[field]) {
             const url = await uploadToS3(file);
             urls.push(url);
           }
@@ -233,12 +237,12 @@ export const addProperty = async (req, res) => {
                     id: newPropertyId,
                     propertyCityId,
                   });
-                },
+                }
               );
-            },
+            }
           );
         });
-      },
+      }
     );
   } catch (error) {
     console.error("Add property error:", error);

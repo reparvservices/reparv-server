@@ -206,6 +206,9 @@ export const addProperty = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
+    // Convert uploaded images to WebP
+    const files = await convertImagesToWebp(req.files);
+
     const {
       builderid,
       projectBy,
@@ -273,16 +276,16 @@ export const addProperty = async (req, res) => {
       ]);
 
     if (exists.length > 0) {
-      return res
-        .status(409)
-        .json({ message: "Property name already exists" });
+      return res.status(409).json({ message: "Property name already exists" });
     }
 
     /*  Registration fee */
     const registrationFees =
       totalOfferPrice > 3000000
         ? (30000 / totalOfferPrice) * 100
-        : ["RentalFlat", "RentalShop", "RentalOffice"].includes(propertyCategory)
+        : ["RentalFlat", "RentalShop", "RentalOffice"].includes(
+            propertyCategory
+          )
         ? 0
         : 1;
 
@@ -290,7 +293,9 @@ export const addProperty = async (req, res) => {
     const calculateEMI = (price) => {
       const r = 0.08 / 12;
       const n = 240;
-      return Math.round((price * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
+      return Math.round(
+        (price * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
+      );
     };
     const emi = calculateEMI(Number(totalOfferPrice));
 
@@ -303,28 +308,32 @@ export const addProperty = async (req, res) => {
     const propertyTypeJson = JSON.stringify(
       Array.isArray(propertyType)
         ? propertyType
-        : String(propertyType).split(",").map((i) => i.trim())
+        : String(propertyType)
+            .split(",")
+            .map((i) => i.trim())
+            .filter(Boolean)
     );
 
-    /*  Upload images to S3 */
-    const uploadField = async (field) => {
-      if (!req.files?.[field]) return [];
-      const urls = [];
-      for (const file of req.files[field]) {
-        urls.push(await uploadToS3(file, "properties"));
+    /* ☁ Upload images to S3 */
+    const uploadImagesToS3 = async (fieldFiles) => {
+      if (!fieldFiles) return null;
+      const uploadedUrls = [];
+      for (const file of fieldFiles) {
+        const url = await uploadToS3(file);
+        uploadedUrls.push(url);
       }
-      return urls;
+      return JSON.stringify(uploadedUrls);
     };
 
-    const frontView = await uploadField("frontView");
-    const sideView = await uploadField("sideView");
-    const kitchenView = await uploadField("kitchenView");
-    const hallView = await uploadField("hallView");
-    const bedroomView = await uploadField("bedroomView");
-    const bathroomView = await uploadField("bathroomView");
-    const balconyView = await uploadField("balconyView");
-    const nearestLandmark = await uploadField("nearestLandmark");
-    const developedAmenities = await uploadField("developedAmenities");
+    const frontView = await uploadImagesToS3(files.frontView);
+    const sideView = await uploadImagesToS3(files.sideView);
+    const kitchenView = await uploadImagesToS3(files.kitchenView);
+    const hallView = await uploadImagesToS3(files.hallView);
+    const bedroomView = await uploadImagesToS3(files.bedroomView);
+    const bathroomView = await uploadImagesToS3(files.bathroomView);
+    const balconyView = await uploadImagesToS3(files.balconyView);
+    const nearestLandmark = await uploadImagesToS3(files.nearestLandmark);
+    const developedAmenities = await uploadImagesToS3(files.developedAmenities);
 
     /*  Insert property */
     const insertSQL = `
@@ -348,71 +357,73 @@ export const addProperty = async (req, res) => {
       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
     `;
 
-    const [result] = await db.promise().query(insertSQL, [
-      builderid,
-      projectBy,
-      formattedPossessionDate,
-      propertyCategory,
-      propertyApprovedBy,
-      propertyName,
-      address,
-      state,
-      city,
-      pincode,
-      location,
-      distanceFromCityCenter,
-      latitude,
-      longitude,
-      totalSalesPrice,
-      totalOfferPrice,
-      emi,
-      stampDuty,
-      registrationFees,
-      gst,
-      advocateFee,
-      msebWater,
-      maintenance,
-      other,
-      tags,
-      propertyTypeJson,
-      builtYear,
-      ownershipType,
-      builtUpArea,
-      carpetArea,
-      parkingAvailability,
-      totalFloors,
-      floorNo,
-      loanAvailability,
-      propertyFacing,
-      reraRegistered,
-      furnishing,
-      waterSupply,
-      powerBackup,
-      locationFeature,
-      sizeAreaFeature,
-      parkingFeature,
-      terraceFeature,
-      ageOfPropertyFeature,
-      amenitiesFeature,
-      propertyStatusFeature,
-      smartHomeFeature,
-      securityBenefit,
-      primeLocationBenefit,
-      rentalIncomeBenefit,
-      qualityBenefit,
-      capitalAppreciationBenefit,
-      ecofriendlyBenefit,
-      JSON.stringify(frontView),
-      JSON.stringify(sideView),
-      JSON.stringify(kitchenView),
-      JSON.stringify(hallView),
-      JSON.stringify(bedroomView),
-      JSON.stringify(bathroomView),
-      JSON.stringify(balconyView),
-      JSON.stringify(nearestLandmark),
-      JSON.stringify(developedAmenities),
-      toSlug(propertyName),
-    ]);
+    const [result] = await db
+      .promise()
+      .query(insertSQL, [
+        builderid,
+        projectBy,
+        formattedPossessionDate,
+        propertyCategory,
+        propertyApprovedBy,
+        propertyName,
+        address,
+        state,
+        city,
+        pincode,
+        location,
+        distanceFromCityCenter,
+        latitude,
+        longitude,
+        totalSalesPrice,
+        totalOfferPrice,
+        emi,
+        stampDuty,
+        registrationFees,
+        gst,
+        advocateFee,
+        msebWater,
+        maintenance,
+        other,
+        tags,
+        propertyTypeJson,
+        builtYear,
+        ownershipType,
+        builtUpArea,
+        carpetArea,
+        parkingAvailability,
+        totalFloors,
+        floorNo,
+        loanAvailability,
+        propertyFacing,
+        reraRegistered,
+        furnishing,
+        waterSupply,
+        powerBackup,
+        locationFeature,
+        sizeAreaFeature,
+        parkingFeature,
+        terraceFeature,
+        ageOfPropertyFeature,
+        amenitiesFeature,
+        propertyStatusFeature,
+        smartHomeFeature,
+        securityBenefit,
+        primeLocationBenefit,
+        rentalIncomeBenefit,
+        qualityBenefit,
+        capitalAppreciationBenefit,
+        ecofriendlyBenefit,
+        frontView,
+        sideView,
+        kitchenView,
+        hallView,
+        bedroomView,
+        bathroomView,
+        balconyView,
+        nearestLandmark,
+        developedAmenities,
+        toSlug(propertyName),
+      ]);
 
     return res.status(201).json({
       message: "Property added successfully",
@@ -420,10 +431,9 @@ export const addProperty = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error", error });
   }
 };
-
 
 // Update property controller
 export const update = async (req, res) => {
@@ -454,7 +464,6 @@ export const update = async (req, res) => {
     totalSalesPrice,
     totalOfferPrice,
     stampDuty,
-    registrationFee,
     gst,
     advocateFee,
     msebWater,
@@ -532,72 +541,78 @@ export const update = async (req, res) => {
     return res.status(400).json({ message: "All Fields are required" });
   }
 
-  // Property Registration Fee is 1% or Maximum 30,000 Rs
+  // Property Registration Fee calculation
   let registrationFees;
   if (totalOfferPrice > 3000000) {
     registrationFees = (30000 / totalOfferPrice) * 100;
   } else {
-    if (
-      ["RentalFlat", "RentalShop", "RentalOffice"].includes(propertyCategory)
-    ) {
-      registrationFees = 0;
-    } else {
-      registrationFees = 1;
-    }
+    registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
+      propertyCategory
+    )
+      ? 0
+      : 1;
   }
 
   const emi = calculateEMI(Number(totalOfferPrice));
 
-  // Format dates to remove time portion
+  // Format Possession Date
   let formattedPossessionDate = null;
-
   if (possessionDate && possessionDate.trim() !== "") {
-    // Check if it's a valid date
     if (
       moment(possessionDate, ["YYYY-MM-DD", moment.ISO_8601], true).isValid()
     ) {
       formattedPossessionDate = moment(possessionDate).format("YYYY-MM-DD");
-    } else {
-      formattedPossessionDate = null; // fallback instead of "Invalid date"
     }
   }
 
-  // Convert Property Type Into Array
-  let propertyTypeArray;
-
-  if (Array.isArray(propertyType)) {
-    // already an array
-    propertyTypeArray = propertyType;
-  } else if (typeof propertyType === "string") {
-    // convert comma-separated string into array
-    propertyTypeArray = propertyType
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item !== ""); // remove empty values
-  } else {
-    propertyTypeArray = [];
-  }
-
+  // Convert propertyType to array
+  const propertyTypeArray = Array.isArray(propertyType)
+    ? propertyType
+    : typeof propertyType === "string"
+    ? propertyType
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
   const propertyTypeJson = JSON.stringify(propertyTypeArray);
 
-  // Fetch existing property to retain old image paths if not replaced
-  db.query(
-    "SELECT * FROM properties WHERE propertyid = ?",
-    [Id],
-    (err, result) => {
-      if (err)
-        return res.status(500).json({ message: "Database error", error: err });
-      if (result.length === 0)
-        return res.status(404).json({ message: "Property not found" });
+  try {
+    // Fetch existing property
+    const [existingResult] = await db
+      .promise()
+      .query("SELECT * FROM properties WHERE propertyid = ?", [Id]);
 
-      const existing = result[0];
+    if (!existingResult.length)
+      return res.status(404).json({ message: "Property not found" });
 
-      const getImagePaths = (field) =>
-        files[field]
-          ? JSON.stringify(files[field].map((f) => `/uploads/${f.filename}`))
-          : existing[field];
+    const existing = existingResult[0];
 
-      const updateSQL = `
+    // Function to upload new images to S3 or keep existing
+    const getImagePaths = async (field) => {
+      if (files?.[field]?.length) {
+        const uploadedUrls = [];
+        for (const file of files[field]) {
+          const url = await uploadToS3(file);
+          uploadedUrls.push(url);
+        }
+        return JSON.stringify(uploadedUrls);
+      } else {
+        return existing[field]; // keep old images
+      }
+    };
+
+    const frontView = await getImagePaths("frontView");
+    const sideView = await getImagePaths("sideView");
+    const kitchenView = await getImagePaths("kitchenView");
+    const hallView = await getImagePaths("hallView");
+    const bedroomView = await getImagePaths("bedroomView");
+    const bathroomView = await getImagePaths("bathroomView");
+    const balconyView = await getImagePaths("balconyView");
+    const nearestLandmark = await getImagePaths("nearestLandmark");
+    const developedAmenities = await getImagePaths("developedAmenities");
+
+    // Update query
+    const updateSQL = `
       UPDATE properties SET 
         builderid=?, projectBy=?, possessionDate=?, propertyCategory=?, propertyApprovedBy=?, propertyName=?, address=?, state=?, city=?, pincode=?, location=?,
         distanceFromCityCenter=?, latitude=?, longitude=?, totalSalesPrice=?, totalOfferPrice=?, emi=?, stampDuty=?, registrationFee=?, gst=?, advocateFee=?, 
@@ -611,83 +626,80 @@ export const update = async (req, res) => {
       WHERE propertyid = ?
     `;
 
-      const values = [
-        builderid,
-        sanitize(projectBy),
-        sanitize(formattedPossessionDate),
-        propertyCategory,
-        propertyApprovedBy,
-        propertyName,
-        address,
-        state,
-        city,
-        pincode,
-        location,
-        distanceFromCityCenter,
-        latitude,
-        longitude,
-        totalSalesPrice,
-        totalOfferPrice,
-        emi,
-        stampDuty,
-        registrationFees,
-        gst,
-        advocateFee,
-        msebWater,
-        maintenance,
-        other,
-        tags,
-        propertyTypeJson,
-        builtYear,
-        ownershipType,
-        builtUpArea,
-        carpetArea,
-        parkingAvailability,
-        totalFloors,
-        floorNo,
-        loanAvailability,
-        propertyFacing,
-        reraRegistered,
-        furnishing,
-        waterSupply,
-        powerBackup,
-        locationFeature,
-        sizeAreaFeature,
-        parkingFeature,
-        terraceFeature,
-        ageOfPropertyFeature,
-        amenitiesFeature,
-        propertyStatusFeature,
-        smartHomeFeature,
-        securityBenefit,
-        primeLocationBenefit,
-        rentalIncomeBenefit,
-        qualityBenefit,
-        capitalAppreciationBenefit,
-        ecofriendlyBenefit,
-        getImagePaths("frontView"),
-        getImagePaths("sideView"),
-        getImagePaths("kitchenView"),
-        getImagePaths("hallView"),
-        getImagePaths("bedroomView"),
-        getImagePaths("bathroomView"),
-        getImagePaths("balconyView"),
-        getImagePaths("nearestLandmark"),
-        getImagePaths("developedAmenities"),
-        currentdate,
-        Id,
-      ];
+    const values = [
+      builderid,
+      sanitize(projectBy),
+      sanitize(formattedPossessionDate),
+      propertyCategory,
+      propertyApprovedBy,
+      propertyName,
+      address,
+      state,
+      city,
+      pincode,
+      location,
+      distanceFromCityCenter,
+      latitude,
+      longitude,
+      totalSalesPrice,
+      totalOfferPrice,
+      emi,
+      stampDuty,
+      registrationFees,
+      gst,
+      advocateFee,
+      msebWater,
+      maintenance,
+      other,
+      tags,
+      propertyTypeJson,
+      builtYear,
+      ownershipType,
+      builtUpArea,
+      carpetArea,
+      parkingAvailability,
+      totalFloors,
+      floorNo,
+      loanAvailability,
+      propertyFacing,
+      reraRegistered,
+      furnishing,
+      waterSupply,
+      powerBackup,
+      locationFeature,
+      sizeAreaFeature,
+      parkingFeature,
+      terraceFeature,
+      ageOfPropertyFeature,
+      amenitiesFeature,
+      propertyStatusFeature,
+      smartHomeFeature,
+      securityBenefit,
+      primeLocationBenefit,
+      rentalIncomeBenefit,
+      qualityBenefit,
+      capitalAppreciationBenefit,
+      ecofriendlyBenefit,
+      frontView,
+      sideView,
+      kitchenView,
+      hallView,
+      bedroomView,
+      bathroomView,
+      balconyView,
+      nearestLandmark,
+      developedAmenities,
+      currentdate,
+      Id,
+    ];
 
-      db.query(updateSQL, values, (err) => {
-        if (err) {
-          console.error("Error updating property:", err);
-          return res.status(500).json({ message: "Update failed", error: err });
-        }
+    await db.promise().query(updateSQL, values);
 
-        res.status(200).json({ message: "Property updated successfully" });
-      });
-    }
-  );
+    return res.status(200).json({ message: "Property updated successfully" });
+  } catch (err) {
+    console.error("Error updating property:", err);
+    return res.status(500).json({ message: "Update failed", error: err });
+  }
 };
 
 export const del = (req, res) => {
@@ -889,6 +901,72 @@ export const hotDeal = (req, res) => {
       );
     }
   );
+};
+
+export const setTopPicks = async (req, res) => {
+  const propertyId = req.params.id;
+
+  if (!propertyId) {
+    return res.status(400).json({ message: "Property ID is required" });
+  }
+
+  try {
+    // 1. Get existing property to check old banner
+    const property = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT topPicksBanner FROM properties WHERE propertyid = ?",
+        [propertyId],
+        (err, result) => {
+          if (err) return reject(err);
+          if (result.length === 0) return resolve(null);
+          resolve(result[0]);
+        }
+      );
+    });
+
+    if (!property) {
+      return res.status(404).json({ message: "Property not found" });
+    }
+
+    let bannerUrl = property.topPicksBanner; // default: old banner
+
+    // 2. If new banner uploaded, upload to S3
+    if (req.files?.banner && req.files.banner.length > 0) {
+      const file = req.files.banner[0];
+      const s3Result = await uploadToS3(file);
+      bannerUrl = s3Result; // new S3 URL
+    }
+
+    const topPicksStatus = req.body.topPicksStatus;
+    const updatedAt = moment().format("YYYY-MM-DD HH:mm:ss");
+
+    // 3. Update property record
+    db.query(
+      `UPDATE properties SET topPicksStatus = ?, topPicksBanner = ?, updated_at = ? WHERE propertyid = ?`,
+      [topPicksStatus, bannerUrl, updatedAt, propertyId],
+      (err, result) => {
+        if (err) {
+          console.error("Error updating top picks:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        console.log(bannerUrl);
+        
+        return res.status(200).json({
+          message: "Top Picks updated successfully",
+          data: {
+            topPicksStatus,
+            topPicksBanner: bannerUrl,
+          },
+        });
+      }
+    );
+  } catch (error) {
+    console.error("Error in setTopPicks:", error);
+    return res.status(500).json({ message: "Internal server error", error });
+  }
 };
 
 // get Property Location Latitude and Longitude

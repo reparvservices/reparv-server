@@ -1,18 +1,11 @@
 import express from "express";
 import multer from "multer";
-import path from "path";
 import { addCSVEnquiry, addEnquiry, updateEnquiry } from "../../controllers/projectPartner/enquiryController.js";
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
+// Memory storage for S3
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -27,7 +20,10 @@ const upload = multer({
 });
 
 router.post("/add/enquiry", addEnquiry);
+
+// CSV upload uses memoryStorage; controller will handle S3
 router.post("/csv/add/", upload.single("csv"), addCSVEnquiry);
+
 router.put("/update/enquiry/:id", updateEnquiry);
 
 export default router;

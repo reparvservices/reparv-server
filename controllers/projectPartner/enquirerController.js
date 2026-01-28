@@ -2,6 +2,7 @@ import axios from "axios";
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 import { sanitize } from "../../utils/sanitize.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 // * Fetch All Enquiries with Enquiry Lister Details
 export const getAll = (req, res) => {
@@ -749,19 +750,11 @@ export const visitScheduled = (req, res) => {
   );
 };
 
-export const token = (req, res) => {
+export const token = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { paymenttype, tokenamount, remark, dealamount, enquiryStatus } =
-    req.body;
-  const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+  const { paymenttype, tokenamount, remark, dealamount, enquiryStatus } = req.body;
 
-  if (
-    !paymenttype ||
-    !tokenamount ||
-    !remark ||
-    !dealamount ||
-    !enquiryStatus
-  ) {
+  if (!paymenttype || !tokenamount || !remark || !dealamount || !enquiryStatus) {
     return res.status(400).json({ message: "Please add all required fields!" });
   }
 
@@ -770,68 +763,55 @@ export const token = (req, res) => {
     return res.status(400).json({ message: "Invalid Enquiry ID" });
   }
 
-  // Step 1: Get Enquirer (to access propertyid)
-  db.query(
-    "SELECT * FROM enquirers WHERE enquirersid = ?",
-    [Id],
-    (err, enquirerResult) => {
-      if (err)
-        return res.status(500).json({ message: "Database error", error: err });
-      if (enquirerResult.length === 0)
-        return res.status(404).json({ message: "Enquirer not found" });
+  try {
+    // Step 1: Upload image to S3 if provided
+    let paymentImageUrl = null;
+    if (req.file) {
+      paymentImageUrl = await uploadToS3(req.file); // S3 upload returns the URL
+    }
+
+    // Step 2: Get Enquirer to access propertyId
+    db.query("SELECT * FROM enquirers WHERE enquirersid = ?", [Id], (err, enquirerResult) => {
+      if (err) return res.status(500).json({ message: "Database error", error: err });
+      if (enquirerResult.length === 0) return res.status(404).json({ message: "Enquirer not found" });
 
       const enquirer = enquirerResult[0];
       const propertyId = enquirer.propertyid;
 
-      // Step 2: Get Property data
+      // Step 3: Get property commission details
       db.query(
         "SELECT commissionType, commissionAmount, commissionPercentage FROM properties WHERE propertyid = ?",
         [propertyId],
-        (err, propertyResult) => {
-          if (err)
-            return res
-              .status(500)
-              .json({ message: "Property fetch error", error: err });
-          if (propertyResult.length === 0)
-            return res.status(404).json({ message: "Property not found" });
+        async (err, propertyResult) => {
+          if (err) return res.status(500).json({ message: "Property fetch error", error: err });
+          if (propertyResult.length === 0) return res.status(404).json({ message: "Property not found" });
 
           const property = propertyResult[0];
-          let { commissionType, commissionAmount, commissionPercentage } =
-            property;
+          let { commissionType, commissionAmount, commissionPercentage } = property;
 
           commissionType = commissionType || "";
           commissionPercentage = Number(commissionPercentage) || 0;
           let finalCommissionAmount = Number(commissionAmount) || 0;
 
-          // If type is percentage, calculate commissionAmount from dealamount
           if (commissionType.toLowerCase() === "percentage") {
-            finalCommissionAmount =
-              (Number(dealamount) * commissionPercentage) / 100;
+            finalCommissionAmount = (Number(dealamount) * commissionPercentage) / 100;
           }
 
-          // Split commission
           const reparvCommission = (finalCommissionAmount * 40) / 100;
-
           const grossSalesCommission = (finalCommissionAmount * 40) / 100;
-          const salesCommission =
-            grossSalesCommission - (grossSalesCommission * 2) / 100;
-
+          const salesCommission = grossSalesCommission - (grossSalesCommission * 2) / 100;
           const grossTerritoryCommission = (finalCommissionAmount * 20) / 100;
-          const territoryCommission =
-            grossTerritoryCommission - (grossTerritoryCommission * 2) / 100;
+          const territoryCommission = grossTerritoryCommission - (grossTerritoryCommission * 2) / 100;
+          const TDS = (grossSalesCommission * 2) / 100 + (grossTerritoryCommission * 2) / 100;
 
-          const TDS =
-            (grossSalesCommission * 2) / 100 +
-            (grossTerritoryCommission * 2) / 100;
-
-          // Step 3: Insert into propertyfollowup
+          // Step 4: Insert into propertyfollowup
           const insertSQL = `
-          INSERT INTO propertyfollowup (
-            enquirerid, paymenttype, tokenamount, remark, dealamount, status, 
-            totalcommission, reparvcommission, salescommission, territorycommission, tds, paymentimage,
-            updated_at, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
+            INSERT INTO propertyfollowup (
+              enquirerid, paymenttype, tokenamount, remark, dealamount, status, 
+              totalcommission, reparvcommission, salescommission, territorycommission, tds, paymentimage,
+              updated_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `;
 
           db.query(
             insertSQL,
@@ -847,15 +827,12 @@ export const token = (req, res) => {
               salesCommission,
               territoryCommission,
               TDS,
-              imagePath,
+              paymentImageUrl, // use S3 URL
               currentdate,
               currentdate,
             ],
             (err, insertResult) => {
-              if (err)
-                return res
-                  .status(500)
-                  .json({ message: "Insert error", error: err });
+              if (err) return res.status(500).json({ message: "Insert error", error: err });
 
               res.status(201).json({
                 message: "Token added successfully",
@@ -866,13 +843,17 @@ export const token = (req, res) => {
                   reparvCommission,
                   territoryCommission,
                 },
+                paymentImage: paymentImageUrl,
               });
             }
           );
         }
       );
-    }
-  );
+    });
+  } catch (error) {
+    console.error("Token processing error:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
 };
 
 export const followUp = (req, res) => {
