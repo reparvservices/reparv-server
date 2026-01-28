@@ -449,6 +449,7 @@ export const status = (req, res) => {
     }
   );
 };
+//delete property
 export const del = (req, res) => {
   const Id = parseInt(req.params.id);
   if (isNaN(Id)) {
@@ -521,4 +522,47 @@ export const del = (req, res) => {
     }
   );
 };
+
+//get like count
+export const getPropertyLikeCount = (req, res) => {
+  try {
+    const propertyId  = req.params.id;
+
+    if (!propertyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Property ID is required',
+      });
+    }
+
+    const sql = `
+      SELECT COUNT(DISTINCT user_id) AS likeCount
+      FROM user_property_wishlist
+      WHERE property_id = ?
+    `;
+
+    db.query(sql, [propertyId], (err, result) => {
+      if (err) {
+        console.error('Get Property Like Count Error:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Database error',
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        propertyId,
+        likeCount: result[0]?.likeCount || 0,
+      });
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
+  }
+};
+
 

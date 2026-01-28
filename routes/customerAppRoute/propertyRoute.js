@@ -8,6 +8,7 @@ import {
   updateProperty,
   del,
   status,
+  getPropertyLikeCount,
 } from "../../controllers/customerAppController/propertyController.js";
 
 const router = express.Router();
@@ -30,7 +31,6 @@ const upload = multer({
 /* ---------- ROUTES ---------- */
 router.post("/add-wishlist", addInWishList);
 router.get("/get-wishlist/:user_id", getUserWishlist);
-
 router.post(
   "/post",
   upload.fields([
@@ -46,9 +46,7 @@ router.post(
   ]),
   addProperty,
 );
-
 router.get("/myproperty/:id", getAll);
-
 router.put(
   "/update/:propertyid",
   upload.fields([
@@ -64,9 +62,9 @@ router.put(
   ]),
   updateProperty,
 );
-
 router.delete("/delete/:id", del);
 router.put("/status/:id", status);
+router.get('/likes/:id', getPropertyLikeCount);
 
 /* ---------- MULTER ERROR HANDLER ---------- */
 router.use((err, req, res, next) => {
