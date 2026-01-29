@@ -80,6 +80,9 @@ import accountCancellation from "./routes/accountCancellationRoutes.js";
 // Map Route
 import geocodeRoutes from "./routes/geocodeRoutes.js";
 
+// S3 Route
+import s3Routes from "./routes/s3Routes.js";
+
 // Guest User Routes
 import guestUserLoginRoutes from "./routes/guestUser/userRoutes.js";
 import guestUserProfileRoutes from "./routes/guestUser/profileRoutes.js";
@@ -96,8 +99,8 @@ import userPropertyRoutes from "./routes/user/propertyRoutes.js";
 import userEnquirersRoutes from "./routes/user/enquirerRoutes.js";
 import userMapRoutes from "./routes/user/mapRoutes.js";
 import userBuilderRoutes from "./routes/user/builderRoutes.js";
-import userAuthRoutes from "./routes/user/authRoutes.js"
-import userEmiRoutes from "./routes/user/emiRoutes.js"
+import userAuthRoutes from "./routes/user/authRoutes.js";
+import userEmiRoutes from "./routes/user/emiRoutes.js";
 
 // builder
 import builderLoginRoutes from "./routes/builder/loginRoutes.js";
@@ -431,9 +434,9 @@ export const verifyToken = (req, res, next) => {
     "/customerapp/ticket",
     "customerapp/user/google-login",
     "/customerapp/loans",
-   "/admin/blog",
-"/admin/partner",
-"/admin/projectpartner"
+    "/admin/blog",
+    "/admin/partner",
+    "/admin/projectpartner",
   ];
 
   // Skip verification for public routes
@@ -490,8 +493,6 @@ app.get("/get-cookie", (req, res) => {
   res.json({ cookies: req.cookies }); // Send cookie data in response
 });
 
-
-
 // Use Login & Auth Routes
 app.use("/admin", loginRoutes);
 
@@ -521,6 +522,9 @@ app.use("/api/partner/account", accountCancellation);
 
 // Map Route Call
 app.use("/api/map", geocodeRoutes);
+
+// S3 Route Call
+app.use("/api/s3", s3Routes);
 
 app.use(verifyToken);
 app.use("/admin/profile", profileRoutes);
@@ -751,7 +755,6 @@ app.use("/builderapp/community", builderCommunityRoute);
 app.use("/builderapp/ticket", builderTicketRoute);
 app.use("/builderapp/post", builderpostRoute);
 
-
 app.post("/api/saveSheetData", async (req, res) => {
   try {
     const { rows } = req.body;
@@ -809,7 +812,7 @@ app.post("/api/saveSheetData", async (req, res) => {
           customer,
           contact,
           city,
-          'Ads'
+          "Ads",
         ]);
 
         console.log("Inserted:", adsid, customer);
