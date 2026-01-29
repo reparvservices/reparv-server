@@ -526,7 +526,7 @@ export const del = (req, res) => {
 //get like count
 export const getPropertyLikeCount = (req, res) => {
   try {
-    const propertyId  = req.params.id;
+    const propertyId = req.params.id;
 
     if (!propertyId) {
       return res.status(400).json({
@@ -536,7 +536,7 @@ export const getPropertyLikeCount = (req, res) => {
     }
 
     const sql = `
-      SELECT COUNT(*) AS likeCount
+      SELECT COUNT(DISTINCT user_id) AS likeCount
       FROM user_property_wishlist
       WHERE property_id = ?
     `;
@@ -557,12 +557,10 @@ export const getPropertyLikeCount = (req, res) => {
       });
     });
   } catch (error) {
-    console.error(error);
+    console.error('Server Error:', error);
     return res.status(500).json({
       success: false,
       message: 'Server error',
     });
   }
 };
-
-
