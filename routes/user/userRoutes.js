@@ -109,7 +109,7 @@ router.post("/verify-otp", async (req, res) => {
         id: insertResult.insertId,
         fullname: fullname?.trim() || "Guest User",
         contact,
-        email: user.email,
+        email: null,
         role: "Guest User",
       };
     } else {
