@@ -118,7 +118,6 @@ export const getAll = (req, res) => {
   });
 };
 
-
 /* ---------- ADD PROPERTY ---------- */
 export const addProperty = async (req, res) => {
   try {
@@ -159,14 +158,12 @@ export const addProperty = async (req, res) => {
         if (Array.isArray(areas)) parsedAreas = areas;
 
         const builtUpArea =
-          parsedAreas.find((a) =>
-            a.label?.toLowerCase().includes("built-up")
-          )?.value || null;
+          parsedAreas.find((a) => a.label?.toLowerCase().includes("built-up"))
+            ?.value || null;
 
         const carpetArea =
-          parsedAreas.find((a) =>
-            a.label?.toLowerCase().includes("carpet")
-          )?.value || null;
+          parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
+            ?.value || null;
 
         /*  Upload images FIELD-WISE */
         const uploadField = async (field) => {
@@ -189,10 +186,7 @@ export const addProperty = async (req, res) => {
         const nearestLandmark = await uploadField("nearestLandmark");
         const developedAmenities = await uploadField("developedAmenities");
 
-
-        console.log({          frontView,
-          sideView,
-          kitchenView,  });
+        console.log({ frontView, sideView, kitchenView });
         /*  Insert property */
         const insertSQL = `
           INSERT INTO properties (
@@ -251,13 +245,9 @@ export const addProperty = async (req, res) => {
     );
   } catch (error) {
     console.error(error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
-
 
 /* ---------- UPDATE PROPERTY ---------- */
 export const updateProperty = async (req, res) => {
@@ -303,14 +293,12 @@ export const updateProperty = async (req, res) => {
         else if (Array.isArray(areas)) parsedAreas = areas;
 
         const builtUpArea =
-          parsedAreas.find((a) =>
-            a.label?.toLowerCase().includes("built-up")
-          )?.value || null;
+          parsedAreas.find((a) => a.label?.toLowerCase().includes("built-up"))
+            ?.value || null;
 
         const carpetArea =
-          parsedAreas.find((a) =>
-            a.label?.toLowerCase().includes("carpet")
-          )?.value || null;
+          parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
+            ?.value || null;
 
         /*  IMAGE UPLOAD (ONLY IF SENT) */
         const uploadField = async (field) => {
@@ -524,14 +512,14 @@ export const del = (req, res) => {
 };
 
 //get like count
-export const getPropertyLikeCount = (req, res) => {
+export const getPropertyLikeCountOld = (req, res) => {
   try {
-    const propertyId  = req.params.id;
+    const propertyId = req.params.id;
 
     if (!propertyId) {
       return res.status(400).json({
         success: false,
-        message: 'Property ID is required',
+        message: "Property ID is required",
       });
     }
 
@@ -543,10 +531,10 @@ export const getPropertyLikeCount = (req, res) => {
 
     db.query(sql, [propertyId], (err, result) => {
       if (err) {
-        console.error('Get Property Like Count Error:', err);
+        console.error("Get Property Like Count Error:", err);
         return res.status(500).json({
           success: false,
-          message: 'Database error',
+          message: "Database error",
         });
       }
 
@@ -560,9 +548,49 @@ export const getPropertyLikeCount = (req, res) => {
     console.error(error);
     return res.status(500).json({
       success: false,
-      message: 'Server error',
+      message: "Server error",
     });
   }
 };
 
+//get like count
+export const getPropertyLikeCount = (req, res) => {
+  try {
+    const propertyId = req.params.id;
 
+    if (!propertyId) {
+      return res.status(400).json({
+        success: false,
+        message: "Property ID is required",
+      });
+    }
+
+    const sql = `
+      SELECT COUNT(DISTINCT user_id) AS likeCount
+      FROM user_property_wishlist
+      WHERE property_id = ?
+    `;
+
+    db.query(sql, [propertyId], (err, result) => {
+      if (err) {
+        console.error("Get Property Like Count Error:", err);
+        return res.status(500).json({
+          success: false,
+          message: "Database error",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        propertyId,
+        likeCount: result[0]?.likeCount || 0,
+      });
+    });
+  } catch (error) {
+    console.error("Server Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};

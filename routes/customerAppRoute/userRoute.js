@@ -1,5 +1,5 @@
 import express from "express";
-import { add, getProfile, googleLogin, resendOtp, update, verifyOtp } from "../../controllers/customerAppController/userController.js";
+import { add, facebookLogin, getProfile, googleLogin, resendOtp, update, verifyOtp } from "../../controllers/customerAppController/userController.js";
 import multer from "multer";
 import path from 'path';
 
@@ -27,5 +27,5 @@ router.post("/resend-otp",resendOtp)
 router.put("/update",upload.single('userimage'),update);
 router.get("/profile",getProfile)
 router.post('/google-login', googleLogin);
-
+router.post('/facebook-login',facebookLogin)
 export default router;

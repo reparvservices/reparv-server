@@ -45,7 +45,7 @@ export const add = async (req, res) => {
         return res.status(500).json({ success: false, message: "DB error" });
       }
 
-      // ✅ Existing user
+      //  Existing user
       if (users.length > 0) {
         const userId = users[0].user_id;
 
@@ -62,7 +62,7 @@ export const add = async (req, res) => {
         });
       }
 
-      // 🆕 New user
+      //  New user
       db.query(
         `INSERT INTO mobileusers (fullname, contact, created_at, updated_at, otp, otp_expires_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
@@ -196,94 +196,6 @@ export const resendOtp = async (req, res) => {
     });
   }
 };
-// export const add = (req, res) => {
-//   try {
-//     console.log(req.body);
-
-//     const { fullname, contact } = req.body;
-//     const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
-
-//     if (!fullname || !contact) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Full name and contact are required",
-//       });
-//     }
-
-//     const checkSql =
-//       "SELECT user_id, fullname, contact FROM mobileusers WHERE contact = ?";
-
-//     db.query(checkSql, [contact], (checkErr, users) => {
-//       if (checkErr) {
-//         return res.status(500).json({
-//           success: false,
-//           message: "Database error",
-//         });
-//       }
-
-//       if (users.length > 0) {
-//         const user = users[0];
-
-//         const token = jwt.sign(
-//           { id: user.user_id, contact: user.contact },
-//           process.env.JWT_SECRET,
-//           { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
-//         );
-
-//         return res.status(200).json({
-//           success: true,
-//           message: "Login successful",
-//           token,
-//           user: {
-//             id: user.user_id,
-//             fullname: user.fullname,
-//             contact: user.contact,
-//           },
-//         });
-//       }
-
-//       const insertSql = `
-//         INSERT INTO mobileusers (fullname, contact, created_at, updated_at)
-//         VALUES (?, ?, ?, ?)
-//       `;
-
-//       db.query(
-//         insertSql,
-//         [fullname, contact, timestamp, timestamp],
-//         (insertErr, result) => {
-//           if (insertErr) {
-//             return res.status(500).json({
-//               success: false,
-//               message: "Database error",
-//             });
-//           }
-
-//           const token = jwt.sign(
-//             { id: result.insertId, contact },
-//             process.env.JWT_SECRET,
-//             { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
-//           );
-
-//           return res.status(201).json({
-//             success: true,
-//             message: "Signup successful",
-//             token,
-//             user: {
-//               id: result.insertId,
-//               fullname,
-//               contact,
-//             },
-//           });
-//         }
-//       );
-//     });
-//   } catch {
-//     return res.status(500).json({
-//       success: false,
-//       message: "Internal server error",
-//     });
-//   }
-// };
 
 export const getProfile = (req, res) => {
   const { id } = req.query;
@@ -489,7 +401,7 @@ export const googleLogin = async (req, res) => {
         });
       }
 
-      // 🔐 Existing user → LOGIN
+      //  Existing user → LOGIN
       if (users.length > 0) {
         const user = users[0];
 
@@ -512,7 +424,7 @@ export const googleLogin = async (req, res) => {
         });
       }
 
-      // 🆕 New user → SIGNUP
+      //  New user → SIGNUP
       const insertSql = `
         INSERT INTO mobileusers 
         (fullname, email, google_id, userimage, created_at, updated_at)
@@ -555,6 +467,103 @@ export const googleLogin = async (req, res) => {
     return res.status(401).json({
       success: false,
       message: "Invalid Google token",
+    });
+  }
+};
+
+//facebook login
+export const facebookLogin = async (req, res) => {
+  try {
+    const { uid, email, displayName, photoURL } = req.body;
+
+    //  Validation
+    if (!uid || !email) {
+      return res.status(400).json({
+        success: false,
+        message: "Facebook user data is required",
+      });
+    }
+
+    const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
+
+    // Check existing user
+    const checkSql =
+      "SELECT user_id, fullname, email FROM mobileusers WHERE email = ?";
+
+    db.query(checkSql, [email], (checkErr, users) => {
+      if (checkErr) {
+        return res.status(500).json({
+          success: false,
+          message: "Database error",
+        });
+      }
+
+      //  EXISTING USER → LOGIN
+      if (users.length > 0) {
+        const user = users[0];
+
+        const jwtToken = jwt.sign(
+          { id: user.user_id, email: user.email },
+          process.env.JWT_SECRET,
+          { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
+        );
+
+        return res.status(200).json({
+          success: true,
+          message: "Login successful",
+          token: jwtToken,
+          user: {
+            id: user.user_id,
+            fullname: user.fullname,
+            email: user.email,
+            picture: photoURL,
+          },
+        });
+      }
+
+      //  NEW USER → SIGNUP
+      const insertSql = `
+        INSERT INTO mobileusers
+        (fullname, email, facebook_id, userimage, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `;
+
+      db.query(
+        insertSql,
+        [displayName || "", email, uid, photoURL || null, timestamp, timestamp],
+        (insertErr, result) => {
+          if (insertErr) {
+            return res.status(500).json({
+              success: false,
+              message: "Database error",
+            });
+          }
+
+          const jwtToken = jwt.sign(
+            { id: result.insertId, email },
+            process.env.JWT_SECRET,
+            { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
+          );
+
+          return res.status(201).json({
+            success: true,
+            message: "Signup successful",
+            token: jwtToken,
+            user: {
+              id: result.insertId,
+              fullname: displayName,
+              email,
+              picture: photoURL,
+            },
+          });
+        },
+      );
+    });
+  } catch (err) {
+    console.error("Facebook login error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Facebook login failed",
     });
   }
 };
