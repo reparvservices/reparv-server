@@ -1,5 +1,100 @@
 import db from "../../config/dbconnect.js";
 import { uploadToS3 } from "../../utils/imageUpload.js";
+import moment from "moment";
+
+// GET ALL LOAN APPLICATIONS + COUNTS
+export const getAll = (req, res) => {
+  const userId = req.guestUser?.id;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const sql = `
+    SELECT 
+      l.*,
+      SUM(CASE WHEN l.status = 'Active' THEN 1 ELSE 0 END) OVER() AS activeCount,
+      SUM(CASE WHEN l.status = 'Inactive' THEN 1 ELSE 0 END) OVER() AS inactiveCount,
+      SUM(CASE WHEN l.approved = 'Active' THEN 1 ELSE 0 END) OVER() AS approvedCount
+    FROM loanemiforperson l
+    WHERE l.user_id = ?
+    ORDER BY l.id DESC
+  `;
+
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      console.error("Get all loans error:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    // Format dates
+    const formattedRows = rows.map((row) => ({
+      ...row,
+      created_at: row.created_at
+        ? moment(row.created_at).format("DD MMM YYYY")
+        : null,
+      // updated_at: row.updated_at
+      //   ? moment(row.updated_at).format("DD MMM YYYY | hh:mm A")
+      //   : null,
+    }));
+
+    // Counts (single row se)
+    const counts = rows.length
+      ? {
+          active: rows[0].activeCount,
+          inactive: rows[0].inactiveCount,
+          approved: rows[0].approvedCount,
+        }
+      : { active: 0, inactive: 0, approved: 0 };
+
+    // SINGLE RESPONSE
+    res.json({
+      counts,
+      data: formattedRows,
+    });
+  });
+};
+
+
+// GET LOAN BY ID
+export const getById = (req, res) => {
+  const loanId = parseInt(req.params.id);
+  const userId = req.guestUser?.id;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  if (isNaN(loanId)) {
+    return res.status(400).json({ message: "Invalid Loan ID" });
+  }
+
+  const sql = `
+    SELECT *
+    FROM loanemiforperson
+    WHERE id = ? AND user_id = ?
+    LIMIT 1
+  `;
+
+  db.query(sql, [loanId, userId], (err, rows) => {
+    if (err) {
+      console.error("Get loan by ID error:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Loan application not found" });
+    }
+
+    const formatted = rows.map((row) => ({
+      ...row,
+      created_at: moment(row.created_at).format("DD MMM YYYY"),
+      //updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+    }));
+
+    res.json(formatted[0]);
+  });
+};
 
 export const submitEmiForm = async (req, res) => {
   try {
@@ -105,9 +200,9 @@ export const submitEmiForm = async (req, res) => {
       businessExperienceYears,
       businessExperienceMonths,
       businessOtherIncome,
-      panImage,              // S3 URL
-      aadhaarFrontImage,     // S3 URL
-      aadhaarBackImage,      // S3 URL
+      panImage, // S3 URL
+      aadhaarFrontImage, // S3 URL
+      aadhaarBackImage, // S3 URL
     ];
 
     db.query(sql, values, (err, result) => {
