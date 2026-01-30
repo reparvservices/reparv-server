@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import { submitEmiForm } from "../../controllers/user/emiController.js";
+import { getAll, getById, submitEmiForm } from "../../controllers/user/emiController.js";
 
 const router = express.Router();
 
@@ -25,6 +25,9 @@ const upload = multer({
 /* =========================
    Route
 ========================= */
+router.get("/loan-applications", getAll);
+router.get("/loan-applications/get/:id", getById);
+
 router.post(
   "/check-eligibility",
   upload.fields([

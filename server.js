@@ -80,6 +80,9 @@ import accountCancellation from "./routes/accountCancellationRoutes.js";
 // Map Route
 import geocodeRoutes from "./routes/geocodeRoutes.js";
 
+// S3 Route
+import s3Routes from "./routes/s3Routes.js";
+
 // Guest User Routes
 import guestUserLoginRoutes from "./routes/guestUser/userRoutes.js";
 import guestUserProfileRoutes from "./routes/guestUser/profileRoutes.js";
@@ -434,7 +437,6 @@ export const verifyToken = (req, res, next) => {
     "/admin/blog",
     "/admin/partner",
     "/admin/projectpartner",
-    "/user/properties/"
   ];
 
   // Skip verification for public routes
@@ -520,6 +522,9 @@ app.use("/api/partner/account", accountCancellation);
 
 // Map Route Call
 app.use("/api/map", geocodeRoutes);
+
+// S3 Route Call
+app.use("/api/s3", s3Routes);
 
 app.use(verifyToken);
 app.use("/admin/profile", profileRoutes);
