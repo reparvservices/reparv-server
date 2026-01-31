@@ -437,6 +437,7 @@ export const verifyToken = (req, res, next) => {
     "/admin/blog",
     "/admin/partner",
     "/admin/projectpartner",
+    "/user/properties/"
   ];
 
   // Skip verification for public routes
@@ -836,4 +837,5 @@ app.post("/api/saveSheetData", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
 
