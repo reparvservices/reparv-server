@@ -23,7 +23,7 @@ export const getById = (req, res) => {
         WHEN pi.status = 'Booked' THEN pi.propertyinfoid 
       END) AS bookedCount,
 
-      COUNT(DISTINCT w.user_id) AS likes
+      COUNT(DISTINCT w.guest_user_id) AS likes
 
     FROM properties p
 

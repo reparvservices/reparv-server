@@ -51,6 +51,7 @@ import contactUsRoutes from "./routes/admin/contactUsRoutes.js";
 import scheduledRequestRoutes from "./routes/admin/scheduledRequestRoutes.js";
 import FAQRoutes from "./routes/admin/FAQRoutes.js";
 import propertyAnalyticsRoutes from "./routes/admin/propertyAnalyticsRoutes.js";
+import blogAnalyticsRoutes from "./routes/admin/blogAnalyticsRoutes.js";
 
 //frontend
 import allPropertiesRoutes from "./routes/frontend/allPropertiesRoutes.js";
@@ -101,6 +102,7 @@ import userMapRoutes from "./routes/user/mapRoutes.js";
 import userBuilderRoutes from "./routes/user/builderRoutes.js";
 import userAuthRoutes from "./routes/user/authRoutes.js";
 import userEmiRoutes from "./routes/user/emiRoutes.js";
+import userActivityRoutes from "./routes/user/activityRoutes.js";
 
 // builder
 import builderLoginRoutes from "./routes/builder/loginRoutes.js";
@@ -428,6 +430,7 @@ export const verifyToken = (req, res, next) => {
     "/project-partner/profile/schedule",
     "/admin/faqs/:location",
     "/admin/propertyAnalytics",
+    "/admin/blogAnalytics",
     "/admin/call-enquirers/add",
     "/admin/whatsapp-enquirers/add",
     "/project-partner/properties/additionalinfo/",
@@ -572,6 +575,7 @@ app.use("/admin/contact-us", contactUsRoutes);
 app.use("/admin/scheduled-requests", scheduledRequestRoutes);
 app.use("/admin/faqs", FAQRoutes);
 app.use("/admin/propertyAnalytics", propertyAnalyticsRoutes);
+app.use("/admin/blogAnalytics", blogAnalyticsRoutes);
 
 // Guest User Routes
 app.use("/guest-user", guestUserLoginRoutes);
@@ -591,6 +595,7 @@ app.use("/user/enquirers", userEnquirersRoutes);
 app.use("/user/map", userMapRoutes);
 app.use("/user/auth", userAuthRoutes);
 app.use("/user/emi", userEmiRoutes);
+app.use("/user/activity", userActivityRoutes);
 
 // Builder Routes
 app.use("/builder", builderLoginRoutes);

@@ -6,7 +6,7 @@ export const getAll = (req, res) => {
 
   let sql = `
     SELECT p.*, 
-           COUNT(DISTINCT w.user_id) AS likes
+           COUNT(DISTINCT w.guest_user_id) AS likes
     FROM properties p
     LEFT JOIN user_property_wishlist w
       ON w.property_id = p.propertyid
@@ -89,7 +89,7 @@ export const getAllBySlug = (req, res) => {
       c.content,
       c.metaTitle, 
       c.metaDescription,
-      COUNT(DISTINCT w.user_id) AS likes
+      COUNT(DISTINCT w.guest_user_id) AS likes
     FROM properties p
     LEFT JOIN cities c 
       ON p.city = c.city
@@ -170,7 +170,7 @@ export const getById = (req, res) => {
       COUNT(DISTINCT CASE 
         WHEN pi.status = 'Booked' THEN pi.id 
       END) AS bookedCount,
-      COUNT(DISTINCT w.user_id) AS likes
+      COUNT(DISTINCT w.guest_user_id) AS likes
     FROM properties p
     LEFT JOIN propertiesinfo pi 
       ON p.propertyid = pi.propertyid

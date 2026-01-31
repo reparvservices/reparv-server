@@ -57,7 +57,7 @@ export const getAllProperties = (req, res) => {
   let sql = `
     SELECT 
       properties.*,
-      COUNT(DISTINCT user_property_wishlist.user_id) AS likes 
+      COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
@@ -116,7 +116,7 @@ export const getHotDealProperties = (req, res) => {
     SELECT 
       properties.*,
       builders.company_name,
-      COUNT(DISTINCT user_property_wishlist.user_id) AS likes 
+      COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
     LEFT JOIN builders 
       ON properties.builderid = builders.builderid
@@ -177,7 +177,7 @@ export const getPremiumProperties = (req, res) => {
   let sql = `
     SELECT 
       properties.*,
-      COUNT(DISTINCT user_property_wishlist.user_id) AS likes 
+      COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid

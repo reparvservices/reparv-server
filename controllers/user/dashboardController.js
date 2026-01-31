@@ -33,7 +33,7 @@ export const getCount = (req, res) => {
        )) AS totalViews,
 
       -- Total likes for those properties
-      (SELECT COUNT(DISTINCT w.user_id)
+      (SELECT COUNT(DISTINCT w.guest_user_id)
        FROM user_property_wishlist w
        WHERE w.property_id IN (
          SELECT propertyid
