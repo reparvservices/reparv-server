@@ -48,7 +48,6 @@ export const getAll = (req, res) => {
   });
 };
 
-
 // ** Fetch All City **
 export const getAllByCity = (req, res) => {
   const city = req.params.city;
@@ -98,7 +97,6 @@ export const getAllByCity = (req, res) => {
     res.json(formatted);
   });
 };
-
 
 // ** Fetch Hot Deal Properties **
 export const getHotDealProperties = (req, res) => {
@@ -151,10 +149,10 @@ export const getHotDealProperties = (req, res) => {
   });
 };
 
-
 // ** Fetch Top Picks Properties **
 export const getTopPicksProperties = (req, res) => {
   const city = req.params.city;
+
   if (!city) {
     return res.status(401).json({ message: "City Not Selected!" });
   }
@@ -162,11 +160,15 @@ export const getTopPicksProperties = (req, res) => {
   const sql = `
     SELECT 
       properties.*,
+      projectpartner.businessLogo,
       COUNT(DISTINCT user_property_wishlist.property_id) AS likes
     FROM properties
 
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
+
+    LEFT JOIN projectpartner
+      ON projectpartner.id = properties.projectpartnerid
 
     WHERE properties.status = 'Active'
       AND properties.approve = 'Approved'
@@ -179,8 +181,11 @@ export const getTopPicksProperties = (req, res) => {
 
   db.query(sql, [city], (err, result) => {
     if (err) {
-      console.error("Error fetching:", err);
-      return res.status(500).json({ message: "Database error", error: err });
+      console.error("Error fetching top picks:", err);
+      return res.status(500).json({
+        message: "Database error",
+        error: err,
+      });
     }
 
     const formatted = result.map((row) => {
@@ -196,6 +201,7 @@ export const getTopPicksProperties = (req, res) => {
         ...row,
         propertyType: parsedType,
         likes: Number(row.likes) || 0,
+        businessLogo: row.businessLogo || null,
       };
     });
 
