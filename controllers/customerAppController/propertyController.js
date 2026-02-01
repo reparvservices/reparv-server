@@ -22,7 +22,7 @@ export const addInWishList = (req, res) => {
     }
 
     // Check if already exists
-    const checkSql = `SELECT * FROM user_property_wishlist WHERE user_id = ? AND property_id = ?`;
+    const checkSql = `SELECT * FROM user_property_wishlist WHERE guest_user_id = ? AND property_id = ?`;
     db.query(checkSql, [user_id, property_id], (checkErr, checkResult) => {
       if (checkErr) {
         console.error("Error checking wishlist:", checkErr);
@@ -36,7 +36,7 @@ export const addInWishList = (req, res) => {
       }
 
       // If not exists, then insert updated_at, created_at
-      const insertSql = `INSERT INTO user_property_wishlist (user_id, property_id,updated_at,created_at) VALUES (?, ?,?,?)`;
+      const insertSql = `INSERT INTO user_property_wishlist (guest_user_id, property_id,updated_at,created_at) VALUES (?, ?,?,?)`;
       db.query(
         insertSql,
         [user_id, property_id, currentdate, currentdate],
@@ -70,7 +70,7 @@ export const getUserWishlist = (req, res) => {
       SELECT p.*
       FROM user_property_wishlist uw
       INNER JOIN properties p ON uw.property_id = p.propertyid
-      WHERE uw.user_id = ?
+      WHERE uw.guest_user_id = ?
     `;
 
     db.query(sql, [user_id], (err, result) => {
