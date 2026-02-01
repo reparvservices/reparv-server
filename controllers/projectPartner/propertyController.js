@@ -156,8 +156,165 @@ export const checkPropertyName = (req, res) => {
     });
   }
 };
-// ADD property controller
+
 export const addProperty = async (req, res) => {
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const partnerId = req.projectPartnerUser?.id;
+
+    if (!partnerId) {
+      return res.status(401).json({ message: "Unauthorized Access" });
+    }
+
+    const {
+      propertyCategory,
+      propertyName,
+      totalSalesPrice,
+      totalOfferPrice,
+      builtUpArea,
+      carpetArea,
+      state,
+      city,
+    } = req.body;
+
+    /* ---------- DUPLICATE PROPERTY CHECK ---------- */
+    db.query(
+      "SELECT propertyid FROM properties WHERE propertyName = ?",
+      [propertyName],
+      async (err, result) => {
+        if (err)
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+
+        if (result.length > 0) {
+          return res
+            .status(409)
+            .json({ message: "Property name already exists!" });
+        }
+
+        /* ---------- CONVERT IMAGES TO WebP ---------- */
+        const files = await convertImagesToWebp(req.files);
+
+        /* ---------- UPLOAD IMAGES TO S3 (FIELD-WISE) ---------- */
+        const uploadFieldToS3 = async (field) => {
+          if (!files || !files[field]) return null;
+
+          const urls = [];
+          for (const file of files[field]) {
+            const url = await uploadToS3(file);
+            urls.push(url);
+          }
+          return JSON.stringify(urls);
+        };
+
+        const frontView = await uploadFieldToS3("frontView");
+        const sideView = await uploadFieldToS3("sideView");
+        const kitchenView = await uploadFieldToS3("kitchenView");
+        const hallView = await uploadFieldToS3("hallView");
+        const bedroomView = await uploadFieldToS3("bedroomView");
+        const bathroomView = await uploadFieldToS3("bathroomView");
+        const balconyView = await uploadFieldToS3("balconyView");
+        const nearestLandmark = await uploadFieldToS3("nearestLandmark");
+        const developedAmenities = await uploadFieldToS3("developedAmenities");
+
+        /* ---------- INSERT PROPERTY ---------- */
+        const insertSQL = `
+          INSERT INTO properties (
+            projectpartnerid, propertyCategory,
+            propertyName, totalSalesPrice,
+            totalOfferPrice, builtUpArea, carpetArea,
+            state, city,
+            frontView, sideView, kitchenView, hallView,
+            bedroomView, bathroomView, balconyView,
+            nearestLandmark, developedAmenities,
+            updated_at, created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        const values = [
+          partnerId,
+          propertyCategory,
+          propertyName,
+          totalSalesPrice,
+          totalOfferPrice,
+          builtUpArea,
+          carpetArea,
+          state,
+          city,
+          frontView,
+          sideView,
+          kitchenView,
+          hallView,
+          bedroomView,
+          bathroomView,
+          balconyView,
+          nearestLandmark,
+          developedAmenities,
+          currentdate,
+          currentdate,
+        ];
+
+        db.query(insertSQL, values, (err, insertResult) => {
+          if (err)
+            return res
+              .status(500)
+              .json({ message: "Insert failed", error: err });
+
+          const newPropertyId = insertResult.insertId;
+
+          /* ---------- GENERATE propertyCityId ---------- */
+          db.query(
+            "SELECT cityNACL FROM cities WHERE city = ? LIMIT 1",
+            [city],
+            (err2, cityResult) => {
+              if (err2)
+                return res
+                  .status(500)
+                  .json({ message: "City lookup failed", error: err2 });
+
+              if (cityResult.length === 0)
+                return res
+                  .status(404)
+                  .json({ message: "City not found in database" });
+
+              const cityNACL = cityResult[0].cityNACL;
+              const propertyCityId = `${cityNACL}-${newPropertyId}`;
+
+              db.query(
+                "UPDATE properties SET propertyCityId = ? WHERE propertyid = ?",
+                [propertyCityId, newPropertyId],
+                (err3) => {
+                  if (err3)
+                    return res.status(500).json({
+                      message: "Failed to update propertyCityId",
+                      error: err3,
+                    });
+
+                  return res.status(201).json({
+                    message: "Property added successfully",
+                    id: newPropertyId,
+                    propertyCityId,
+                  });
+                }
+              );
+            }
+          );
+        });
+      }
+    );
+  } catch (error) {
+    console.error("Add property error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error,
+    });
+  }
+};
+
+// ADD property controller
+export const addPropertyOld = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const partnerId = req.projectPartnerUser?.id;
 
@@ -263,7 +420,7 @@ export const addProperty = async (req, res) => {
           (totalOfferPrice *
             interestRate *
             Math.pow(1 + interestRate, tenureMonths)) /
-            (Math.pow(1 + interestRate, tenureMonths) - 1),
+            (Math.pow(1 + interestRate, tenureMonths) - 1)
         );
 
         // Handle possession date formatting
@@ -273,7 +430,7 @@ export const addProperty = async (req, res) => {
           moment(
             possessionDate,
             ["YYYY-MM-DD", moment.ISO_8601],
-            true,
+            true
           ).isValid()
         ) {
           formattedDate = moment(possessionDate).format("YYYY-MM-DD");
@@ -402,12 +559,12 @@ export const addProperty = async (req, res) => {
                     id: newPropertyId,
                     propertyCityId,
                   });
-                },
+                }
               );
-            },
+            }
           );
         });
-      },
+      }
     );
   } catch (uploadErr) {
     console.error("S3 upload error:", uploadErr);
@@ -530,7 +687,7 @@ export const update = async (req, res) => {
     registrationFees = (30000 / totalOfferPrice) * 100;
   } else {
     registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
-      propertyCategory,
+      propertyCategory
     )
       ? 0
       : 1;
@@ -550,11 +707,11 @@ export const update = async (req, res) => {
   const propertyTypeArray = Array.isArray(propertyType)
     ? propertyType
     : typeof propertyType === "string"
-      ? propertyType
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean)
-      : [];
+    ? propertyType
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
   const propertyTypeJson = JSON.stringify(propertyTypeArray);
 
   // Fetch existing property
@@ -691,7 +848,7 @@ export const update = async (req, res) => {
           .status(500)
           .json({ message: "Image upload failed", error: s3Err });
       }
-    },
+    }
   );
 };
 
@@ -743,7 +900,7 @@ export const del = (req, res) => {
                   } catch (s3Err) {
                     console.error(
                       `Failed to delete S3 image ${imgPath}:`,
-                      s3Err,
+                      s3Err
                     );
                   }
                 } else {
@@ -776,7 +933,7 @@ export const del = (req, res) => {
           message: "Property and associated images deleted successfully",
         });
       });
-    },
+    }
   );
 };
 
@@ -817,9 +974,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -860,9 +1017,9 @@ export const approve = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -925,9 +1082,9 @@ export const changePropertyLocation = (req, res) => {
           res
             .status(200)
             .json({ message: "Property Location Change Successfully" });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -1004,9 +1161,9 @@ export const uploadBrochureAndVideo = (req, res) => {
             videoPath: videoPath || oldVideo,
             videoLink: videoLink || oldVideoLink,
           });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -1037,7 +1194,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
           if (!result.length)
             return reject({ status: 404, message: "Property not found" });
           resolve(result);
-        },
+        }
       );
     });
 
@@ -1070,7 +1227,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
           brochureUrl,
           videoLink: videoLink || oldData.videoLink,
         });
-      },
+      }
     );
   } catch (error) {
     console.error("Unexpected error:", error);
@@ -1111,9 +1268,9 @@ export const seoDetails = (req, res) => {
               .json({ message: "Database error", error: err });
           }
           res.status(200).json({ message: "Seo Details Add successfully" });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -1149,9 +1306,9 @@ export const addRejectReason = (req, res) => {
           res
             .status(200)
             .json({ message: "Property Reject Reason Add successfully" });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -1256,7 +1413,7 @@ export const setPropertyCommission = (req, res) => {
           .status(200)
           .json({ message: "Property commission saved successfully" });
       });
-    },
+    }
   );
 };
 
@@ -1381,7 +1538,7 @@ export const updateImages = async (req, res) => {
             message: "Property images updated successfully",
           });
         });
-      },
+      }
     );
   } catch (err) {
     console.error("Image conversion or S3 upload error:", err);
@@ -1440,7 +1597,7 @@ export const deleteImages = async (req, res) => {
                   if (err && err.code !== "ENOENT") {
                     console.warn(
                       `Could not delete file: ${fullPath}`,
-                      err.message,
+                      err.message
                     );
                   }
                 });
@@ -1448,7 +1605,7 @@ export const deleteImages = async (req, res) => {
             } catch (deleteErr) {
               console.error(`Error deleting image ${imgPath}:`, deleteErr);
             }
-          }),
+          })
         );
 
         // Update DB to remove image references
@@ -1464,9 +1621,9 @@ export const deleteImages = async (req, res) => {
             }
 
             res.status(200).json({ message: "Images deleted successfully" });
-          },
+          }
         );
-      },
+      }
     );
   } catch (err) {
     console.error("Unexpected error:", err);
@@ -1544,7 +1701,7 @@ export const additionalInfoAdd = (req, res) => {
         message: "Additional Info added successfully",
         Id: insertResult.insertId,
       });
-    },
+    }
   );
 };
 
@@ -1636,7 +1793,7 @@ export const editAdditionalInfo = (req, res) => {
   }
 
   const updateSQL = `UPDATE propertiesinfo SET ${updateFields.join(
-    ", ",
+    ", "
   )} WHERE propertyinfoid = ?`;
 
   updateValues.push(Id);
