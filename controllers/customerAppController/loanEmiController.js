@@ -1,51 +1,11 @@
 // controllers/formController.js
 import db from "../../config/dbconnect.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
+export const submitEmiForm = async (req, res) => {
+   
 
-export const submitEmiForm = (req, res) => {
-  let {
-    employmentType,
-    fullname,
-    dateOfBirth,
-    contactNo,
-    panNumber,
-    aadhaarNumber,
-    email,
-    state,
-    city,
-    pincode,
-    employmentSector,
-    workexperienceYear,
-    workexperienceMonth,
-    salaryType,
-    grossPay,
-    netPay,
-    pfDeduction,
-    otherIncome,
-    yearIncome,
-    monthIncome,
-    ongoingEmi,
-    businessSector,
-    businessCategory,
-    businessExperienceYears,
-    businessExperienceMonths,
-    businessOtherIncome,
-    user_id,
-    propertyid,
-  } = req.body;
-
-  //  Convert empty strings to NULL
-  const toNull = (v) => (v === "" || v === undefined ? null : v);
-
-  //  Convert date to MySQL format YYYY-MM-DD
-  if (dateOfBirth) {
-    const [dd, mm, yyyy] = dateOfBirth.split("/");
-    dateOfBirth = `${yyyy}-${mm}-${dd}`;
-  }
-
-  const sql = `
-    INSERT INTO loanemiforperson (
-      user_id,
-      propertyid,
+  try {
+    let {
       employmentType,
       fullname,
       dateOfBirth,
@@ -71,55 +31,125 @@ export const submitEmiForm = (req, res) => {
       businessCategory,
       businessExperienceYears,
       businessExperienceMonths,
-      businessOtherIncome
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
+      businessOtherIncome,
+      user_id,
+      propertyid,
+    } = req.body;
+    console.log(req.body);
 
-  const values = [
-    user_id,
-    propertyid,
-    employmentType,
-    fullname,
-    dateOfBirth,
-    contactNo,
-    panNumber,
-    aadhaarNumber,
-    email,
-    state,
-    city,
-    pincode,
-    employmentSector,
-    toNull(workexperienceYear),
-    toNull(workexperienceMonth),
-    salaryType,
-    toNull(grossPay),
-    toNull(netPay),
-    toNull(pfDeduction),
-    otherIncome,
-    toNull(yearIncome),
-    toNull(monthIncome),
-    toNull(ongoingEmi),
-    toNull(businessSector),
-    toNull(businessCategory),
-    toNull(businessExperienceYears),
-    toNull(businessExperienceMonths),
-    toNull(businessOtherIncome),
-  ];
+    const toNull = (v) => (v === "" || v === undefined ? null : v);
 
-  db.query(sql, values, (err, result) => {
-    if (err) {
-      console.error("Error inserting data:", err);
-      return res.status(500).json({
-        message: "Database insert error",
-        error: err.sqlMessage,
-      });
+    // DOB convert
+    if (dateOfBirth) {
+      const [dd, mm, yyyy] = dateOfBirth.split("/");
+      dateOfBirth = `${yyyy}-${mm}-${dd}`;
     }
 
-    res.status(201).json({
-      message: "Form data saved successfully",
-      loanId: result.insertId,
+    /* ===== IMAGE UPLOAD (SINGLE IMAGE ONLY) ===== */
+    let panImage = null;
+    let aadhaarFrontImage = null;
+    let aadhaarBackImage = null;
+
+    if (req.files?.aadhaarFrontImage?.[0]) {
+      aadhaarFrontImage = await uploadToS3(req.files.aadhaarFrontImage[0]);
+    }
+    if (req.files?.aadhaarBackImage?.[0]) {
+      aadhaarBackImage = await uploadToS3(req.files.aadhaarBackImage[0]);
+    }
+
+    if (req.files?.panImage?.[0]) {
+      panImage = await uploadToS3(req.files.panImage[0]);
+    }
+
+    const sql = `
+      INSERT INTO loanemiforperson (
+        user_id,
+        propertyid,
+        employmentType,
+        fullname,
+        dateOfBirth,
+        contactNo,
+        panNumber,
+        aadhaarNumber,
+        email,
+        state,
+        city,
+        pincode,
+        employmentSector,
+        workexperienceYear,
+        workexperienceMonth,
+        salaryType,
+        grossPay,
+        netPay,
+        pfDeduction,
+        otherIncome,
+        yearIncome,
+        monthIncome,
+        ongoingEmi,
+        businessSector,
+        businessCategory,
+        businessExperienceYears,
+        businessExperienceMonths,
+        businessOtherIncome,
+        panImage,
+        aadhaarFrontImage,
+aadhaarBackImage
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `;
+
+    const values = [
+      user_id,
+      propertyid,
+      employmentType,
+      fullname,
+      dateOfBirth,
+      contactNo,
+      panNumber,
+      aadhaarNumber,
+      email,
+      state,
+      city,
+      pincode,
+      employmentSector,
+      toNull(workexperienceYear),
+      toNull(workexperienceMonth),
+      salaryType,
+      toNull(grossPay),
+      toNull(netPay),
+      toNull(pfDeduction),
+      otherIncome,
+      toNull(yearIncome),
+      toNull(monthIncome),
+      toNull(ongoingEmi),
+      toNull(businessSector),
+      toNull(businessCategory),
+      toNull(businessExperienceYears),
+      toNull(businessExperienceMonths),
+      toNull(businessOtherIncome),
+      panImage,
+      aadhaarFrontImage,
+      aadhaarBackImage,
+    ];
+
+    db.query(sql, values, (err, result) => {
+      if (err) {
+        console.log(err);
+
+        return res.status(500).json({
+          message: "Database insert error",
+          error: err.sqlMessage,
+        });
+      }
+
+      res.status(201).json({
+        message: "Loan form submitted successfully",
+        loanId: result.insertId,
+      });
     });
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Internal server error" });
+  }
 };
 
 export const getUserLoanCounts = (req, res) => {
