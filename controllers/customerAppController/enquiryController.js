@@ -67,7 +67,7 @@ export const add = async (req, res) => {
         //  Remove from wishlist if exists
         const deleteWishlistSql = `
           DELETE FROM user_property_wishlist 
-          WHERE user_id = ? AND property_id = ?
+          WHERE guest_user_id = ? AND property_id = ?
         `;
 
         db.query(deleteWishlistSql, [user_id, propertyid], (delErr) => {
