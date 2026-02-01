@@ -31,7 +31,7 @@ export const addImages = async (req, res) => {
     const imageUrls = [];
 
     for (const file of files) {
-      const url = await uploadToS3(file, "sliders"); // S3 folder: sliders
+      const url = await uploadToS3(file);
       imageUrls.push(url);
     }
 
@@ -84,7 +84,7 @@ export const addSmallScreenImage = async (req, res) => {
     }
 
     // Upload to S3
-    const imageUrl = await uploadToS3(req.file, "sliders/mobile");
+    const imageUrl = await uploadToS3(req.file);
 
     const updateSQL = `
       UPDATE sliders 

@@ -80,18 +80,18 @@ export const getById = (req, res) => {
 // **Add New **
 export const addFeedback = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { feedbackType, fullname, contact, email, message } = req.body;
+  const { helpful, fullname, contact, email, message } = req.body;
 
-  if (!feedbackType || !fullname || !contact || !email || !message) {
+  if (!helpful || !fullname || !contact || !email || !message) {
     return res.status(400).json({ message: "All Fields are Required" });
   }
 
-  const sql = `INSERT INTO blogfeedback (type, fullname, contact, email, message, created_at, updated_at) 
+  const sql = `INSERT INTO blogfeedback (helpful, fullname, contact, email, message, created_at, updated_at) 
                VALUES (?, ?, ?, ?, ?, ?, ?)`;
 
   db.query(
     sql,
-    [feedbackType, fullname, contact, email, message, currentdate, currentdate],
+    [helpful, fullname, contact, email, message, currentdate, currentdate],
     (err, result) => {
       if (err) {
         console.error("Error inserting Feedback:", err);
