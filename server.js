@@ -104,7 +104,7 @@ import userBuilderRoutes from "./routes/user/builderRoutes.js";
 import userAuthRoutes from "./routes/user/authRoutes.js";
 import userEmiRoutes from "./routes/user/emiRoutes.js";
 import userActivityRoutes from "./routes/user/activityRoutes.js";
-
+ 
 // builder
 import builderLoginRoutes from "./routes/builder/loginRoutes.js";
 import builderProfileRoutes from "./routes/builder/profileRoutes.js";
