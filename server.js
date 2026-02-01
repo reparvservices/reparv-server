@@ -241,6 +241,7 @@ import projectPartnerEmployee from "./routes/projectPartnerAppRoute/employeeRout
 import projectPartnerTickets from "./routes/projectPartnerAppRoute/ticketRouter.js";
 import projectpartnerappDepartment from "./routes/projectPartnerAppRoute/departmentRoutes.js";
 import projectPartnerRoles from "./routes/projectPartnerAppRoute/roleRoutes.js";
+import projectPartnerAppPropertyRoute from "./routes/projectPartnerAppRoute/propertyRoute.js"
 //Customer App
 import customerEmi from "./routes/customerAppRoute/EmiRoute.js";
 import customerSignUp from "./routes/customerAppRoute/userRoute.js";
@@ -440,7 +441,8 @@ export const verifyToken = (req, res, next) => {
     "/admin/blog",
     "/admin/partner",
     "/admin/projectpartner",
-    "/user/properties/"
+    "/user/properties/",
+    "/projectPartner/property"
   ];
 
   // Skip verification for public routes
@@ -743,6 +745,7 @@ app.use("/projectpartner/employee", projectPartnerEmployee);
 app.use("/projectpartner/ticket", projectPartnerTickets);
 app.use("/projectpartner/departments", projectpartnerappDepartment);
 app.use("/projectpartner/roles", projectPartnerRoles);
+app.use("/projectpartner/property",projectPartnerAppPropertyRoute)
 
 //Customer app
 app.use("/customerapp/loans", customerEmi);
