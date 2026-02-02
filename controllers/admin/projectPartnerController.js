@@ -3,8 +3,6 @@ import moment from "moment";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
 import { verifyRazorpayPayment } from "../paymentController.js";
-import fs from "fs";
-import path from "path";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
@@ -190,17 +188,17 @@ export const add = async (req, res) => {
 
     let adharImageUrl = null;
     if (adharImageFiles.length > 0) {
-      adharImageUrl = await uploadToS3(adharImageFiles[0], "documents/adhar");
+      adharImageUrl = await uploadToS3(adharImageFiles[0]);
     }
 
     let panImageUrl = null;
     if (panImageFiles.length > 0) {
-      panImageUrl = await uploadToS3(panImageFiles[0], "documents/pan");
+      panImageUrl = await uploadToS3(panImageFiles[0]);
     }
 
     let reraImageUrl = null;
     if (reraImageFiles.length > 0) {
-      reraImageUrl = await uploadToS3(reraImageFiles[0], "documents/rera");
+      reraImageUrl = await uploadToS3(reraImageFiles[0]);
     }
 
     //  Check duplicates
@@ -216,9 +214,11 @@ export const add = async (req, res) => {
       if (rows.length > 0) {
         const dup = rows[0];
         let duplicateField = "";
-        if (dup.contact === contact) duplicateField = "Contact number already exists";
+        if (dup.contact === contact)
+          duplicateField = "Contact number already exists";
         else if (dup.email === email) duplicateField = "Email already exists";
-        else if (dup.username === username) duplicateField = "Username already exists";
+        else if (dup.username === username)
+          duplicateField = "Username already exists";
 
         return res.status(409).json({
           message: duplicateField,
@@ -297,7 +297,8 @@ export const add = async (req, res) => {
               "UPDATE projectpartner SET status = 'Active' WHERE id = ?",
               [insertResult.insertId],
               (updateErr) => {
-                if (updateErr) console.error("Error updating status:", updateErr);
+                if (updateErr)
+                  console.error("Error updating status:", updateErr);
               }
             );
 
@@ -324,7 +325,7 @@ export const add = async (req, res) => {
                     error: followupErr,
                   });
 
-                // 7️⃣ Send email only if password exists
+                // 7 Send email only if password exists
                 if (password) {
                   try {
                     await sendEmail(
@@ -388,7 +389,7 @@ export const edit = async (req, res) => {
   }
 
   try {
-    // 1️⃣ Fetch old images from DB
+    // 1 Fetch old images from DB
     const rows = await new Promise((resolve, reject) =>
       db.query(
         "SELECT adharimage, panimage, reraimage FROM projectpartner WHERE id = ?",
@@ -426,7 +427,7 @@ export const edit = async (req, res) => {
       oldRera = oldData.reraimage ? [oldData.reraimage] : [];
     }
 
-    // 2️⃣ Upload new files to S3 if provided
+    // 2 Upload new files to S3 if provided
     const adharFile = req.files?.["adharImage"]?.[0];
     const panFile = req.files?.["panImage"]?.[0];
     const reraFile = req.files?.["reraImage"]?.[0];
@@ -436,24 +437,24 @@ export const edit = async (req, res) => {
     let newReraUrls = [...oldRera];
 
     if (adharFile) {
-      const url = await uploadToS3(adharFile, "documents/adhar");
+      const url = await uploadToS3(adharFile);
       for (const oldUrl of oldAdhar) await deleteFromS3(oldUrl);
       newAdharUrls = [url];
     }
 
     if (panFile) {
-      const url = await uploadToS3(panFile, "documents/pan");
+      const url = await uploadToS3(panFile);
       for (const oldUrl of oldPan) await deleteFromS3(oldUrl);
       newPanUrls = [url];
     }
 
     if (reraFile) {
-      const url = await uploadToS3(reraFile, "documents/rera");
+      const url = await uploadToS3(reraFile);
       for (const oldUrl of oldRera) await deleteFromS3(oldUrl);
       newReraUrls = [url];
     }
 
-    // 3️⃣ Build update query
+    // 3 Build update query
     let updateSql = `
       UPDATE projectpartner 
       SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, 
@@ -501,7 +502,9 @@ export const edit = async (req, res) => {
     updateValues.push(partnerid);
 
     await new Promise((resolve, reject) =>
-      db.query(updateSql, updateValues, (err) => (err ? reject(err) : resolve()))
+      db.query(updateSql, updateValues, (err) =>
+        err ? reject(err) : resolve()
+      )
     );
 
     res.status(200).json({ message: "Project Partner updated successfully" });
@@ -511,110 +514,112 @@ export const edit = async (req, res) => {
   }
 };
 
-
-
-export const updateBusinessDetails = (req, res) => {
-  const partnerid = parseInt(req.params.id);
-  if (isNaN(partnerid)) {
-    return res.status(400).json({ message: "Invalid Partner ID" });
-  }
-
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-
-  const {
-    whatsappNumber,
-    businessAddress,
-    businessState,
-    businessCity,
-    businessPincode,
-  } = req.body;
-
-  // Validation
-  if (
-    !whatsappNumber ||
-    !businessAddress ||
-    !businessState ||
-    !businessCity ||
-    !businessPincode
-  ) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
-  // Uploaded image (optional)
-  const businessLogo = req.file || null;
-  const businessLogoPath = businessLogo
-    ? `/uploads/${businessLogo.filename}`
-    : null;
-
-  // Fetch Old Image First
-  const selectSql = `SELECT businessLogo FROM projectpartner WHERE id = ?`;
-
-  db.query(selectSql, [partnerid], (selectErr, rows) => {
-    if (selectErr) {
-      return res.status(500).json({
-        message: "Error fetching old image",
-        error: selectErr,
-      });
+export const updateBusinessDetails = async (req, res) => {
+  try {
+    const partnerid = parseInt(req.params.id);
+    if (isNaN(partnerid)) {
+      return res.status(400).json({ message: "Invalid Partner ID" });
     }
 
-    const oldLogoPath = rows[0]?.businessLogo;
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-    // Delete old logo (only if new one uploaded)
-    if (businessLogoPath && oldLogoPath) {
-      const fullPath = path.join(process.cwd(), oldLogoPath);
-      if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-    }
-
-    // Build Update Query
-    let updateSql = `
-      UPDATE projectpartner 
-      SET whatsappNumber = ?, businessAddress = ?, 
-          businessState = ?, businessCity = ?, 
-          businessPincode = ?, updated_at = ?
-    `;
-
-    const updateValues = [
+    const {
       whatsappNumber,
       businessAddress,
       businessState,
       businessCity,
       businessPincode,
-      currentdate,
-    ];
+    } = req.body;
 
-    // If new logo uploaded, update it
-    if (businessLogoPath) {
-      updateSql += `, businessLogo = ? `;
-      updateValues.push(businessLogoPath);
+    // Validation
+    if (
+      !whatsappNumber ||
+      !businessAddress ||
+      !businessState ||
+      !businessCity ||
+      !businessPincode
+    ) {
+      return res.status(400).json({ message: "All fields are required" });
     }
 
-    updateSql += ` WHERE id = ?`;
-    updateValues.push(partnerid);
+    // Fetch existing business logo
+    const [rows] = await db
+      .promise()
+      .query(
+        "SELECT businessLogo FROM projectpartner WHERE id = ?",
+        [partnerid]
+      );
 
-    // Execute Update Query
-    db.query(updateSql, updateValues, (updateErr) => {
-      if (updateErr) {
-        return res.status(500).json({
-          message: "Database error during update",
-          error: updateErr,
-        });
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ message: "Project Partner not found" });
+    }
+
+    const oldLogoUrl = rows[0].businessLogo || null;
+
+    // Upload new logo to S3 (if provided)
+    let newLogoUrl = oldLogoUrl;
+
+    if (req.file) {
+      newLogoUrl = await uploadToS3(req.file);
+
+      // Delete old logo from S3
+      if (oldLogoUrl) {
+        try {
+          await deleteFromS3(oldLogoUrl);
+        } catch (err) {
+          console.error("Failed to delete old business logo:", err);
+        }
       }
+    }
 
-      res.status(200).json({
-        message: "Business Details updated successfully",
-      });
+    // Update DB
+    const updateSql = `
+      UPDATE projectpartner
+      SET whatsappNumber = ?, businessAddress = ?, businessState = ?,
+          businessCity = ?, businessPincode = ?, businessLogo = ?, updated_at = ?
+      WHERE id = ?
+    `;
+
+    await db.promise().query(updateSql, [
+      whatsappNumber,
+      businessAddress,
+      businessState,
+      businessCity,
+      businessPincode,
+      newLogoUrl,
+      currentdate,
+      partnerid,
+    ]);
+
+    return res.status(200).json({
+      message: "Business details updated successfully",
+      businessLogo: newLogoUrl,
     });
-  });
+  } catch (error) {
+    console.error("Error updating business details:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error,
+    });
+  }
 };
 
 //* ADD Seo Details */
 export const seoDetails = (req, res) => {
-  const { seoSlug, seoTitle, seoDescription, seoKeywords, twitterSite, twitterDescription } =
-    req.body;
+  const {
+    seoSlug,
+    seoTitle,
+    seoDescription,
+    seoKeywords,
+    twitterSite,
+    twitterDescription,
+  } = req.body;
   if (!seoTitle || !seoDescription || !seoKeywords) {
     return res
       .status(401)
-      .json({ message: "Seo Title and Seo Description and Seo Keywords Are Required" });
+      .json({
+        message: "Seo Title and Seo Description and Seo Keywords Are Required",
+      });
   }
   const Id = parseInt(req.params.id);
   if (isNaN(Id)) {
@@ -629,7 +634,15 @@ export const seoDetails = (req, res) => {
 
     db.query(
       "UPDATE projectpartner SET seoSlug = ?, seoTitle = ?, seoDescription = ?, seoKeywords = ?, twitterSite = ?, twitterDescription = ? WHERE id = ?",
-      [seoSlug, seoTitle, seoDescription, seoKeywords, twitterSite, twitterDescription, Id],
+      [
+        seoSlug,
+        seoTitle,
+        seoDescription,
+        seoKeywords,
+        twitterSite,
+        twitterDescription,
+        Id,
+      ],
       (err, result) => {
         if (err) {
           console.error("Error While Add Seo Details:", err);
