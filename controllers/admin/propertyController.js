@@ -43,7 +43,7 @@ export const getAll = (req, res) => {
                       employees.name AS fullname, 
                       employees.contact
                FROM properties 
-               INNER JOIN builders ON properties.builderid = builders.builderid 
+               LEFT JOIN builders ON properties.builderid = builders.builderid 
                INNER JOIN employees ON properties.employeeid = employees.id 
                ORDER BY properties.created_at DESC;`;
   } else if (propertyLister === "Project Partner") {
@@ -53,7 +53,7 @@ export const getAll = (req, res) => {
            projectpartner.contact,
            projectpartner.city AS partnerCity
         FROM properties 
-        INNER JOIN builders ON properties.builderid = builders.builderid 
+        LEFT JOIN builders ON properties.builderid = builders.builderid 
         INNER JOIN projectpartner ON properties.projectpartnerid = projectpartner.id 
         ORDER BY properties.created_at DESC;`;
   } else if (propertyLister === "Guest User") {
