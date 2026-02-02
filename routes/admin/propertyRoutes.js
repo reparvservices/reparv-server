@@ -28,6 +28,7 @@ import {
   hotDeal,
   changeProjectPartner,
   setTopPicks,
+  reparvAssured,
 } from "../../controllers/admin/propertyController.js";
 
 const router = express.Router();
@@ -105,6 +106,7 @@ router.put(
 
 router.put("/status/:id", status);
 router.put("/set/hotdeal/:id", hotDeal);
+router.put("/reparv-assured/:id", reparvAssured);
 
 const topPicksUpload = multer({
   storage: memoryStorage,

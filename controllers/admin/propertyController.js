@@ -903,6 +903,49 @@ export const hotDeal = (req, res) => {
   );
 };
 
+//**Change property Reparv Assured */
+export const reparvAssured = (req, res) => {
+  const Id = parseInt(req.params.id);
+  //console.log(Id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid Property ID" });
+  }
+
+  db.query(
+    "SELECT * FROM properties WHERE propertyid = ?",
+    [Id],
+    (err, result) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+
+      let reparvAssured = "";
+      if (result[0].reparvAssured === "Active") {
+        reparvAssured = "Inactive";
+      } else {
+        reparvAssured = "Active";
+      }
+      //console.log(status);
+      db.query(
+        "UPDATE properties SET reparvAssured = ? WHERE propertyid = ?",
+        [hotDeal, Id],
+        (err, result) => {
+          if (err) {
+            console.error("Error changing reparv assured status :", err);
+            return res
+              .status(500)
+              .json({ message: "Database error", error: err });
+          }
+          res
+            .status(200)
+            .json({ message: "Property reparv assured status change successfully" });
+        }
+      );
+    }
+  );
+};
+
 export const setTopPicks = async (req, res) => {
   const propertyId = req.params.id;
 
