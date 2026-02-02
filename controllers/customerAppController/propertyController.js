@@ -49,7 +49,7 @@ export const addInWishList = (req, res) => {
           }
 
           res.status(201).json({ message: "Successfully Added!" });
-        }
+        },
       );
     });
   } catch (error) {
@@ -98,23 +98,82 @@ export const getAll = (req, res) => {
     return res.status(401).json({ message: "Unauthorized Access" });
   }
 
-  const sql = `SELECT properties.* FROM properties
-               WHERE properties.customerid = ?
-               ORDER BY properties.propertyid DESC`;
-  db.query(sql, [userId], (err, result) => {
+  const sql = `
+    SELECT properties.* 
+    FROM properties
+    WHERE properties.customerid = ?
+       OR properties.guestUserId = ?
+    ORDER BY properties.propertyid DESC
+  `;
+
+  db.query(sql, [userId, userId], (err, result) => {
     if (err) {
       console.error("Error fetching properties:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
+
     const formatted = result.map((row) => ({
       ...row,
       created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
       updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
     }));
 
-    // console.log(formatted);
-
     res.json(formatted);
+  });
+};
+
+// **Fetch Single Property by ID (with Likes Count)**
+export const getById = (req, res) => {
+  const Id = parseInt(req.params.id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid Property ID" });
+  }
+
+  const sql = `
+    SELECT 
+      properties.*,
+      builders.company_name,
+      COUNT(DISTINCT user_property_wishlist.user_id) AS likes 
+    FROM properties
+
+    LEFT JOIN builders
+      ON builders.builderid = properties.builderid
+
+    LEFT JOIN user_property_wishlist
+      ON user_property_wishlist.property_id = properties.propertyid
+
+    WHERE properties.propertyid = ?
+
+    GROUP BY properties.propertyid
+  `;
+
+  db.query(sql, [Id], (err, result) => {
+    if (err) {
+      console.error("Error fetching property:", err);
+      return res.status(500).json({
+        message: "Database error",
+        error: err,
+      });
+    }
+
+    if (!result.length) {
+      return res.status(404).json({ message: "Property not found" });
+    }
+
+    // Safely parse JSON fields
+    const row = result[0];
+    let parsedType = [];
+
+    try {
+      parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
+    } catch (e) {
+      console.warn("Invalid JSON in propertyType:", row.propertyType);
+    }
+
+    res.json({
+      ...row,
+      propertyType: parsedType,
+    });
   });
 };
 
@@ -190,7 +249,7 @@ export const addProperty = async (req, res) => {
         /*  Insert property */
         const insertSQL = `
           INSERT INTO properties (
-            customerid, propertyType, propertyCategory, propertyName,
+            customerid,guestUserId, propertyType, propertyCategory, propertyName,
             totalSalesPrice, totalOfferPrice, contact, projectBy,
             state, city, address, builtUpArea, carpetArea,
             frontView, sideView, kitchenView, hallView,
@@ -198,10 +257,11 @@ export const addProperty = async (req, res) => {
             nearestLandmark, developedAmenities,
             seoSlug, created_at, updated_at
           )
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
         `;
 
         const values = [
+          customerid,
           customerid,
           property_type,
           property_type,
@@ -241,7 +301,7 @@ export const addProperty = async (req, res) => {
             id: result.insertId,
           });
         });
-      }
+      },
     );
   } catch (error) {
     console.error(error);
@@ -387,7 +447,7 @@ export const updateProperty = async (req, res) => {
             propertyid,
           });
         });
-      }
+      },
     );
   } catch (error) {
     console.error("Update error:", error);
@@ -432,9 +492,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 //delete property
@@ -507,7 +567,7 @@ export const del = (req, res) => {
           message: "Property and associated images deleted successfully",
         });
       });
-    }
+    },
   );
 };
 
