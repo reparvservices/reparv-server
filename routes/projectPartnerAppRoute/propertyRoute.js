@@ -8,7 +8,7 @@ const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 1024 * 1024 * 2, // 2MB
+    fileSize: 1024 * 1024 * 5, 
   },
   fileFilter: (req, file, cb) => {
     const allowed = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
