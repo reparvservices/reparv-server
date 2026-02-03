@@ -18,11 +18,11 @@ export const getAll = (req, res) => {
 
   // Step 1: Fetch all builders added by this Project Partner
   const fetchBuildersQuery =
-    "SELECT * FROM builders WHERE builders.builderadder = ? OR builders.builderadder = ? ORDER BY builderid DESC";
+    "SELECT * FROM builders WHERE builders.builderadder = ? ORDER BY builderid DESC";
 
   db.query(
     fetchBuildersQuery,
-    [projectPartnerId, projectPartnerAdhar],
+    [projectPartnerId],
     (err, builders) => {
       if (err) {
         console.error("Error fetching builders:", err);
