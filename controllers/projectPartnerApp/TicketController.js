@@ -4,12 +4,14 @@ import moment from "moment";
 export const getAll = (req, res) => {
   const ticketGenerator = req.params.generator;
   const projectpartnerid = req.params.id;
-  const adharId=req.params.adharId
+  const adharId = req.params.adharId;
+  console.log(adharId,'ddd');
+  
   if (!ticketGenerator) {
     return res.status(401).json({ message: "Select Generator Not Selected" });
   }
 
-  console.log(ticketGenerator, '', projectpartnerid);
+  console.log(ticketGenerator, "", projectpartnerid);
 
   let sql;
   let params = [projectpartnerid];
@@ -63,8 +65,7 @@ export const getAll = (req, res) => {
       ORDER BY tickets.created_at DESC
     `;
   } else {
-
-     sql = `
+    sql = `
    SELECT 
   tickets.*, 
   users.name AS admin_name, 
@@ -89,7 +90,7 @@ WHERE tickets.ticketadder = ?
 ORDER BY tickets.created_at DESC;
 
     `;
-    params=[adharId]
+    params = [adharId];
   }
 
   db.query(sql, params, (err, result) => {
@@ -107,7 +108,6 @@ ORDER BY tickets.created_at DESC;
     res.json(formatted);
   });
 };
-
 
 // **Fetch Single by ID**
 export const getById = (req, res) => {
@@ -185,11 +185,11 @@ export const getEmployees = (req, res) => {
 // **Add New **
 export const add = (req, res) => {
   const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
-console.log(req.body);
+  console.log(req.body);
 
   const adharId = req.params?.adharId;
- // console.log(adharId);
-  
+   console.log(adharId);
+
   if (!adharId) {
     return res
       .status(401)
@@ -202,12 +202,12 @@ console.log(req.body);
   const generateCode = () => {
     const randomLetters = Array.from(
       { length: 3 },
-      () => letters[Math.floor(Math.random() * letters.length)]
+      () => letters[Math.floor(Math.random() * letters.length)],
     ).join("");
 
     const randomDigits = Array.from(
       { length: 3 },
-      () => digits[Math.floor(Math.random() * digits.length)]
+      () => digits[Math.floor(Math.random() * digits.length)],
     ).join("");
 
     return randomLetters + randomDigits; // Letters first, then numbers
@@ -257,7 +257,7 @@ console.log(req.body);
           Id: result.insertId,
           ticketno,
         });
-      }
+      },
     );
   };
   tryInsert();
@@ -297,7 +297,7 @@ export const changeStatus = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Status changed successfully" });
-      }
+      },
     );
   });
 };
@@ -330,7 +330,7 @@ export const update = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Ticket updated successfully" });
-      }
+      },
     );
   });
 };
@@ -371,7 +371,7 @@ export const addResponse = (req, res) => {
 
         res.status(200).json(rows[0]);
       });
-    }
+    },
   );
 };
 
@@ -401,4 +401,3 @@ export const del = (req, res) => {
     });
   });
 };
-
