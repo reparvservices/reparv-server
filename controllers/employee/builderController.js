@@ -16,14 +16,47 @@ export const getAll = (req, res) => {
     });
   }
 
-  // Step 1: Fetch all builders added by this Project Partner
-  const fetchBuildersQuery =
-    "SELECT * FROM builders WHERE builders.builderadder = ? ORDER BY builderid DESC";
+  // Step 1: Get project partner adharno
+  const getPartnerAdharQuery =
+    "SELECT adharno FROM projectpartner WHERE id = ?";
 
-  db.query(
-    fetchBuildersQuery,
-    [projectPartnerId],
-    (err, builders) => {
+  db.query(getPartnerAdharQuery, [projectPartnerId], (err, partnerResult) => {
+    if (err) {
+      console.error("Error fetching project partner adharno:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    if (partnerResult.length === 0) {
+      return res.status(404).json({ message: "Project Partner not found." });
+    }
+
+    const partnerAdhar = partnerResult[0]?.adharno;
+
+    let fetchBuildersQuery = "";
+    let queryParams = [];
+
+    // ✅ If adharno exists → fetch by BOTH id & adharno
+    if (partnerAdhar) {
+      fetchBuildersQuery = `
+        SELECT *
+        FROM builders
+        WHERE builders.builderadder IN (?, ?)
+        ORDER BY builderid DESC
+      `;
+      queryParams = [projectPartnerId, partnerAdhar];
+    }
+    // ✅ If adharno does NOT exist → fetch by id only
+    else {
+      fetchBuildersQuery = `
+        SELECT *
+        FROM builders
+        WHERE builders.builderadder = ?
+        ORDER BY builderid DESC
+      `;
+      queryParams = [projectPartnerId];
+    }
+
+    db.query(fetchBuildersQuery, queryParams, (err, builders) => {
       if (err) {
         console.error("Error fetching builders:", err);
         return res.status(500).json({ message: "Database error", error: err });
@@ -40,8 +73,8 @@ export const getAll = (req, res) => {
       }));
 
       res.json(formatted);
-    }
-  );
+    });
+  });
 };
 
 // **Fetch All Active Builders (For Employee Only)**
@@ -55,17 +88,56 @@ export const getAllActive = (req, res) => {
     });
   }
 
-  // Step 1: Fetch all active builders added by this partner
-  const sql =
-    "SELECT * FROM builders WHERE status = 'Active' AND builders.builderadder = ? ORDER BY company_name";
+  // Step 1: Get project partner adharno
+  const getPartnerAdharQuery =
+    "SELECT adharno FROM projectpartner WHERE id = ?";
 
-  db.query(sql, [projectPartnerId], (err, result) => {
+  db.query(getPartnerAdharQuery, [projectPartnerId], (err, partnerResult) => {
     if (err) {
-      console.error("Error fetching active builders:", err);
+      console.error("Error fetching project partner adharno:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
 
-    res.json(result);
+    if (partnerResult.length === 0) {
+      return res.status(404).json({ message: "Project Partner not found." });
+    }
+
+    const partnerAdhar = partnerResult[0]?.adharno;
+
+    let sql = "";
+    let params = [];
+
+    // ✅ If adharno exists → fetch by BOTH
+    if (partnerAdhar) {
+      sql = `
+        SELECT *
+        FROM builders
+        WHERE status = 'Active'
+          AND builders.builderadder IN (?, ?)
+        ORDER BY company_name
+      `;
+      params = [projectPartnerId, partnerAdhar];
+    }
+    // ✅ If adharno does not exist → fetch by id only
+    else {
+      sql = `
+        SELECT *
+        FROM builders
+        WHERE status = 'Active'
+          AND builders.builderadder = ?
+        ORDER BY company_name
+      `;
+      params = [projectPartnerId];
+    }
+
+    db.query(sql, params, (err, result) => {
+      if (err) {
+        console.error("Error fetching active builders:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+
+      res.json(result);
+    });
   });
 };
 
