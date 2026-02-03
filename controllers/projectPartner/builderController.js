@@ -7,9 +7,18 @@ const saltRounds = 10;
 
 // **Fetch All**
 export const getAll = (req, res) => {
+  const projectPartnerId = req.projectPartnerUser?.id;
+  const adharId = req.projectPartnerUser?.adharId;
+
+  if (!projectPartnerId && !adharId) {
+    return res.status(401).json({
+      message: "Unauthorized access. Project Partner not found.",
+    });
+  }
+
   const sql =
-    "SELECT * FROM builders WHERE builders.builderadder = ? ORDER BY builderid DESC";
-  db.query(sql, [req.projectPartnerUser?.adharId], (err, result) => {
+    "SELECT * FROM builders WHERE  ( builders.builderadder = ? OR builders.builderadder = ? ) ORDER BY builderid DESC";
+  db.query(sql, [projectPartnerId, adharId], (err, result) => {
     if (err) {
       console.error("Error fetching:", err);
       return res.status(500).json({ message: "Database error", error: err });
@@ -25,14 +34,46 @@ export const getAll = (req, res) => {
 };
 
 // **Fetch All**
-export const getAllActive = (req, res) => {
+export const getAllActiveOld = (req, res) => {
   const sql =
-    "SELECT * FROM builders WHERE status = 'Active' AND builders.builderadder = ? ORDER BY company_name";
-  db.query(sql, [req.projectPartnerUser?.adharId], (err, result) => {
+    "SELECT * FROM builders WHERE status = 'Active' AND ( builders.builderadder = ? OR builders.builderadder = ? ) ORDER BY company_name";
+  db.query(sql, [req.projectPartnerUser?.id], (err, result) => {
     if (err) {
       console.error("Error fetching:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
+    res.json(result);
+  });
+};
+
+// **Fetch All Active Builders (Project Partner)**
+export const getAllActive = (req, res) => {
+  const projectPartnerId = req.projectPartnerUser?.id;
+  const adharId = req.projectPartnerUser?.adharId;
+
+  if (!projectPartnerId && !adharId) {
+    return res.status(401).json({
+      message: "Unauthorized access. Project Partner not found.",
+    });
+  }
+
+  const sql = `
+    SELECT *
+    FROM builders
+    WHERE status = 'Active'
+      AND (
+        builders.builderadder = ?
+        OR builders.builderadder = ?
+      )
+    ORDER BY company_name
+  `;
+
+  db.query(sql, [projectPartnerId, adharId], (err, result) => {
+    if (err) {
+      console.error("Error fetching active builders:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
     res.json(result);
   });
 };
@@ -56,8 +97,8 @@ export const getById = (req, res) => {
 
 // **Add New Builder**
 export const add = (req, res) => {
-  const adharId = req.projectPartnerUser?.adharId;
-  if (!adharId) {
+  const partnerId = req.projectPartnerUser?.id;
+  if (!partnerId) {
     return res
       .status(401)
       .json({ message: "Unauthorized! Please Login Again." });
@@ -100,7 +141,7 @@ export const add = (req, res) => {
         db.query(
           insertSQL,
           [
-            adharId,
+            partnerId,
             company_name,
             contact_person,
             contact,

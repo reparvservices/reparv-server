@@ -28,6 +28,7 @@ export const getAll = (req, res) => {
     projectpartner.contact AS listerContact 
     FROM builders
     INNER JOIN projectpartner ON builders.builderadder = projectpartner.adharno 
+                              OR builders.builderadder = projectpartner.adharno
     ORDER BY builders.builderid DESC;`;
   } else {
     sql = "SELECT * FROM builders ORDER BY builderid DESC";
