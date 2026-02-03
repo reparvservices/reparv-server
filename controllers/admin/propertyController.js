@@ -5,7 +5,7 @@ import path from "path";
 import csv from "csv-parser";
 import { convertImagesToWebp } from "../../utils/convertImagesToWebp.js";
 import { sanitize } from "../../utils/sanitize.js";
-import { uploadToS3 } from "../../utils/imageUpload.js";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 
 function toSlug(text) {
   return text
@@ -702,8 +702,10 @@ export const update = async (req, res) => {
   }
 };
 
+// **Delete Property + S3 Images**
 export const del = (req, res) => {
   const Id = parseInt(req.params.id);
+
   if (isNaN(Id)) {
     return res.status(400).json({ message: "Invalid Property ID" });
   }
@@ -720,11 +722,11 @@ export const del = (req, res) => {
     "developedAmenities",
   ];
 
-  // Fetch all image paths from DB
+  // Step 1: Fetch all image URLs from DB
   db.query(
     `SELECT ${imageFields.join(", ")} FROM properties WHERE propertyid = ?`,
     [Id],
-    (err, result) => {
+    async (err, result) => {
       if (err) {
         console.error("Database error:", err);
         return res.status(500).json({ message: "Database error", error: err });
@@ -736,40 +738,44 @@ export const del = (req, res) => {
 
       const property = result[0];
 
-      // Loop through image fields and delete each image
-      imageFields.forEach((field) => {
-        if (property[field]) {
-          try {
-            const paths = JSON.parse(property[field]);
-            if (Array.isArray(paths)) {
-              paths.forEach((imgPath) => {
-                const fullPath = path.join(process.cwd(), imgPath);
-                fs.unlink(fullPath, (err) => {
-                  if (err && err.code !== "ENOENT") {
-                    console.error(`Error deleting ${imgPath}:`, err);
-                  }
-                });
-              });
+      try {
+        // Step 2: Delete images from S3
+        for (const field of imageFields) {
+          if (!property[field]) continue;
+
+          const urls = JSON.parse(property[field]);
+
+          if (Array.isArray(urls)) {
+            for (const url of urls) {
+              await deleteFromS3(url);
             }
-          } catch (e) {
-            console.error(`Failed to parse ${field}:`, e);
           }
         }
-      });
 
-      // Delete the property from DB
-      db.query("DELETE FROM properties WHERE propertyid = ?", [Id], (err) => {
-        if (err) {
-          console.error("Error deleting property:", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-        }
+        // Step 3: Delete property from DB
+        db.query(
+          "DELETE FROM properties WHERE propertyid = ?",
+          [Id],
+          (err) => {
+            if (err) {
+              console.error("Error deleting property:", err);
+              return res
+                .status(500)
+                .json({ message: "Database error", error: err });
+            }
 
-        res.status(200).json({
-          message: "Property and associated images deleted successfully",
+            res.status(200).json({
+              message: "Property and associated images deleted successfully",
+            });
+          }
+        );
+      } catch (s3Error) {
+        console.error("S3 delete error:", s3Error);
+        return res.status(500).json({
+          message: "Failed to delete images from S3",
+          error: s3Error,
         });
-      });
+      }
     }
   );
 };
@@ -939,7 +945,9 @@ export const reparvAssured = (req, res) => {
           }
           res
             .status(200)
-            .json({ message: "Property reparv assured status change successfully" });
+            .json({
+              message: "Property reparv assured status change successfully",
+            });
         }
       );
     }
@@ -955,10 +963,11 @@ export const setTopPicks = async (req, res) => {
 
   try {
     // 1️⃣ Get existing banner
-    const [rows] = await db.promise().query(
-      "SELECT topPicksBanner FROM properties WHERE propertyid = ?",
-      [propertyId]
-    );
+    const [rows] = await db
+      .promise()
+      .query("SELECT topPicksBanner FROM properties WHERE propertyid = ?", [
+        propertyId,
+      ]);
 
     if (rows.length === 0) {
       return res.status(404).json({ message: "Property not found" });
@@ -991,7 +1000,6 @@ export const setTopPicks = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
-
 
 // get Property Location Latitude and Longitude
 export const getPropertyLocation = (req, res) => {
@@ -2101,4 +2109,3 @@ export const fetchAdditionalInfo = (req, res) => {
     res.json(result); // Return only the first property
   });
 };
-

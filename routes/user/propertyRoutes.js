@@ -10,6 +10,7 @@ import {
   additionalInfoAdd,
   editAdditionalInfo,
   propertyInfo,
+  del,
 } from "../../controllers/user/propertyController.js";
 
 const router = express.Router();
@@ -19,6 +20,7 @@ router.get("/", getAll);
 router.get("/:id", getById);
 router.get("/images/:id", getImages);
 router.delete("/images/delete/:id", deleteImages);
+router.delete("/delete/:id", del);
 router.get("/propertyinfo/:id", propertyInfo);
 
 /* ---------- ADD / EDIT PROPERTY ---------- */
