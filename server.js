@@ -91,7 +91,7 @@ import guestUserDashboardRoutes from "./routes/guestUser/dashboardRoutes.js";
 import guestUserPropertyRoutes from "./routes/guestUser/propertyRoutes.js";
 import guestUserMapRoutes from "./routes/guestUser/mapRoutes.js";
 import guestUserBuilderRoutes from "./routes/guestUser/builderRoutes.js";
- 
+
 // User Routes
 import userLoginRoutes from "./routes/user/userRoutes.js";
 import userProfileRoutes from "./routes/user/profileRoutes.js";
@@ -103,7 +103,7 @@ import userBuilderRoutes from "./routes/user/builderRoutes.js";
 import userAuthRoutes from "./routes/user/authRoutes.js";
 import userEmiRoutes from "./routes/user/emiRoutes.js";
 import userActivityRoutes from "./routes/user/activityRoutes.js";
- 
+
 // builder
 import builderLoginRoutes from "./routes/builder/loginRoutes.js";
 import builderProfileRoutes from "./routes/builder/profileRoutes.js";
@@ -241,7 +241,8 @@ import projectPartnerEmployee from "./routes/projectPartnerAppRoute/employeeRout
 import projectPartnerTickets from "./routes/projectPartnerAppRoute/ticketRouter.js";
 import projectpartnerappDepartment from "./routes/projectPartnerAppRoute/departmentRoutes.js";
 import projectPartnerRoles from "./routes/projectPartnerAppRoute/roleRoutes.js";
-import projectPartnerAppPropertyRoute from "./routes/projectPartnerAppRoute/propertyRoute.js"
+import projectPartnerAppPropertyRoute from "./routes/projectPartnerAppRoute/propertyRoute.js";
+import projectPartnerAppBuilderRoute from "./routes/projectPartnerAppRoute/builderRoutes.js";
 //Customer App
 import customerEmi from "./routes/customerAppRoute/EmiRoute.js";
 import customerSignUp from "./routes/customerAppRoute/userRoute.js";
@@ -270,7 +271,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: { secure: false, httpOnly: true }, // Use `secure: true` in production with HTTPS
-  })
+  }),
 );
 
 app.use(express.json({ limit: "200mb" }));
@@ -311,7 +312,7 @@ app.use(
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
-  })
+  }),
 );
 // Use the same custom CORS for preflight requests
 app.options(
@@ -327,7 +328,7 @@ app.options(
     },
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     credentials: true,
-  })
+  }),
 );
 app.use(cookieParser());
 
@@ -442,7 +443,8 @@ export const verifyToken = (req, res, next) => {
     "/admin/partner",
     //"/admin/projectpartner",
     //"/user/properties/",
-    "/projectPartner/property"
+    "/projectpartner/builders",
+    "/projectPartner/property",
   ];
 
   // Skip verification for public routes
@@ -673,7 +675,7 @@ app.use("/project-partner/dashboard", projectPartnerDashboardRoutes);
 app.use("/project-partner/properties", projectPartnerPropertyRoutes);
 app.use(
   "/project-partner/property/additional-info",
-  projectPartnerPropertyAdditionalInfoRoutes
+  projectPartnerPropertyAdditionalInfoRoutes,
 );
 app.use("/project-partner/map", projectPartnerMapRoutes);
 app.use("/project-partner/customers", projectPartnerCustomerRoutes);
@@ -745,7 +747,8 @@ app.use("/projectpartner/employee", projectPartnerEmployee);
 app.use("/projectpartner/ticket", projectPartnerTickets);
 app.use("/projectpartner/departments", projectpartnerappDepartment);
 app.use("/projectpartner/roles", projectPartnerRoles);
-app.use("/projectpartner/property",projectPartnerAppPropertyRoute)
+app.use("/projectpartner/property", projectPartnerAppPropertyRoute);
+app.use("/projectpartner/builders", projectPartnerAppBuilderRoute);
 
 //Customer app
 app.use("/customerapp/loans", customerEmi);
@@ -845,5 +848,3 @@ app.post("/api/saveSheetData", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
-
-
