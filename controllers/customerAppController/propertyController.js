@@ -61,7 +61,6 @@ export const addInWishList = (req, res) => {
 export const getUserWishlist = (req, res) => {
   try {
     const { user_id } = req.params;
-
     if (!user_id) {
       return res.status(400).json({ message: "User ID is required!" });
     }
@@ -624,13 +623,11 @@ export const getPropertyLikeCount = (req, res) => {
         message: "Property ID is required",
       });
     }
-
     const sql = `
-      SELECT COUNT(DISTINCT user_id) AS likeCount
+      SELECT COUNT(DISTINCT guest_user_id) AS likeCount
       FROM user_property_wishlist
       WHERE property_id = ?
     `;
-
     db.query(sql, [propertyId], (err, result) => {
       if (err) {
         console.error("Get Property Like Count Error:", err);
