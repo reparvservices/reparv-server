@@ -165,10 +165,10 @@ export const getById = (req, res) => {
     SELECT 
       p.*,
       COUNT(DISTINCT CASE 
-        WHEN pi.status = 'Available' THEN pi.id 
+        WHEN pi.status = 'Available' THEN pi.propertyinfoid 
       END) AS availableCount,
       COUNT(DISTINCT CASE 
-        WHEN pi.status = 'Booked' THEN pi.id 
+        WHEN pi.status = 'Booked' THEN pi.propertyinfoid 
       END) AS bookedCount,
       COUNT(DISTINCT w.guest_user_id) AS likes
     FROM properties p

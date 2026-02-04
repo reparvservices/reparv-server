@@ -16,6 +16,7 @@ export const getAll = (req, res) => {
     SELECT 
       e.*,
       p.frontView,
+      p.propertyName,
       p.seoSlug,
       p.commissionAmount,
       tp.fullname AS territoryName,
