@@ -123,3 +123,123 @@ export const blogLike = (req, res) => {
     }
   });
 };
+
+// GET WISHLIST PROPERTIES
+export const getLikedProperties = (req, res) => {
+  const userId = req.guestUser?.id;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const sql = `
+    SELECT 
+      p.*,
+      COUNT(DISTINCT upw2.guest_user_id) AS likes
+    FROM user_property_wishlist upw
+    INNER JOIN properties p ON p.propertyid = upw.property_id
+
+    LEFT JOIN user_property_wishlist upw2
+      ON upw2.property_id = p.propertyid
+
+    WHERE upw.guest_user_id = ?
+      AND p.status = 'Active'
+      AND p.approve = 'Approved'
+
+    GROUP BY p.propertyid
+    ORDER BY upw.id DESC
+  `;
+
+  db.query(sql, [userId], (err, result) => {
+    if (err) {
+      console.error("Wishlist fetch error:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    res.json(result);
+  });
+};
+
+export const getEnquiryProperties = (req, res) => {
+  const userId = req.guestUser?.id;
+  const contact = req.guestUser?.contact;
+
+  if (!userId && !contact) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const sql = `
+    SELECT DISTINCT p.*
+    FROM enquirers e
+    INNER JOIN properties p ON p.propertyid = e.propertyid
+    WHERE e.status != 'Token'
+      AND (e.customerid = ? OR e.contact = ?)
+      AND p.status = 'Active'
+      AND p.approve = 'Approved'
+    ORDER BY e.created_at DESC
+  `;
+
+  db.query(sql, [userId, contact], (err, result) => {
+    if (err) {
+      console.error("Enquiry fetch error:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+    res.json(result);
+  });
+};
+
+export const getVisitedProperties = (req, res) => {
+  const userId = req.guestUser?.id;
+  const contact = req.guestUser?.contact;
+
+  if (!userId && !contact) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const sql = `
+    SELECT DISTINCT p.*
+    FROM enquirers e
+    INNER JOIN properties p ON p.propertyid = e.propertyid
+    WHERE e.status = 'Visit Scheduled'
+      AND (e.customerid = ? OR e.contact = ?)
+      AND p.status = 'Active'
+      AND p.approve = 'Approved'
+    ORDER BY e.created_at DESC
+  `;
+
+  db.query(sql, [userId, contact], (err, result) => {
+    if (err) {
+      console.error("Visited fetch error:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+    res.json(result);
+  });
+};
+
+export const getBookedProperties = (req, res) => {
+  const userId = req.guestUser?.id;
+  const contact = req.guestUser?.contact;
+
+  if (!userId && !contact) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const sql = `
+    SELECT DISTINCT p.*
+    FROM enquirers e
+    INNER JOIN properties p ON p.propertyid = e.propertyid
+    WHERE e.status = 'Token'
+      AND (e.customerid = ? OR e.contact = ?)
+      AND p.status = 'Active'
+      AND p.approve = 'Approved'
+    ORDER BY e.created_at DESC
+  `;
+
+  db.query(sql, [userId, contact], (err, result) => {
+    if (err) {
+      console.error("Booked fetch error:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+    res.json(result);
+  });
+};
