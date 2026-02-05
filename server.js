@@ -441,9 +441,7 @@ export const verifyToken = (req, res, next) => {
     "/customerapp/loans",
     "/admin/blog",
     "/admin/partner",
-    //"/admin/projectpartner",
-    //"/user/properties/",
-    "/projectpartner/builders",
+    //"/projectpartner/builders",
     "/projectPartner/property",
   ];
 

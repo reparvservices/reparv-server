@@ -65,9 +65,9 @@ export const propertyLike = (req, res) => {
 
 export const blogLike = (req, res) => {
   const userId = req.guestUser?.id;
-  const { blogId } = req.params;
+  const { blog_id } = req.body;
 
-  if (!userId || !blogId) {
+  if (!userId || !blog_id) {
     return res.status(400).json({ message: "User or Blog ID missing" });
   }
 
@@ -78,7 +78,7 @@ export const blogLike = (req, res) => {
     WHERE guest_user_id = ? AND blog_id = ?
   `;
 
-  db.query(checkSql, [userId, blogId], (err, rows) => {
+  db.query(checkSql, [userId, blog_id], (err, rows) => {
     if (err) {
       console.error("Check blog like error:", err);
       return res.status(500).json({ message: "Database error" });
@@ -91,7 +91,7 @@ export const blogLike = (req, res) => {
         WHERE guest_user_id = ? AND blog_id = ?
       `;
 
-      db.query(deleteSql, [userId, blogId], (err) => {
+      db.query(deleteSql, [userId, blog_id], (err) => {
         if (err) {
           console.error("Remove blog like error:", err);
           return res.status(500).json({ message: "Database error" });
@@ -99,7 +99,7 @@ export const blogLike = (req, res) => {
 
         return res.json({
           liked: false,
-          message: "Blog unliked",
+          message: "Blog Disliked",
         });
       });
     } else {
@@ -109,7 +109,7 @@ export const blogLike = (req, res) => {
         VALUES (?, ?)
       `;
 
-      db.query(insertSql, [userId, blogId], (err) => {
+      db.query(insertSql, [userId, blog_id], (err) => {
         if (err) {
           console.error("Add blog like error:", err);
           return res.status(500).json({ message: "Database error" });
@@ -117,7 +117,7 @@ export const blogLike = (req, res) => {
 
         return res.json({
           liked: true,
-          message: "Blog liked",
+          message: "Blog Liked",
         });
       });
     }
