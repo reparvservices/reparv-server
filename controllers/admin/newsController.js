@@ -1,0 +1,359 @@
+import db from "../../config/dbconnect.js";
+import moment from "moment";
+import bcrypt from "bcryptjs";
+import { uploadToS3 } from "../../utils/imageUpload.js";
+
+function toSlug(text) {
+  return text
+    .toLowerCase() // Convert to lowercase
+    .trim() // Remove leading/trailing spaces
+    .replace(/[^a-z0-9\s-]/g, "") // Remove special characters
+    .replace(/\s+/g, "-") // Replace spaces with hyphens
+    .replace(/-+/g, "-"); // Replace multiple hyphens with single
+}
+
+// **Add New **
+export const add = async (req, res) => {
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+    const { type, title, description, content, state, city } = req.body;
+
+    /* ---------- VALIDATION ---------- */
+    if (!type || !title || !description || !content || !state || !city) {
+      return res.status(400).json({
+        message: "All fields are required",
+      });
+    }
+
+    const cleanTitle = title.trim();
+    const cleanDescription = description.trim();
+    const cleanContent = content.trim();
+
+    if (!cleanTitle || !cleanDescription || !cleanContent) {
+      return res.status(400).json({
+        message: "Invalid input values",
+      });
+    }
+
+    /* ---------- SEO SLUG ---------- */
+    let seoSlug = toSlug(cleanTitle);
+
+    // Optional: make slug unique
+    const [existing] = await db
+      .promise()
+      .query(`SELECT id FROM news WHERE seoSlug = ?`, [seoSlug]);
+
+    if (existing.length > 0) {
+      seoSlug = `${seoSlug}-${Date.now()}`;
+    }
+
+    /* ---------- IMAGE UPLOAD ---------- */
+    const uploadNewsImage = async () => {
+      if (!req.files?.newsImage?.[0]) return null;
+      return await uploadToS3(req.files.newsImage[0]);
+    };
+
+    const newsImageUrl = await uploadNewsImage();
+
+    /* ---------- INSERT NEWS ---------- */
+    const sql = `
+      INSERT INTO news (
+        type,
+        title,
+        description,
+        content,
+        seoSlug,
+        image,
+        state,
+        city,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const [result] = await db
+      .promise()
+      .query(sql, [
+        type,
+        cleanTitle,
+        cleanDescription,
+        cleanContent,
+        seoSlug,
+        newsImageUrl,
+        state,
+        city,
+        currentdate,
+        currentdate,
+      ]);
+
+    return res.status(201).json({
+      message: "News added successfully",
+      newsId: result.insertId,
+    });
+  } catch (error) {
+    console.error("Error inserting news:", error);
+    return res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+// **Fetch All **
+export const getAll = (req, res) => {
+  const sql = "SELECT * FROM news ORDER BY created_at DESC";
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error("Error fetching :", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    const formatted = result.map((row) => ({
+      ...row,
+      created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+    }));
+
+    res.json(formatted);
+  });
+};
+
+// **Fetch All**
+export const getAllActive = (req, res) => {
+  const sql = "SELECT * FROM news WHERE status = 'Active' ORDER BY id DESC";
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error("Error fetching:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    res.json(result);
+  });
+};
+
+// **Fetch Single by ID**
+export const getById = (req, res) => {
+  const Id = parseInt(req.params.id);
+  const sql = "SELECT * FROM news WHERE id = ?";
+
+  db.query(sql, [Id], (err, result) => {
+    if (err) {
+      console.error("Error fetching :", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    if (result.length === 0) {
+      return res.status(404).json({ message: "news not found" });
+    }
+    res.json(result[0]);
+  });
+};
+
+// **Edit **
+export const edit = async (req, res) => {
+  try {
+    const newsId = req.params.id;
+    if (!newsId) {
+      return res.status(400).json({ message: "Invalid News ID" });
+    }
+
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+    const {
+      type,
+      title,
+      description,
+      content,
+      state,
+      city,
+    } = req.body;
+
+    /* ---------- VALIDATION ---------- */
+    if (
+      !type ||
+      !title ||
+      !description ||
+      !content ||
+      !state ||
+      !city
+    ) {
+      return res.status(400).json({
+        message: "All fields are required",
+      });
+    }
+
+    const cleanTitle = title.trim();
+    const cleanDescription = description.trim();
+    const cleanContent = content.trim();
+
+    if (!cleanTitle || !cleanDescription || !cleanContent) {
+      return res.status(400).json({
+        message: "Invalid input values",
+      });
+    }
+
+    /* ---------- SEO SLUG ---------- */
+    let seoSlug = toSlug(cleanTitle);
+
+    // Ensure unique slug (ignore current record)
+    const [existing] = await db
+      .promise()
+      .query(
+        `SELECT id FROM news WHERE seoSlug = ? AND id != ?`,
+        [seoSlug, newsId]
+      );
+
+    if (existing.length > 0) {
+      seoSlug = `${seoSlug}-${Date.now()}`;
+    }
+
+    /* ---------- IMAGE UPLOAD ---------- */
+    let newsImageUrl = null;
+    if (req.files?.newsImage?.[0]) {
+      newsImageUrl = await uploadToS3(req.files.newsImage[0]);
+    }
+
+    /* ---------- UPDATE QUERY ---------- */
+    let updateSql = `
+      UPDATE news
+      SET
+        type = ?,
+        title = ?,
+        description = ?,
+        content = ?,
+        seoSlug = ?,
+        state = ?,
+        city = ?,
+        updated_at = ?
+    `;
+
+    const updateValues = [
+      type,
+      cleanTitle,
+      cleanDescription,
+      cleanContent,
+      seoSlug,
+      state,
+      city,
+      currentdate,
+    ];
+
+    if (newsImageUrl) {
+      updateSql += `, image = ?`;
+      updateValues.push(newsImageUrl);
+    }
+
+    updateSql += ` WHERE id = ?`;
+    updateValues.push(newsId);
+
+    const [result] = await db.promise().query(updateSql, updateValues);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "News not found" });
+    }
+
+    return res.status(200).json({
+      message: "News updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating news:", error);
+    return res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+
+//**Change status */
+export const status = (req, res) => {
+  const Id = parseInt(req.params.id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid News ID" });
+  }
+
+  db.query("SELECT * FROM news WHERE id = ?", [Id], (err, result) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    let status = "";
+    if (result[0].status === "Active") {
+      status = "Inactive";
+    } else {
+      status = "Active";
+    }
+    console.log(status);
+    db.query(
+      "UPDATE news SET status = ? WHERE id = ?",
+      [status, Id],
+      (err, result) => {
+        if (err) {
+          console.error("Error deleting :", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+        res.status(200).json({ message: "News status change successfully" });
+      },
+    );
+  });
+};
+
+//* ADD Seo Details */
+export const seoDetails = (req, res) => {
+  const { seoSlug, seoTittle, seoDescription } = req.body;
+  if (!seoSlug || !seoTittle || !seoDescription) {
+    return res.status(401).json({ message: "All Field Are Required" });
+  }
+  const Id = parseInt(req.params.id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid Property ID" });
+  }
+
+  db.query("SELECT * FROM news WHERE id = ?", [Id], (err, result) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    db.query(
+      "UPDATE news SET seoSlug = ?, seoTittle = ?, seoDescription = ? WHERE id = ?",
+      [seoSlug, seoTittle, seoDescription, Id],
+      (err, result) => {
+        if (err) {
+          console.error("Error While Add Seo Details:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+        res.status(200).json({ message: "Seo Details Add successfully" });
+      },
+    );
+  });
+};
+
+// **Delete **
+export const del = (req, res) => {
+  const Id = parseInt(req.params.id);
+
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid News ID" });
+  }
+
+  db.query("SELECT * FROM news WHERE id = ?", [Id], (err, result) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    if (result.length === 0) {
+      return res.status(404).json({ message: "News not found" });
+    }
+
+    db.query("DELETE FROM news WHERE id = ?", [Id], (err) => {
+      if (err) {
+        console.error("Error deleting :", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+      res.status(200).json({ message: "News deleted successfully" });
+    });
+  });
+};

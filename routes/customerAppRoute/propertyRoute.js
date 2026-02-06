@@ -9,7 +9,7 @@ import {
   del,
   status,
   getPropertyLikeCount,
-  getById
+  getById,
 } from "../../controllers/customerAppController/propertyController.js";
 
 const router = express.Router();
@@ -66,7 +66,7 @@ router.put(
 router.get("/:id", getById);
 router.delete("/delete/:id", del);
 router.put("/status/:id", status);
-router.get('/likes/:id', getPropertyLikeCount);
+router.get("/likes/:id", getPropertyLikeCount);
 
 /* ---------- MULTER ERROR HANDLER ---------- */
 router.use((err, req, res, next) => {
