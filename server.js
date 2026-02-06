@@ -53,6 +53,7 @@ import FAQRoutes from "./routes/admin/FAQRoutes.js";
 import propertyAnalyticsRoutes from "./routes/admin/propertyAnalyticsRoutes.js";
 import blogAnalyticsRoutes from "./routes/admin/blogAnalyticsRoutes.js";
 import newsRoutes from "./routes/admin/newsRoute.js"
+import subscribersRoutes from "./routes/admin/subscribersRoutes.js"
 
 //frontend
 import allPropertiesRoutes from "./routes/frontend/allPropertiesRoutes.js";
@@ -443,6 +444,7 @@ export const verifyToken = (req, res, next) => {
     "customerapp/user/google-login",
     "/customerapp/loans",
     "/admin/blog",
+    "/admin/subscribers",
     "/admin/partner",
     //"/projectpartner/builders",
     "/projectPartner/property",
@@ -583,6 +585,7 @@ app.use("/admin/faqs", FAQRoutes);
 app.use("/admin/propertyAnalytics", propertyAnalyticsRoutes);
 app.use("/admin/blogAnalytics", blogAnalyticsRoutes);
 app.use("/admin/news",newsRoutes);
+app.use("/admin/subscribers", subscribersRoutes);
 
 // Guest User Routes
 app.use("/guest-user", guestUserLoginRoutes);

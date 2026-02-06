@@ -753,22 +753,18 @@ export const del = (req, res) => {
         }
 
         // Step 3: Delete property from DB
-        db.query(
-          "DELETE FROM properties WHERE propertyid = ?",
-          [Id],
-          (err) => {
-            if (err) {
-              console.error("Error deleting property:", err);
-              return res
-                .status(500)
-                .json({ message: "Database error", error: err });
-            }
-
-            res.status(200).json({
-              message: "Property and associated images deleted successfully",
-            });
+        db.query("DELETE FROM properties WHERE propertyid = ?", [Id], (err) => {
+          if (err) {
+            console.error("Error deleting property:", err);
+            return res
+              .status(500)
+              .json({ message: "Database error", error: err });
           }
-        );
+
+          res.status(200).json({
+            message: "Property and associated images deleted successfully",
+          });
+        });
       } catch (s3Error) {
         console.error("S3 delete error:", s3Error);
         return res.status(500).json({
@@ -943,11 +939,9 @@ export const reparvAssured = (req, res) => {
               .status(500)
               .json({ message: "Database error", error: err });
           }
-          res
-            .status(200)
-            .json({
-              message: "Property reparv assured status change successfully",
-            });
+          res.status(200).json({
+            message: "Property reparv assured status change successfully",
+          });
         }
       );
     }
@@ -1513,11 +1507,6 @@ export const setPropertyCommission = (req, res) => {
 
 // Get all images for a specific property
 export const getImages = (req, res) => {
-  const userId = req.user?.id;
-  if (!userId) {
-    return res.status(401).json({ message: "Unauthorized access" });
-  }
-
   const propertyId = parseInt(req.params.id);
   if (isNaN(propertyId)) {
     return res.status(400).json({ message: "Invalid property ID" });
@@ -1546,22 +1535,34 @@ export const getImages = (req, res) => {
 };
 
 // ** Add Property **
+// ** Update Property Images (S3) **
 export const updateImages = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const Id = req.params.id;
+  const Id = parseInt(req.params.id);
 
   if (!Id || isNaN(Id)) {
     return res.status(400).json({ message: "Invalid property ID" });
   }
 
   try {
-    const files = await convertImagesToWebp(req.files);
+    const files = req.files || {};
 
-    // Fetch existing property to preserve old images if not replaced
+    /* ☁ Upload images to S3 */
+    const uploadImagesToS3 = async (fieldFiles) => {
+      if (!fieldFiles || !fieldFiles.length) return null;
+
+      const uploadedUrls = await Promise.all(
+        fieldFiles.map((file) => uploadToS3(file))
+      );
+
+      return JSON.stringify(uploadedUrls);
+    };
+
+    // Fetch existing property (to preserve old images)
     db.query(
       "SELECT * FROM properties WHERE propertyid = ?",
       [Id],
-      (err, result) => {
+      async (err, result) => {
         if (err) {
           console.error("DB error:", err);
           return res
@@ -1575,28 +1576,45 @@ export const updateImages = async (req, res) => {
 
         const existing = result[0];
 
-        const getImagePaths = (field) =>
-          files[field]
-            ? JSON.stringify(files[field].map((f) => `/uploads/${f.filename}`))
-            : existing[field]; // preserve old image array
+        // Upload new images (if any)
+        const frontView = await uploadImagesToS3(files.frontView);
+        const sideView = await uploadImagesToS3(files.sideView);
+        const kitchenView = await uploadImagesToS3(files.kitchenView);
+        const hallView = await uploadImagesToS3(files.hallView);
+        const bedroomView = await uploadImagesToS3(files.bedroomView);
+        const bathroomView = await uploadImagesToS3(files.bathroomView);
+        const balconyView = await uploadImagesToS3(files.balconyView);
+        const nearestLandmark = await uploadImagesToS3(files.nearestLandmark);
+        const developedAmenities = await uploadImagesToS3(
+          files.developedAmenities
+        );
 
+        // Preserve old images if new ones are not uploaded
         const updateSQL = `
-        UPDATE properties SET 
-          frontView = ?, sideView = ?, kitchenView = ?, hallView = ?, bedroomView = ?, bathroomView = ?, 
-          balconyView = ?, nearestLandmark = ?, developedAmenities = ?, updated_at = ?
-        WHERE propertyid = ?
-      `;
+          UPDATE properties SET 
+            frontView = ?, 
+            sideView = ?, 
+            kitchenView = ?, 
+            hallView = ?, 
+            bedroomView = ?, 
+            bathroomView = ?, 
+            balconyView = ?, 
+            nearestLandmark = ?, 
+            developedAmenities = ?, 
+            updated_at = ?
+          WHERE propertyid = ?
+        `;
 
         const values = [
-          getImagePaths("frontView"),
-          getImagePaths("sideView"),
-          getImagePaths("kitchenView"),
-          getImagePaths("hallView"),
-          getImagePaths("bedroomView"),
-          getImagePaths("bathroomView"),
-          getImagePaths("balconyView"),
-          getImagePaths("nearestLandmark"),
-          getImagePaths("developedAmenities"),
+          frontView || existing.frontView,
+          sideView || existing.sideView,
+          kitchenView || existing.kitchenView,
+          hallView || existing.hallView,
+          bedroomView || existing.bedroomView,
+          bathroomView || existing.bathroomView,
+          balconyView || existing.balconyView,
+          nearestLandmark || existing.nearestLandmark,
+          developedAmenities || existing.developedAmenities,
           currentdate,
           Id,
         ];
@@ -1609,24 +1627,25 @@ export const updateImages = async (req, res) => {
               .json({ message: "Update failed", error: err });
           }
 
-          res
-            .status(200)
-            .json({ message: "Property images updated successfully" });
+          res.status(200).json({
+            message: "Property images updated successfully",
+          });
         });
       }
     );
   } catch (err) {
-    console.error("Image conversion error:", err);
-    return res
-      .status(500)
-      .json({ message: "File conversion failed", error: err });
+    console.error("S3 upload error:", err);
+    return res.status(500).json({
+      message: "Image upload failed",
+      error: err.message,
+    });
   }
 };
 
-// Delete Images
-export const deleteImages = (req, res) => {
+// 🗑 Delete Images (S3)
+export const deleteImages = async (req, res) => {
   const Id = parseInt(req.params.id);
-  const imageType = req.query.type; // use query param instead of req.body
+  const imageType = req.query.type; // frontView, hallView, etc.
 
   if (isNaN(Id)) {
     return res.status(400).json({ message: "Invalid Property ID" });
@@ -1636,53 +1655,59 @@ export const deleteImages = (req, res) => {
     return res.status(400).json({ message: "Missing image type" });
   }
 
-  // Fetch the image array string
-  db.query(
-    `SELECT ?? FROM properties WHERE propertyid = ?`,
-    [imageType, Id],
-    (err, result) => {
-      if (err) {
-        console.error("Error fetching images:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
-
-      if (result.length === 0) {
-        return res.status(404).json({ message: "Property not found" });
-      }
-
-      const images = JSON.parse(result[0][imageType] || "[]");
-
-      if (!images.length) {
-        return res.status(404).json({ message: "No images to delete" });
-      }
-
-      // Delete image files from filesystem
-      images.forEach((imgPath) => {
-        const fullPath = path.join(process.cwd(), imgPath);
-        fs.unlink(fullPath, (err) => {
-          if (err) {
-            console.warn(`Could not delete file: ${fullPath}`, err.message);
-          }
-        });
-      });
-
-      // Update DB to remove image references
-      db.query(
-        `UPDATE properties SET ?? = ? WHERE propertyid = ?`,
-        [imageType, JSON.stringify([]), Id],
-        (err) => {
-          if (err) {
-            console.error("Error updating DB:", err);
-            return res
-              .status(500)
-              .json({ message: "DB update failed", error: err });
-          }
-
-          res.status(200).json({ message: "Images deleted successfully" });
+  try {
+    // Fetch image URLs from DB
+    db.query(
+      `SELECT ?? FROM properties WHERE propertyid = ?`,
+      [imageType, Id],
+      async (err, result) => {
+        if (err) {
+          console.error("DB fetch error:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
         }
-      );
-    }
-  );
+
+        if (result.length === 0) {
+          return res.status(404).json({ message: "Property not found" });
+        }
+
+        const images = JSON.parse(result[0][imageType] || "[]");
+
+        if (!images.length) {
+          return res.status(404).json({ message: "No images to delete" });
+        }
+
+        /* ☁ Delete all images from S3 */
+        await Promise.all(images.map((url) => deleteFromS3(url)));
+
+        // Clear DB field
+        db.query(
+          `UPDATE properties SET ?? = ? WHERE propertyid = ?`,
+          [imageType, JSON.stringify([]), Id],
+          (err) => {
+            if (err) {
+              console.error("DB update error:", err);
+              return res.status(500).json({
+                message: "Failed to update database",
+                error: err,
+              });
+            }
+
+            res.status(200).json({
+              message: "Images deleted successfully from S3",
+            });
+          }
+        );
+      }
+    );
+  } catch (error) {
+    console.error("S3 delete error:", error);
+    res.status(500).json({
+      message: "Failed to delete images from S3",
+      error: error.message,
+    });
+  }
 };
 
 // ** New Additional Info Add API **

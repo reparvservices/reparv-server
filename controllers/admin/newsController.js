@@ -12,6 +12,53 @@ function toSlug(text) {
     .replace(/-+/g, "-"); // Replace multiple hyphens with single
 }
 
+// **Fetch All **
+export const getAll = (req, res) => {
+  const sql = "SELECT * FROM news ORDER BY created_at DESC";
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error("Error fetching :", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    const formatted = result.map((row) => ({
+      ...row,
+      created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+    }));
+
+    res.json(formatted);
+  });
+};
+
+// **Fetch All**
+export const getAllActive = (req, res) => {
+  const sql = "SELECT * FROM news WHERE status = 'Active' ORDER BY id DESC";
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error("Error fetching:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    res.json(result);
+  });
+};
+
+// **Fetch Single by ID**
+export const getById = (req, res) => {
+  const Id = parseInt(req.params.id);
+  const sql = "SELECT * FROM news WHERE id = ?";
+
+  db.query(sql, [Id], (err, result) => {
+    if (err) {
+      console.error("Error fetching :", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    if (result.length === 0) {
+      return res.status(404).json({ message: "news not found" });
+    }
+    res.json(result[0]);
+  });
+};
+
 // **Add New **
 export const add = async (req, res) => {
   try {
@@ -100,53 +147,6 @@ export const add = async (req, res) => {
   }
 };
 
-// **Fetch All **
-export const getAll = (req, res) => {
-  const sql = "SELECT * FROM news ORDER BY created_at DESC";
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error("Error fetching :", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-    const formatted = result.map((row) => ({
-      ...row,
-      created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
-    }));
-
-    res.json(formatted);
-  });
-};
-
-// **Fetch All**
-export const getAllActive = (req, res) => {
-  const sql = "SELECT * FROM news WHERE status = 'Active' ORDER BY id DESC";
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error("Error fetching:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-    res.json(result);
-  });
-};
-
-// **Fetch Single by ID**
-export const getById = (req, res) => {
-  const Id = parseInt(req.params.id);
-  const sql = "SELECT * FROM news WHERE id = ?";
-
-  db.query(sql, [Id], (err, result) => {
-    if (err) {
-      console.error("Error fetching :", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-    if (result.length === 0) {
-      return res.status(404).json({ message: "news not found" });
-    }
-    res.json(result[0]);
-  });
-};
-
 // **Edit **
 export const edit = async (req, res) => {
   try {
@@ -157,24 +157,10 @@ export const edit = async (req, res) => {
 
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-    const {
-      type,
-      title,
-      description,
-      content,
-      state,
-      city,
-    } = req.body;
+    const { type, title, description, content, state, city } = req.body;
 
     /* ---------- VALIDATION ---------- */
-    if (
-      !type ||
-      !title ||
-      !description ||
-      !content ||
-      !state ||
-      !city
-    ) {
+    if (!type || !title || !description || !content || !state || !city) {
       return res.status(400).json({
         message: "All fields are required",
       });
@@ -196,10 +182,10 @@ export const edit = async (req, res) => {
     // Ensure unique slug (ignore current record)
     const [existing] = await db
       .promise()
-      .query(
-        `SELECT id FROM news WHERE seoSlug = ? AND id != ?`,
-        [seoSlug, newsId]
-      );
+      .query(`SELECT id FROM news WHERE seoSlug = ? AND id != ?`, [
+        seoSlug,
+        newsId,
+      ]);
 
     if (existing.length > 0) {
       seoSlug = `${seoSlug}-${Date.now()}`;
@@ -261,7 +247,6 @@ export const edit = async (req, res) => {
   }
 };
 
-
 //**Change status */
 export const status = (req, res) => {
   const Id = parseInt(req.params.id);
@@ -293,7 +278,7 @@ export const status = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "News status change successfully" });
-      },
+      }
     );
   });
 };
@@ -326,7 +311,7 @@ export const seoDetails = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Seo Details Add successfully" });
-      },
+      }
     );
   });
 };
