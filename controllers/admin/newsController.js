@@ -300,13 +300,13 @@ export const status = (req, res) => {
 
 //* ADD Seo Details */
 export const seoDetails = (req, res) => {
-  const { seoSlug, seoTittle, seoDescription } = req.body;
-  if (!seoSlug || !seoTittle || !seoDescription) {
+  const { seoSlug, seoTitle, seoDescription } = req.body;
+  if (!seoSlug || !seoTitle || !seoDescription) {
     return res.status(401).json({ message: "All Field Are Required" });
   }
   const Id = parseInt(req.params.id);
   if (isNaN(Id)) {
-    return res.status(400).json({ message: "Invalid Property ID" });
+    return res.status(400).json({ message: "Invalid ID" });
   }
 
   db.query("SELECT * FROM news WHERE id = ?", [Id], (err, result) => {
@@ -316,8 +316,8 @@ export const seoDetails = (req, res) => {
     }
 
     db.query(
-      "UPDATE news SET seoSlug = ?, seoTittle = ?, seoDescription = ? WHERE id = ?",
-      [seoSlug, seoTittle, seoDescription, Id],
+      "UPDATE news SET seoSlug = ?, seoTitle = ?, seoDescription = ? WHERE id = ?",
+      [seoSlug, seoTitle, seoDescription, Id],
       (err, result) => {
         if (err) {
           console.error("Error While Add Seo Details:", err);

@@ -81,12 +81,6 @@ export const getById = (req, res) => {
 
 // **Add New Builder**
 export const add = (req, res) => {
-  const adharId = req.adminUser?.adharId;
-  if (!adharId) {
-    return res
-      .status(401)
-      .json({ message: "Unauthorized! Please Login Again." });
-  }
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
   const {
@@ -123,12 +117,11 @@ export const add = (req, res) => {
         return res.status(500).json({ message: "Database error", error: err });
 
       if (result.length === 0) {
-        const insertSQL = `INSERT INTO builders (builderadder, company_name, contact_person, contact, email, uid, office_address, registration_no, dor, website, notes, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const insertSQL = `INSERT INTO builders (company_name, contact_person, contact, email, uid, office_address, registration_no, dor, website, notes, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
         db.query(
           insertSQL,
           [
-            adharId,
             company_name,
             contact_person,
             contact,
