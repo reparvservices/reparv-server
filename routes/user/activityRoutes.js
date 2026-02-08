@@ -6,6 +6,7 @@ import {
   getEnquiryProperties,
   getVisitedProperties,
   getBookedProperties,
+  newsLike,
 } from "../../controllers/user/activityController.js";
 
 const router = express.Router();
@@ -13,6 +14,7 @@ const router = express.Router();
 /* ================= LIKE ACTIONS ================= */
 router.post("/property-like", propertyLike);
 router.post("/blog-like", blogLike);
+router.post("/news-like", newsLike);
 
 /* ================= ACTIVITY LISTS ================= */
 router.get("/liked/all-properties", getLikedProperties);

@@ -124,6 +124,67 @@ export const blogLike = (req, res) => {
   });
 };
 
+export const newsLike = (req, res) => {
+  const userId = req.guestUser?.id;
+  const { news_id } = req.body;
+
+  if (!userId || !news_id) {
+    return res.status(400).json({ message: "User or News ID missing" });
+  }
+
+  // 1 Check already liked or not
+  const checkSql = `
+    SELECT id 
+    FROM user_news_wishlist 
+    WHERE guest_user_id = ? AND news_id = ?
+  `;
+
+  db.query(checkSql, [userId, news_id], (err, rows) => {
+    if (err) {
+      console.error("Check news like error:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    // Already liked → DISLIKE
+    if (rows.length > 0) {
+      const deleteSql = `
+        DELETE FROM user_news_wishlist 
+        WHERE guest_user_id = ? AND news_id = ?
+      `;
+
+      db.query(deleteSql, [userId, news_id], (err) => {
+        if (err) {
+          console.error("Remove news like error:", err);
+          return res.status(500).json({ message: "Database error" });
+        }
+
+        return res.json({
+          liked: false,
+          message: "News Disliked",
+        });
+      });
+    } else {
+      // Not liked → LIKE
+      const insertSql = `
+        INSERT INTO user_news_wishlist (guest_user_id, news_id)
+        VALUES (?, ?)
+      `;
+
+      db.query(insertSql, [userId, news_id], (err) => {
+        if (err) {
+          console.error("Add blog like error:", err);
+          return res.status(500).json({ message: "Database error" });
+        }
+
+        return res.json({
+          liked: true,
+          message: "News Liked",
+        });
+      });
+    }
+  });
+};
+
 // GET WISHLIST PROPERTIES
 export const getLikedProperties = (req, res) => {
   const userId = req.guestUser?.id;

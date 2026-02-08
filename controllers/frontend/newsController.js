@@ -19,14 +19,37 @@ export const getAll = (req, res) => {
   });
 };
 
-// **Fetch Single news by SEO Slug with Analytics**
 export const getById = (req, res) => {
   const seoSlug = req.params.slug;
 
   const sql = `
-    SELECT * 
-    FROM news
-    WHERE seoSlug = ?
+    SELECT 
+      n.*,
+
+      /* Likes (distinct users) */
+      COALESCE(likesData.likes, 0) AS likes,
+
+      /* Views & Shares */
+      COALESCE(na.views, 0) AS views,
+      COALESCE(na.shares, 0) AS shares
+
+    FROM news n
+
+    /* Likes */
+    LEFT JOIN (
+      SELECT 
+        news_id,
+        COUNT(DISTINCT guest_user_id) AS likes
+      FROM user_news_wishlist
+      GROUP BY news_id
+    ) likesData
+      ON likesData.news_id = n.id
+
+    /* News Analyst */
+    LEFT JOIN news_analyst na
+      ON na.news_id = n.id
+
+    WHERE n.seoSlug = ?
     LIMIT 1
   `;
 
@@ -36,7 +59,7 @@ export const getById = (req, res) => {
       return res.status(500).json({ message: "Database error" });
     }
 
-    if (!result || result.length === 0) {
+    if (!result.length) {
       return res.status(404).json({ message: "News not found" });
     }
 
@@ -44,10 +67,11 @@ export const getById = (req, res) => {
 
     res.json({
       ...row,
+      likes: Number(row.likes) || 0,
+      views: Number(row.views) || 0,
+      shares: Number(row.shares) || 0,
       created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
       updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
     });
   });
 };
-
-
