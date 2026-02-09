@@ -1,9 +1,9 @@
 // controllers/formController.js
 import db from "../../config/dbconnect.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 import { uploadToS3 } from "../../utils/imageUpload.js";
-export const submitEmiForm = async (req, res) => {
-   
 
+export const submitEmiForm = async (req, res) => {
   try {
     let {
       employmentType,
@@ -35,30 +35,43 @@ export const submitEmiForm = async (req, res) => {
       user_id,
       propertyid,
     } = req.body;
-    console.log(req.body);
 
     const toNull = (v) => (v === "" || v === undefined ? null : v);
 
-    // DOB convert
+    // 📅 DOB convert (DD/MM/YYYY → YYYY-MM-DD)
     if (dateOfBirth) {
       const [dd, mm, yyyy] = dateOfBirth.split("/");
       dateOfBirth = `${yyyy}-${mm}-${dd}`;
     }
 
-    /* ===== IMAGE UPLOAD (SINGLE IMAGE ONLY) ===== */
+    /* ===== IMAGE UPLOAD (WEBP + S3) ===== */
     let panImage = null;
     let aadhaarFrontImage = null;
     let aadhaarBackImage = null;
 
-    if (req.files?.aadhaarFrontImage?.[0]) {
-      aadhaarFrontImage = await uploadToS3(req.files.aadhaarFrontImage[0]);
-    }
-    if (req.files?.aadhaarBackImage?.[0]) {
-      aadhaarBackImage = await uploadToS3(req.files.aadhaarBackImage[0]);
+    if (req.files?.panImage?.[0]) {
+      const converted = await convertSingleImageToWebp(
+        req.files.panImage[0]
+      );
+      panImage = converted ? await uploadToS3(converted) : null;
     }
 
-    if (req.files?.panImage?.[0]) {
-      panImage = await uploadToS3(req.files.panImage[0]);
+    if (req.files?.aadhaarFrontImage?.[0]) {
+      const converted = await convertSingleImageToWebp(
+        req.files.aadhaarFrontImage[0]
+      );
+      aadhaarFrontImage = converted
+        ? await uploadToS3(converted)
+        : null;
+    }
+
+    if (req.files?.aadhaarBackImage?.[0]) {
+      const converted = await convertSingleImageToWebp(
+        req.files.aadhaarBackImage[0]
+      );
+      aadhaarBackImage = converted
+        ? await uploadToS3(converted)
+        : null;
     }
 
     const sql = `
@@ -93,7 +106,7 @@ export const submitEmiForm = async (req, res) => {
         businessOtherIncome,
         panImage,
         aadhaarFrontImage,
-aadhaarBackImage
+        aadhaarBackImage
       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `;
 
@@ -133,8 +146,6 @@ aadhaarBackImage
 
     db.query(sql, values, (err, result) => {
       if (err) {
-        console.log(err);
-
         return res.status(500).json({
           message: "Database insert error",
           error: err.sqlMessage,
@@ -147,10 +158,11 @@ aadhaarBackImage
       });
     });
   } catch (err) {
-    console.error(err);
+    console.error("EMI Submit Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
 
 export const getUserLoanCounts = (req, res) => {
   try {

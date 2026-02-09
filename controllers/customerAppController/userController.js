@@ -7,6 +7,7 @@ import { OAuth2Client } from "google-auth-library";
 import e from "express";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 import { sendOtpSMS } from "../../utils/OtpSender.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 const client = new OAuth2Client(process.env.MOBILE_GOOGLE_LOGIN_CLIENT_ID);
 
 dotenv.config();
@@ -246,6 +247,8 @@ export const getProfile = (req, res) => {
     });
   });
 };
+
+
 export const update = async (req, res) => {
   try {
     const { user_id, fullname, email, contact } = req.body;
@@ -260,7 +263,7 @@ export const update = async (req, res) => {
     const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
 
     db.query(
-      "SELECT userimage FROM guestUsers WHERE id=?",
+      "SELECT userimage FROM guestUsers WHERE id = ?",
       [user_id],
       async (err, result) => {
         if (err || result.length === 0) {
@@ -272,8 +275,15 @@ export const update = async (req, res) => {
 
         let imageUrl = result[0].userimage;
 
+        /* ===== IMAGE CONVERT + UPLOAD ===== */
         if (req.file) {
-          imageUrl = await uploadToS3(req.file);
+          const convertedImage = await convertSingleImageToWebp(req.file);
+
+          if (convertedImage) {
+            imageUrl = await uploadToS3(convertedImage);
+          }
+
+          // 🗑 delete old image from S3
           if (result[0].userimage) {
             await deleteFromS3(result[0].userimage);
           }
@@ -281,8 +291,8 @@ export const update = async (req, res) => {
 
         const sql = `
           UPDATE guestUsers 
-          SET fullname=?, email=?, contact=?, userimage=?, updated_at=?
-          WHERE id=?
+          SET fullname = ?, email = ?, contact = ?, userimage = ?, updated_at = ?
+          WHERE id = ?
         `;
 
         db.query(
@@ -292,18 +302,22 @@ export const update = async (req, res) => {
             return res.status(200).json({
               success: true,
               message: "Profile updated successfully",
+              userimage: imageUrl,
             });
           },
         );
       },
     );
-  } catch {
+  } catch (error) {
+    console.error("Profile update error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
     });
   }
 };
+
+
 export const googleLogin = async (req, res) => {
   try {
     const { token } = req.body;

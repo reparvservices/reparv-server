@@ -1,5 +1,7 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 // **Fetch All**
 export const getAll = (req, res) => {
@@ -71,50 +73,77 @@ ORDER BY
 
 // **Add New **
 
-export const add = (req, res) => {
+export const add = async (req, res) => {
   const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
   console.log("add");
 
-  const { userId, postContent, like,projectpartnerid } = req.body;
-  const imageFile = req.file?.filename;
-  console.log(userId);
+  const { userId, postContent, like, projectpartnerid } = req.body;
 
   if (!userId) {
     return res.status(400).json({ message: "User ID is required" });
   }
 
-  if (!imageFile && !postContent) {
-    console.log("err");
-
+  if (!req.file && !postContent) {
     return res
       .status(400)
       .json({ message: "Either image or post content is required" });
   }
 
-  const finalImagePath = imageFile ? `/uploads/${imageFile}` : null;
+  let imageUrl = null;
+
+  // Image upload (compressed + S3)
+  if (req.file) {
+    try {
+      let uploadFile = req.file;
+
+      // Compress only image files
+      if (req.file.mimetype?.startsWith("image/")) {
+        const compressedImage = await convertSingleImageToWebp(req.file);
+        if (compressedImage) {
+          uploadFile = compressedImage;
+        }
+      }
+
+      imageUrl = await uploadToS3(uploadFile);
+    } catch (err) {
+      console.error("Image upload failed:", err);
+      return res.status(500).json({
+        message: "Image upload failed",
+        error: err,
+      });
+    }
+  }
 
   const sql = `
-    INSERT INTO projectpartnerposts (userId, image, postContent, likes,projectpartnerid, created_at)
-    VALUES (?, ?, ?, ?, ?,?)
+    INSERT INTO projectpartnerposts
+    (userId, image, postContent, likes, projectpartnerid, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
   `;
 
   db.query(
     sql,
-    [userId, finalImagePath, postContent, like || 0,projectpartnerid || null , currentDate],
+    [
+      userId,
+      imageUrl, // S3 URL instead of local path
+      postContent || null,
+      like || 0,
+      projectpartnerid || null,
+      currentDate,
+    ],
     (err, result) => {
       if (err) {
         if (err.code === "ER_DUP_ENTRY") {
-          console.log("Er1", err);
-
           return res.status(409).json({ message: "Duplicate post" });
         }
-        console.log("Er2", err);
+
+        console.error("Database error:", err);
         return res.status(500).json({ message: "Database error", error: err });
       }
 
       return res.status(201).json({
         message: "Post added successfully",
         postId: result.insertId,
+        image: imageUrl,
       });
     }
   );
@@ -161,24 +190,48 @@ export const addLike = async (req, res) => {
   );
 };
 
-// Update Post Controller
-export const updatePost = (req, res) => {
+export const updatePost = async (req, res) => {
   const postId = req.params.id;
   const { postContent } = req.body;
-  const image = req.file ? req.file.filename : null;
+
+  if (!postId) {
+    return res.status(400).json({ message: "Post ID is required" });
+  }
+
+  let imageUrl = null;
+
+  // Handle image upload (compress + S3)
+  if (req.file) {
+    try {
+      let uploadFile = req.file;
+
+      if (req.file.mimetype?.startsWith("image/")) {
+        const compressedImage = await convertSingleImageToWebp(req.file);
+        if (compressedImage) {
+          uploadFile = compressedImage;
+        }
+      }
+
+      imageUrl = await uploadToS3(uploadFile);
+    } catch (err) {
+      console.error("Image upload failed:", err);
+      return res.status(500).json({
+        message: "Image upload failed",
+        error: err,
+      });
+    }
+  }
 
   let sql;
   let values;
 
-  if (image && postContent) {
-    const finalImagePath = `/uploads/${image}`;
+  if (imageUrl && postContent) {
     sql =
       "UPDATE projectpartnerposts SET image = ?, postContent = ? WHERE postId = ?";
-    values = [finalImagePath, postContent, postId];
-  } else if (image) {
-    const finalImagePath = `/uploads/${image}`;
+    values = [imageUrl, postContent, postId];
+  } else if (imageUrl) {
     sql = "UPDATE projectpartnerposts SET image = ? WHERE postId = ?";
-    values = [finalImagePath, postId];
+    values = [imageUrl, postId];
   } else if (postContent) {
     sql = "UPDATE projectpartnerposts SET postContent = ? WHERE postId = ?";
     values = [postContent, postId];
@@ -199,6 +252,7 @@ export const updatePost = (req, res) => {
     res.status(200).json({
       message: "Post updated successfully",
       updatedRows: result.affectedRows,
+      image: imageUrl || undefined,
     });
   });
 };

@@ -1,6 +1,7 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
-import { uploadToS3 } from "../../utils/imageUpload.js";
+import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 export const getProfile = (req, res) => {
   const Id = req.guestUser?.id;
@@ -22,7 +23,9 @@ export const getProfile = (req, res) => {
 
 export const editProfile = async (req, res) => {
   const userId = req.guestUser?.id;
-  if (!userId) return res.status(400).json({ message: "Invalid User ID" });
+  if (!userId) {
+    return res.status(400).json({ message: "Invalid User ID" });
+  }
 
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const { fullname, contact, email, address, state, city } = req.body;
@@ -32,29 +35,33 @@ export const editProfile = async (req, res) => {
   }
 
   try {
-    // Fetch existing user profile first
+    /* ---------- FETCH EXISTING USER ---------- */
     const existingResult = await new Promise((resolve, reject) => {
       db.query(
         "SELECT userimage FROM guestUsers WHERE id = ?",
         [userId],
-        (err, result) => {
-          if (err) reject(err);
-          else resolve(result);
-        }
+        (err, result) => (err ? reject(err) : resolve(result))
       );
     });
 
-    if (existingResult.length === 0)
+    if (existingResult.length === 0) {
       return res.status(404).json({ message: "User not found" });
+    }
 
     let finalImagePath = existingResult[0].userimage;
 
-    // If new image uploaded, push to S3
+    /* ---------- COMPRESS + UPLOAD NEW IMAGE ---------- */
     if (req.file) {
-      const s3Result = await uploadToS3(req.file.buffer, req.file.originalname);
-      finalImagePath = s3Result; // URL returned from S3
+      const convertedImage = await convertSingleImageToWebp(req.file);
+      finalImagePath = await uploadToS3(convertedImage);
+
+      // 🗑 delete old image from S3
+      if (existingResult[0].userimage) {
+        await deleteFromS3(existingResult[0].userimage);
+      }
     }
 
+    /* ---------- UPDATE PROFILE ---------- */
     const updateSql = `
       UPDATE guestUsers SET 
         fullname = ?, 
@@ -66,6 +73,7 @@ export const editProfile = async (req, res) => {
         updated_at = ? 
       WHERE id = ?
     `;
+
     const updateValues = [
       fullname,
       email,
@@ -78,19 +86,21 @@ export const editProfile = async (req, res) => {
     ];
 
     await new Promise((resolve, reject) => {
-      db.query(updateSql, updateValues, (err, result) => {
-        if (err) reject(err);
-        else resolve(result);
-      });
+      db.query(updateSql, updateValues, (err, result) =>
+        err ? reject(err) : resolve(result)
+      );
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "Profile updated successfully",
       userImage: finalImagePath,
     });
   } catch (err) {
     console.error("Error updating profile:", err);
-    res.status(500).json({ message: "Internal server error", error: err });
+    return res.status(500).json({
+      message: "Internal server error",
+      error: err,
+    });
   }
 };
 

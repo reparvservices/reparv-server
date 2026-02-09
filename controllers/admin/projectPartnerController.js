@@ -545,30 +545,46 @@ export const updateBusinessDetails = async (req, res) => {
     // Fetch existing business logo
     const [rows] = await db
       .promise()
-      .query(
-        "SELECT businessLogo FROM projectpartner WHERE id = ?",
-        [partnerid]
-      );
+      .query("SELECT businessLogo FROM projectpartner WHERE id = ?", [
+        partnerid,
+      ]);
 
     if (!rows || rows.length === 0) {
       return res.status(404).json({ message: "Project Partner not found" });
     }
 
     const oldLogoUrl = rows[0].businessLogo || null;
-
-    // Upload new logo to S3 (if provided)
     let newLogoUrl = oldLogoUrl;
 
+    // Upload new logo to S3 (if provided)
     if (req.file) {
-      newLogoUrl = await uploadToS3(req.file);
+      try {
+        let uploadFile = req.file;
 
-      // Delete old logo from S3
-      if (oldLogoUrl) {
-        try {
-          await deleteFromS3(oldLogoUrl);
-        } catch (err) {
-          console.error("Failed to delete old business logo:", err);
+        // Compress only if image
+        if (req.file.mimetype?.startsWith("image/")) {
+          const compressedImage = await convertSingleImageToWebp(req.file);
+          if (compressedImage) {
+            uploadFile = compressedImage;
+          }
         }
+
+        newLogoUrl = await uploadToS3(uploadFile);
+
+        // Delete old logo from S3
+        if (oldLogoUrl) {
+          try {
+            await deleteFromS3(oldLogoUrl);
+          } catch (err) {
+            console.error("Failed to delete old business logo:", err);
+          }
+        }
+      } catch (s3Err) {
+        console.error("S3 upload error:", s3Err);
+        return res.status(500).json({
+          message: "Business logo upload failed",
+          error: s3Err,
+        });
       }
     }
 
@@ -580,16 +596,18 @@ export const updateBusinessDetails = async (req, res) => {
       WHERE id = ?
     `;
 
-    await db.promise().query(updateSql, [
-      whatsappNumber,
-      businessAddress,
-      businessState,
-      businessCity,
-      businessPincode,
-      newLogoUrl,
-      currentdate,
-      partnerid,
-    ]);
+    await db
+      .promise()
+      .query(updateSql, [
+        whatsappNumber,
+        businessAddress,
+        businessState,
+        businessCity,
+        businessPincode,
+        newLogoUrl,
+        currentdate,
+        partnerid,
+      ]);
 
     return res.status(200).json({
       message: "Business details updated successfully",
@@ -615,11 +633,9 @@ export const seoDetails = (req, res) => {
     twitterDescription,
   } = req.body;
   if (!seoTitle || !seoDescription || !seoKeywords) {
-    return res
-      .status(401)
-      .json({
-        message: "Seo Title and Seo Description and Seo Keywords Are Required",
-      });
+    return res.status(401).json({
+      message: "Seo Title and Seo Description and Seo Keywords Are Required",
+    });
   }
   const Id = parseInt(req.params.id);
   if (isNaN(Id)) {

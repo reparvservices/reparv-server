@@ -2,6 +2,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import bcrypt from "bcryptjs";
 import { uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 function toSlug(text) {
   return text
@@ -59,18 +60,15 @@ export const getById = (req, res) => {
   });
 };
 
-// **Add New **
+// **Add New News**
 export const add = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-
     const { type, title, description, content, state, city } = req.body;
 
     /* ---------- VALIDATION ---------- */
     if (!type || !title || !description || !content || !state || !city) {
-      return res.status(400).json({
-        message: "All fields are required",
-      });
+      return res.status(400).json({ message: "All fields are required" });
     }
 
     const cleanTitle = title.trim();
@@ -78,15 +76,12 @@ export const add = async (req, res) => {
     const cleanContent = content.trim();
 
     if (!cleanTitle || !cleanDescription || !cleanContent) {
-      return res.status(400).json({
-        message: "Invalid input values",
-      });
+      return res.status(400).json({ message: "Invalid input values" });
     }
 
     /* ---------- SEO SLUG ---------- */
     let seoSlug = toSlug(cleanTitle);
 
-    // Optional: make slug unique
     const [existing] = await db
       .promise()
       .query(`SELECT id FROM news WHERE seoSlug = ?`, [seoSlug]);
@@ -95,13 +90,18 @@ export const add = async (req, res) => {
       seoSlug = `${seoSlug}-${Date.now()}`;
     }
 
-    /* ---------- IMAGE UPLOAD ---------- */
-    const uploadNewsImage = async () => {
-      if (!req.files?.newsImage?.[0]) return null;
-      return await uploadToS3(req.files.newsImage[0]);
-    };
+    /* ---------- IMAGE UPLOAD (COMPRESS → S3) ---------- */
+    let newsImageUrl = null;
 
-    const newsImageUrl = await uploadNewsImage();
+    if (req.files?.newsImage?.[0]) {
+      const compressedImage = await convertSingleImageToWebp(
+        req.files.newsImage[0]
+      );
+
+      if (compressedImage) {
+        newsImageUrl = await uploadToS3(compressedImage);
+      }
+    }
 
     /* ---------- INSERT NEWS ---------- */
     const sql = `
@@ -141,13 +141,11 @@ export const add = async (req, res) => {
     });
   } catch (error) {
     console.error("Error inserting news:", error);
-    return res.status(500).json({
-      message: "Server error",
-    });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
-// **Edit **
+/// **Edit News**
 export const edit = async (req, res) => {
   try {
     const newsId = req.params.id;
@@ -156,14 +154,11 @@ export const edit = async (req, res) => {
     }
 
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-
     const { type, title, description, content, state, city } = req.body;
 
     /* ---------- VALIDATION ---------- */
     if (!type || !title || !description || !content || !state || !city) {
-      return res.status(400).json({
-        message: "All fields are required",
-      });
+      return res.status(400).json({ message: "All fields are required" });
     }
 
     const cleanTitle = title.trim();
@@ -171,15 +166,12 @@ export const edit = async (req, res) => {
     const cleanContent = content.trim();
 
     if (!cleanTitle || !cleanDescription || !cleanContent) {
-      return res.status(400).json({
-        message: "Invalid input values",
-      });
+      return res.status(400).json({ message: "Invalid input values" });
     }
 
     /* ---------- SEO SLUG ---------- */
     let seoSlug = toSlug(cleanTitle);
 
-    // Ensure unique slug (ignore current record)
     const [existing] = await db
       .promise()
       .query(`SELECT id FROM news WHERE seoSlug = ? AND id != ?`, [
@@ -191,10 +183,17 @@ export const edit = async (req, res) => {
       seoSlug = `${seoSlug}-${Date.now()}`;
     }
 
-    /* ---------- IMAGE UPLOAD ---------- */
+    /* ---------- IMAGE UPLOAD (COMPRESS → S3) ---------- */
     let newsImageUrl = null;
+
     if (req.files?.newsImage?.[0]) {
-      newsImageUrl = await uploadToS3(req.files.newsImage[0]);
+      const compressedImage = await convertSingleImageToWebp(
+        req.files.newsImage[0]
+      );
+
+      if (compressedImage) {
+        newsImageUrl = await uploadToS3(compressedImage);
+      }
     }
 
     /* ---------- UPDATE QUERY ---------- */
@@ -238,12 +237,11 @@ export const edit = async (req, res) => {
 
     return res.status(200).json({
       message: "News updated successfully",
+      image: newsImageUrl || undefined,
     });
   } catch (error) {
     console.error("Error updating news:", error);
-    return res.status(500).json({
-      message: "Server error",
-    });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 

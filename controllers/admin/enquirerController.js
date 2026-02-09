@@ -3,6 +3,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import { sanitize } from "../../utils/sanitize.js";
 import { uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 // * Fetch All Enquiries
 export const getAll = (req, res) => {
@@ -718,8 +719,14 @@ export const visitScheduled = (req, res) => {
 export const token = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-    const { paymenttype, tokenamount, remark, dealamount, enquiryStatus } =
-      req.body;
+
+    const {
+      paymenttype,
+      tokenamount,
+      remark,
+      dealamount,
+      enquiryStatus,
+    } = req.body;
 
     if (
       !paymenttype ||
@@ -738,16 +745,36 @@ export const token = async (req, res) => {
       return res.status(400).json({ message: "Invalid Enquiry ID" });
     }
 
-    /* Upload payment image to S3 */
+    /* ===============================
+       Upload & Compress Payment Image
+    =============================== */
     let paymentImage = null;
+
     if (req.file) {
-      paymentImage = await uploadToS3(req.file,);
+      // Convert to WebP (compressed)
+      const convertedImage = await convertSingleImageToWebp(req.file);
+
+      if (!convertedImage) {
+        return res.status(400).json({ message: "Invalid image file" });
+      }
+
+      // Upload to S3
+      paymentImage = await uploadToS3({
+        buffer: convertedImage.buffer,
+        mimetype: convertedImage.mimetype,
+        originalname: convertedImage.originalname,
+      });
     }
 
-    // Step 1: Get Enquirer
+    /* ===============================
+       Step 1: Get Enquirer
+    =============================== */
     const [enquirerResult] = await db
       .promise()
-      .query("SELECT propertyid FROM enquirers WHERE enquirersid = ?", [Id]);
+      .query(
+        "SELECT propertyid FROM enquirers WHERE enquirersid = ?",
+        [Id]
+      );
 
     if (enquirerResult.length === 0) {
       return res.status(404).json({ message: "Enquirer not found" });
@@ -755,10 +782,12 @@ export const token = async (req, res) => {
 
     const propertyId = enquirerResult[0].propertyid;
 
-    // Step 2: Get Property commission data
+    /* ===============================
+       Step 2: Get Commission Data
+    =============================== */
     const [propertyResult] = await db.promise().query(
       `SELECT commissionType, commissionAmount, commissionPercentage
-         FROM properties WHERE propertyid = ?`,
+       FROM properties WHERE propertyid = ?`,
       [propertyId]
     );
 
@@ -766,8 +795,11 @@ export const token = async (req, res) => {
       return res.status(404).json({ message: "Property not found" });
     }
 
-    let { commissionType, commissionAmount, commissionPercentage } =
-      propertyResult[0];
+    let {
+      commissionType,
+      commissionAmount,
+      commissionPercentage,
+    } = propertyResult[0];
 
     commissionType = commissionType || "";
     commissionPercentage = Number(commissionPercentage) || 0;
@@ -775,10 +807,13 @@ export const token = async (req, res) => {
 
     // Percentage-based commission
     if (commissionType.toLowerCase() === "percentage") {
-      finalCommissionAmount = (Number(dealamount) * commissionPercentage) / 100;
+      finalCommissionAmount =
+        (Number(dealamount) * commissionPercentage) / 100;
     }
 
-    // Commission split
+    /* ===============================
+       Commission Split Calculation
+    =============================== */
     const reparvCommission = (finalCommissionAmount * 40) / 100;
 
     const grossSalesCommission = (finalCommissionAmount * 40) / 100;
@@ -787,12 +822,16 @@ export const token = async (req, res) => {
 
     const grossTerritoryCommission = (finalCommissionAmount * 20) / 100;
     const territoryCommission =
-      grossTerritoryCommission - (grossTerritoryCommission * 2) / 100;
+      grossTerritoryCommission -
+      (grossTerritoryCommission * 2) / 100;
 
     const TDS =
-      (grossSalesCommission * 2) / 100 + (grossTerritoryCommission * 2) / 100;
+      (grossSalesCommission * 2) / 100 +
+      (grossTerritoryCommission * 2) / 100;
 
-    // Step 3: Insert propertyfollowup
+    /* ===============================
+       Step 3: Insert Follow-Up
+    =============================== */
     const insertSQL = `
       INSERT INTO propertyfollowup (
         enquirerid,
@@ -812,24 +851,22 @@ export const token = async (req, res) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    const [insertResult] = await db
-      .promise()
-      .query(insertSQL, [
-        Id,
-        paymenttype,
-        tokenamount,
-        remark,
-        dealamount,
-        enquiryStatus,
-        finalCommissionAmount,
-        reparvCommission,
-        salesCommission,
-        territoryCommission,
-        TDS,
-        paymentImage,
-        currentdate,
-        currentdate,
-      ]);
+    const [insertResult] = await db.promise().query(insertSQL, [
+      Id,
+      paymenttype,
+      tokenamount,
+      remark,
+      dealamount,
+      enquiryStatus,
+      finalCommissionAmount,
+      reparvCommission,
+      salesCommission,
+      territoryCommission,
+      TDS,
+      paymentImage,
+      currentdate,
+      currentdate,
+    ]);
 
     return res.status(201).json({
       message: "Token added successfully",
@@ -846,7 +883,7 @@ export const token = async (req, res) => {
     console.error("Token insert error:", error);
     return res.status(500).json({
       message: "Server error",
-      error,
+      error: error.message,
     });
   }
 };

@@ -1,4 +1,5 @@
 import db from "../../config/dbconnect.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 import { uploadToS3 } from "../../utils/imageUpload.js";
 import moment from "moment";
 
@@ -54,7 +55,6 @@ export const getAll = (req, res) => {
     });
   });
 };
-
 
 // GET LOAN BY ID
 export const getById = (req, res) => {
@@ -134,33 +134,31 @@ export const submitEmiForm = async (req, res) => {
       businessOtherIncome,
     } = req.body;
 
-    // Helper for S3 upload
-    const uploadImagesToS3 = async (fieldFiles) => {
-      if (!fieldFiles || fieldFiles.length === 0) return null;
-      const uploadedUrls = [];
-      for (const file of fieldFiles) {
-        const url = await uploadToS3(file);
-        uploadedUrls.push(url);
-      }
-      return uploadedUrls[0]; // single image expected
+    /* ---------- HELPER: COMPRESS + UPLOAD ---------- */
+    const uploadSingleImage = async (files) => {
+      if (!files || files.length === 0) return null;
+
+      const convertedImage = await convertSingleImageToWebp(files[0]);
+      return await uploadToS3(convertedImage);
     };
 
-    // Upload images to S3
-    const panImage = await uploadImagesToS3(req.files?.panImage);
-    const aadhaarFrontImage = await uploadImagesToS3(
+    /* ---------- UPLOAD IMAGES ---------- */
+    const panImage = await uploadSingleImage(req.files?.panImage);
+    const aadhaarFrontImage = await uploadSingleImage(
       req.files?.aadhaarFrontImage
     );
-    const aadhaarBackImage = await uploadImagesToS3(
+    const aadhaarBackImage = await uploadSingleImage(
       req.files?.aadhaarBackImage
     );
 
-    // Validation
+    /* ---------- VALIDATION ---------- */
     if (!panImage || !aadhaarFrontImage || !aadhaarBackImage) {
       return res.status(400).json({
         message: "PAN image and Aadhaar front & back images are required",
       });
     }
 
+    /* ---------- INSERT DATA ---------- */
     const sql = `
       INSERT INTO loanemiforperson (
         user_id, employmentType, fullname, dateOfBirth, contactNo, panNumber, aadhaarNumber, email,
@@ -200,9 +198,9 @@ export const submitEmiForm = async (req, res) => {
       businessExperienceYears,
       businessExperienceMonths,
       businessOtherIncome,
-      panImage, // S3 URL
-      aadhaarFrontImage, // S3 URL
-      aadhaarBackImage, // S3 URL
+      panImage,
+      aadhaarFrontImage,
+      aadhaarBackImage,
     ];
 
     db.query(sql, values, (err, result) => {
@@ -214,13 +212,13 @@ export const submitEmiForm = async (req, res) => {
         });
       }
 
-      res.status(201).json({
+      return res.status(201).json({
         message: "EMI form submitted successfully",
         id: result.insertId,
       });
     });
   } catch (error) {
     console.error("EMI Submit Error:", error);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error", error });
   }
 };

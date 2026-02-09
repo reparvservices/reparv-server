@@ -3,6 +3,7 @@ import moment from "moment";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
 import { uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 const saltRounds = 10;
 
@@ -58,21 +59,32 @@ export const editProfile = async (req, res) => {
       // Upload new image to S3 if file is provided
       if (req.file) {
         try {
-          finalImagePath = await uploadToS3(req.file); // upload new image only
+          let uploadFile = req.file;
+
+          // Compress only if image
+          if (req.file.mimetype?.startsWith("image/")) {
+            const compressedImage = await convertSingleImageToWebp(req.file);
+            if (compressedImage) {
+              uploadFile = compressedImage;
+            }
+          }
+
+          finalImagePath = await uploadToS3(uploadFile);
         } catch (s3Err) {
           console.error("S3 upload error:", s3Err);
-          return res
-            .status(500)
-            .json({ message: "Image upload failed", error: s3Err });
+          return res.status(500).json({
+            message: "Image upload failed",
+            error: s3Err,
+          });
         }
       }
 
       // Update database
       const updateSql = `
-      UPDATE projectpartner 
-      SET fullname = ?, username = ?, contact = ?, email = ?, userimage = ?, updated_at = ? 
-      WHERE id = ?
-    `;
+        UPDATE projectpartner 
+        SET fullname = ?, username = ?, contact = ?, email = ?, userimage = ?, updated_at = ? 
+        WHERE id = ?
+      `;
 
       const updateValues = [
         fullname,
@@ -98,9 +110,10 @@ export const editProfile = async (req, res) => {
           userimage: finalImagePath,
         });
       });
-    },
+    }
   );
 };
+
 
 export const changePassword = async (req, res) => {
   const userId = req.projectPartnerUser?.id;

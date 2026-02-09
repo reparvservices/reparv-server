@@ -1,6 +1,7 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 // **Fetch All**
 export const getAll = (req, res) => {
@@ -116,7 +117,6 @@ export const addLike = async (req, res) => {
 export const add = async (req, res) => {
   try {
     const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
-
     const { userId, postContent, like, projectpartnerid } = req.body;
 
     if (!userId) {
@@ -129,10 +129,11 @@ export const add = async (req, res) => {
         .json({ message: "Either image or post content is required" });
     }
 
-    /* ---------- UPLOAD IMAGE TO S3 ---------- */
+    /* ---------- COMPRESS + UPLOAD IMAGE ---------- */
     let imageUrl = null;
     if (req.file) {
-      imageUrl = await uploadToS3(req.file);
+      const convertedImage = await convertSingleImageToWebp(req.file);
+      imageUrl = await uploadToS3(convertedImage);
     }
 
     const sql = `
@@ -166,7 +167,7 @@ export const add = async (req, res) => {
           message: "Post added successfully",
           postId: result.insertId,
         });
-      },
+      }
     );
   } catch (error) {
     console.error("Add post error:", error);
@@ -204,13 +205,18 @@ export const updatePost = async (req, res) => {
 
         let newImageUrl = null;
 
-        /* ---------- UPLOAD NEW IMAGE ---------- */
+        /* ---------- COMPRESS + UPLOAD NEW IMAGE ---------- */
         if (req.file) {
-          newImageUrl = await uploadToS3(req.file);
+          const convertedImage = await convertSingleImageToWebp(req.file);
+          newImageUrl = await uploadToS3(convertedImage);
 
           // 🗑 delete old image from S3
           if (rows[0].image) {
-            await deleteFromS3(rows[0].image);
+            try {
+              await deleteFromS3(rows[0].image);
+            } catch (err) {
+              console.error("Failed to delete old post image:", err);
+            }
           }
         }
 
@@ -247,7 +253,7 @@ export const updatePost = async (req, res) => {
             message: "Post updated successfully",
           });
         });
-      },
+      }
     );
   } catch (error) {
     console.error("Update post error:", error);

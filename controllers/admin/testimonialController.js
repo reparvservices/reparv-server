@@ -1,6 +1,7 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 // **Fetch All **
 export const getAll = (req, res) => {
@@ -31,7 +32,6 @@ export const getById = (req, res) => {
   });
 };
 
-// **Add New Builder**
 export const add = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -46,8 +46,8 @@ export const add = async (req, res) => {
     let clientImageUrl = null;
 
     if (req.file) {
-      const s3Result = await uploadToS3(req.file);
-      clientImageUrl = s3Result; // ONLY URL
+      const compressedImage = await convertSingleImageToWebp(req.file);
+      clientImageUrl = await uploadToS3(compressedImage);
     }
 
     const insertSQL = `
@@ -103,12 +103,14 @@ export const update = async (req, res) => {
 
         if (req.file) {
           try {
+            // delete old image from S3
             if (oldData.clientimage) {
-              await deleteFromS3(oldData.clientimage); // expects URL
+              await deleteFromS3(oldData.clientimage);
             }
 
-            const s3Result = await uploadToS3(req.file);
-            finalImageUrl = s3Result;
+            // compress + upload new image
+            const compressedImage = await convertSingleImageToWebp(req.file);
+            finalImageUrl = await uploadToS3(compressedImage);
           } catch (s3Err) {
             console.error("S3 error:", s3Err);
             return res.status(500).json({ message: "S3 upload failed" });
@@ -138,7 +140,6 @@ export const update = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 // **Delete**
 export const del = (req, res) => {
@@ -200,7 +201,7 @@ export const status = (req, res) => {
         res
           .status(200)
           .json({ message: `Testimonial status changed to ${newStatus}` });
-      },
+      }
     );
   });
 };

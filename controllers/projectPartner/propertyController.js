@@ -6,6 +6,7 @@ import csv from "csv-parser";
 import { convertImagesToWebp } from "../../utils/convertImagesToWebp.js";
 import { sanitize } from "../../utils/sanitize.js";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 function toSlug(text) {
   return text
@@ -1202,12 +1203,22 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
 
     // Upload new brochure to S3 if provided
     if (brochureFile) {
+      let uploadFile = brochureFile;
+
+      // Compress ONLY if image (PDF untouched)
+      if (brochureFile.mimetype?.startsWith("image/")) {
+        const compressedImage = await convertSingleImageToWebp(brochureFile);
+        if (compressedImage) {
+          uploadFile = compressedImage;
+        }
+      }
+
       // Delete old brochure from S3
       if (oldData.brochureFile) {
         await deleteFromS3(oldData.brochureFile);
       }
 
-      brochureUrl = await uploadToS3(brochureFile);
+      brochureUrl = await uploadToS3(uploadFile);
     }
 
     // Update DB with new brochure URL & videoLink

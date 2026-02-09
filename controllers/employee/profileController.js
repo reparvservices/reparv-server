@@ -3,6 +3,7 @@ import moment from "moment";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 const saltRounds = 10;
 
@@ -28,6 +29,7 @@ export const getProfile = (req, res) => {
 
 export const editProfile = async (req, res) => {
   const userId = req.employeeUser?.id;
+
   if (!userId) {
     return res.status(400).json({ message: "Invalid User ID" });
   }
@@ -40,7 +42,9 @@ export const editProfile = async (req, res) => {
   }
 
   try {
-    // STEP 1: Fetch existing user profile
+    /* ================================
+       STEP 1: Fetch existing profile
+    ================================= */
     db.query(
       "SELECT userimage FROM employees WHERE id = ?",
       [userId],
@@ -52,42 +56,53 @@ export const editProfile = async (req, res) => {
             .json({ message: "Database error", error: err });
         }
 
-        if (result.length === 0) {
+        if (!result.length) {
           return res.status(404).json({ message: "User not found" });
         }
 
-        let existingImage = result[0].userimage;
-        let newImageUrl = existingImage;
+        const existingImage = result[0].userimage;
+        let finalImageUrl = existingImage;
 
-        // STEP 2: Upload new image to S3 if provided
+        /* ================================
+           STEP 2: Compress + Upload Image
+        ================================= */
         if (req.file) {
           try {
-            newImageUrl = await uploadToS3(req.file);
+            // 🔹 Convert to WebP
+            const convertedImage = await convertSingleImageToWebp(req.file);
 
-            // Delete old image from S3 if exists
+            if (convertedImage) {
+              finalImageUrl = await uploadToS3(convertedImage);
+            }
+
+            // Delete old image AFTER successful upload
             if (existingImage) {
               await deleteFromS3(existingImage);
             }
-          } catch (s3Err) {
-            console.error("S3 upload/delete error:", s3Err);
-            return res
-              .status(500)
-              .json({ message: "S3 upload/delete failed", error: s3Err });
+          } catch (imgErr) {
+            console.error("Image upload/delete error:", imgErr);
+            return res.status(500).json({
+              message: "Profile image upload failed",
+              error: imgErr,
+            });
           }
         }
 
-        // STEP 3: Update user profile in DB
+        /* ================================
+           STEP 3: Update DB
+        ================================= */
         const updateSql = `
-        UPDATE employees
-        SET name = ?, username = ?, contact = ?, email = ?, userimage = ?, updated_at = ?
-        WHERE id = ?
-      `;
+          UPDATE employees
+          SET name = ?, username = ?, contact = ?, email = ?, userimage = ?, updated_at = ?
+          WHERE id = ?
+        `;
+
         const updateValues = [
           name,
           username,
           contact,
           email,
-          newImageUrl,
+          finalImageUrl,
           currentdate,
           userId,
         ];
@@ -101,16 +116,16 @@ export const editProfile = async (req, res) => {
             });
           }
 
-          res.status(200).json({
+          return res.status(200).json({
             message: "Profile updated successfully",
-            userimage: newImageUrl,
+            userimage: finalImageUrl,
           });
         });
-      },
+      }
     );
   } catch (error) {
     console.error("Edit profile error:", error);
-    res.status(500).json({ message: "Server error", error });
+    return res.status(500).json({ message: "Server error", error });
   }
 };
 
@@ -177,9 +192,9 @@ export const changePassword = async (req, res) => {
             }
 
             res.status(200).json({ message: "Password changed successfully" });
-          },
+          }
         );
-      },
+      }
     );
   } catch (error) {
     console.error("Error:", error);

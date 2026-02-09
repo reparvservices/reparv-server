@@ -3,6 +3,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import { sanitize } from "../../utils/sanitize.js";
 import { uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 // * Fetch All Enquiries with Enquiry Lister Details
 export const getAll = (req, res) => {
@@ -111,7 +112,7 @@ export const getAll = (req, res) => {
         AND (properties.projectpartnerid = ? OR enquirers.projectbroker = ?)
       ORDER BY enquirers.enquirersid DESC`;
     params = [projectPartnerId, projectPartnerId, projectPartnerId];
-  } 
+  }
 
   // Ads Enquiries
   else if (enquirySource === "Ads") {
@@ -132,8 +133,8 @@ export const getAll = (req, res) => {
         AND (properties.projectpartnerid = ? OR enquirers.projectbroker = ?)
       ORDER BY enquirers.enquirersid DESC`;
     params = [projectPartnerId, projectPartnerId, projectPartnerId];
-  } 
-  
+  }
+
   // Digital Broker Enquiries (Now Includes Enquiry Lister)
   else if (enquirySource === "Digital Broker") {
     sql = `
@@ -314,7 +315,7 @@ export const getProperties = (req, res) => {
         message: "Properties fetched successfully.",
         data: propertyResults,
       });
-    },
+    }
   );
 };
 
@@ -370,7 +371,7 @@ export const getPropertyList = (req, res) => {
         }
 
         res.json(propertyResults);
-      },
+      }
     );
   });
 };
@@ -431,9 +432,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -511,9 +512,9 @@ export const assignEnquiry = async (req, res) => {
               contact: salespersoncontact,
             },
           });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -553,9 +554,9 @@ export const updateEnquirerProperty = async (req, res) => {
           res.status(200).json({
             message: "Enquirer Property Updated Successfully",
           });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -588,7 +589,7 @@ export const del = (req, res) => {
         }
         res.status(200).json({ message: "Enquiry deleted successfully" });
       });
-    },
+    }
   );
 };
 
@@ -641,9 +642,9 @@ export const visitScheduled = (req, res) => {
             message: "Visit added successfully",
             Id: insertResult.insertId,
           });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -670,62 +671,79 @@ export const token = async (req, res) => {
       return res.status(400).json({ message: "Invalid Enquiry ID" });
     }
 
-    // STEP 1: Upload payment image to S3 if provided
+    /* ================================
+       STEP 1: Compress + Upload Image
+    ================================= */
     let paymentImageUrl = null;
+
     if (req.file) {
       try {
-        paymentImageUrl = await uploadToS3(req.file);
-      } catch (s3Err) {
-        console.error("S3 upload error:", s3Err);
-        return res
-          .status(500)
-          .json({ message: "S3 upload failed", error: s3Err });
+        // Convert image to WebP
+        const convertedImage = await convertSingleImageToWebp(req.file);
+
+        if (convertedImage) {
+          paymentImageUrl = await uploadToS3(convertedImage);
+        }
+      } catch (imgErr) {
+        console.error("Image compress/upload error:", imgErr);
+        return res.status(500).json({
+          message: "Payment image upload failed",
+          error: imgErr,
+        });
       }
     }
 
-    // STEP 2: Get Enquirer (to access propertyid)
+    /* ================================
+       STEP 2: Get Enquirer
+    ================================= */
     db.query(
-      "SELECT * FROM enquirers WHERE enquirersid = ?",
+      "SELECT propertyid FROM enquirers WHERE enquirersid = ?",
       [Id],
       (err, enquirerResult) => {
         if (err)
           return res
             .status(500)
             .json({ message: "Database error", error: err });
-        if (enquirerResult.length === 0)
+
+        if (!enquirerResult.length)
           return res.status(404).json({ message: "Enquirer not found" });
 
-        const enquirer = enquirerResult[0];
-        const propertyId = enquirer.propertyid;
+        const propertyId = enquirerResult[0].propertyid;
 
-        // STEP 3: Get Property data
+        /* ================================
+           STEP 3: Get Property Commission
+        ================================= */
         db.query(
-          "SELECT commissionType, commissionAmount, commissionPercentage FROM properties WHERE propertyid = ?",
+          `SELECT commissionType, commissionAmount, commissionPercentage
+           FROM properties WHERE propertyid = ?`,
           [propertyId],
           (err, propertyResult) => {
             if (err)
               return res
                 .status(500)
                 .json({ message: "Property fetch error", error: err });
-            if (propertyResult.length === 0)
+
+            if (!propertyResult.length)
               return res.status(404).json({ message: "Property not found" });
 
-            const property = propertyResult[0];
             let { commissionType, commissionAmount, commissionPercentage } =
-              property;
+              propertyResult[0];
 
             commissionType = commissionType || "";
             commissionPercentage = Number(commissionPercentage) || 0;
             let finalCommissionAmount = Number(commissionAmount) || 0;
 
-            // If type is percentage, calculate commissionAmount from dealamount
+            // Percentage-based commission
             if (commissionType.toLowerCase() === "percentage") {
               finalCommissionAmount =
                 (Number(dealamount) * commissionPercentage) / 100;
             }
 
-            // Split commission
+            /* ================================
+               STEP 4: Commission Split
+            ================================= */
             const reparvCommission = (finalCommissionAmount * 40) / 100;
+
             const grossSalesCommission = (finalCommissionAmount * 40) / 100;
             const salesCommission =
               grossSalesCommission - (grossSalesCommission * 2) / 100;
@@ -738,12 +756,25 @@ export const token = async (req, res) => {
               (grossSalesCommission * 2) / 100 +
               (grossTerritoryCommission * 2) / 100;
 
-            // STEP 4: Insert into propertyfollowup
+            /* ================================
+               STEP 5: Insert Followup
+            ================================= */
             const insertSQL = `
               INSERT INTO propertyfollowup (
-                enquirerid, paymenttype, tokenamount, remark, dealamount, status, 
-                totalcommission, reparvcommission, salescommission, territorycommission, tds, paymentimage,
-                updated_at, created_at
+                enquirerid,
+                paymenttype,
+                tokenamount,
+                remark,
+                dealamount,
+                status,
+                totalcommission,
+                reparvcommission,
+                salescommission,
+                territorycommission,
+                tds,
+                paymentimage,
+                updated_at,
+                created_at
               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
 
@@ -761,7 +792,7 @@ export const token = async (req, res) => {
                 salesCommission,
                 territoryCommission,
                 TDS,
-                paymentImageUrl, // <-- Use S3 URL
+                paymentImageUrl, // WebP S3 URL
                 currentdate,
                 currentdate,
               ],
@@ -771,26 +802,29 @@ export const token = async (req, res) => {
                     .status(500)
                     .json({ message: "Insert error", error: err });
 
-                res.status(201).json({
+                return res.status(201).json({
                   message: "Token added successfully",
                   followupId: insertResult.insertId,
+                  paymentImage: paymentImageUrl,
                   commissionBreakdown: {
                     totalCommission: finalCommissionAmount,
                     salesCommission,
                     reparvCommission,
                     territoryCommission,
                   },
-                  paymentImage: paymentImageUrl, // return S3 URL
                 });
-              },
+              }
             );
-          },
+          }
         );
-      },
+      }
     );
   } catch (error) {
-    console.error("Token error:", error);
-    return res.status(500).json({ message: "Internal server error", error });
+    console.error("Token controller error:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      error,
+    });
   }
 };
 
@@ -858,9 +892,9 @@ export const followUp = (req, res) => {
             message: "Follow Up remark added successfully",
             Id: insertResult.insertId,
           });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -909,9 +943,9 @@ export const cancelled = (req, res) => {
             message: "Remark added successfully",
             Id: insertResult.insertId,
           });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -960,12 +994,10 @@ export const toDigitalBroker = (req, res) => {
             .json({ message: "Database error", error: err });
         }
 
-        res
-          .status(200)
-          .json({
-            message: "Enquiry convert into digital broker successfully",
-          });
+        res.status(200).json({
+          message: "Enquiry convert into digital broker successfully",
+        });
       });
-    },
+    }
   );
 };

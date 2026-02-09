@@ -6,6 +6,7 @@ import csv from "csv-parser";
 import { convertImagesToWebp } from "../../utils/convertImagesToWebp.js";
 import { sanitize } from "../../utils/sanitize.js";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 function toSlug(text) {
   return text
@@ -956,42 +957,55 @@ export const setTopPicks = async (req, res) => {
   }
 
   try {
-    // 1️⃣ Get existing banner
+    /* ---------- FETCH EXISTING BANNER ---------- */
     const [rows] = await db
       .promise()
       .query("SELECT topPicksBanner FROM properties WHERE propertyid = ?", [
         propertyId,
       ]);
 
-    if (rows.length === 0) {
+    if (!rows.length) {
       return res.status(404).json({ message: "Property not found" });
     }
 
     let bannerUrl = rows[0].topPicksBanner;
 
-    // 2️⃣ If new banner uploaded, upload to S3
+    /* ---------- IMAGE UPLOAD (COMPRESS → S3) ---------- */
     if (req.file) {
-      const s3Result = await uploadToS3(req.file);
-      bannerUrl = s3Result; // new S3 URL
+      const compressedImage = await convertSingleImageToWebp(req.file);
+
+      if (compressedImage) {
+        bannerUrl = await uploadToS3(compressedImage);
+      }
     }
 
     const { topPicksStatus } = req.body;
 
-    // 3️⃣ Update DB
+    /* ---------- UPDATE PROPERTY ---------- */
     await db.promise().query(
-      `UPDATE properties 
-       SET topPicksStatus = ?, topPicksBanner = ?, updated_at = NOW()
-       WHERE propertyid = ?`,
+      `
+        UPDATE properties
+        SET
+          topPicksStatus = ?,
+          topPicksBanner = ?,
+          updated_at = NOW()
+        WHERE propertyid = ?
+      `,
       [topPicksStatus, bannerUrl, propertyId]
     );
 
     return res.status(200).json({
       message: "Top Picks updated successfully",
-      data: { topPicksStatus, topPicksBanner: bannerUrl },
+      data: {
+        topPicksStatus,
+        topPicksBanner: bannerUrl,
+      },
     });
   } catch (error) {
     console.error("setTopPicks error:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      message: "Internal server error",
+    });
   }
 };
 
@@ -1139,17 +1153,15 @@ export const uploadBrochureAndVideo = (req, res) => {
   );
 };
 
-// * UPLOAD Brochure & Video Link *
 export const uploadBrochureAndVideoLink = async (req, res) => {
   try {
     const propertyId = req.params.id;
-
     if (!propertyId) {
       return res.status(400).json({ message: "Property Id is required" });
     }
 
-    const brochureFile = req.file || null; // brochure (image/pdf)
-    const { videoLink } = req.body; // YouTube or other video link
+    const brochureFile = req.file || null; // image / pdf
+    const { videoLink } = req.body;
 
     if (!brochureFile && !videoLink) {
       return res
@@ -1157,125 +1169,100 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
         .json({ message: "No brochure or video link provided" });
     }
 
-    const brochurePath = brochureFile
-      ? `/uploads/brochures/${brochureFile.filename}`
-      : null;
+    /* ---------- FETCH OLD DATA ---------- */
+    const [rows] = await db
+      .promise()
+      .query(
+        "SELECT brochureFile, videoLink FROM properties WHERE propertyid = ?",
+        [propertyId]
+      );
 
-    // Get old data
-    db.query(
-      "SELECT brochureFile, videoLink FROM properties WHERE propertyid = ?",
-      [propertyId],
-      async (err, result) => {
-        if (err) {
-          console.error("Database error:", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-        }
+    if (!rows.length) {
+      return res.status(404).json({ message: "Property not found" });
+    }
 
-        if (result.length === 0) {
-          return res.status(404).json({ message: "Property not found" });
-        }
+    let brochureUrl = rows[0].brochureFile;
+    let finalVideoLink = videoLink || rows[0].videoLink;
 
-        const oldBrochure = result[0].brochureFile;
-        const oldVideoLink = result[0].videoLink;
+    /* ---------- UPLOAD BROCHURE ---------- */
+    if (brochureFile) {
+      let uploadFile = brochureFile;
 
-        // Delete old brochure if new one uploaded
-        if (brochureFile && oldBrochure) {
-          try {
-            const oldPath = path.join(process.cwd(), oldBrochure);
-            await fs.unlink(oldPath);
-          } catch (error) {
-            console.warn("Failed to delete old brochure:", error.message);
-          }
-        }
-
-        // Update DB with new brochure & video link
-        db.query(
-          "UPDATE properties SET brochureFile = ?, videoLink = ? WHERE propertyid = ?",
-          [brochurePath || oldBrochure, videoLink || oldVideoLink, propertyId],
-          (err) => {
-            if (err) {
-              console.error("Error while saving brochure/video link:", err);
-              return res
-                .status(500)
-                .json({ message: "Database error", error: err });
-            }
-
-            res.status(200).json({
-              message: "Brochure & Video Link updated successfully",
-              brochurePath: brochurePath || oldBrochure,
-              videoLink: videoLink || oldVideoLink,
-            });
-          }
-        );
+      // Compress ONLY if image
+      if (brochureFile.mimetype.startsWith("image/")) {
+        const compressed = await convertSingleImageToWebp(brochureFile);
+        if (compressed) uploadFile = compressed;
       }
+
+      brochureUrl = await uploadToS3(uploadFile);
+    }
+
+    /* ---------- UPDATE DB ---------- */
+    await db.promise().query(
+      `
+        UPDATE properties
+        SET brochureFile = ?, videoLink = ?, updated_at = NOW()
+        WHERE propertyid = ?
+      `,
+      [brochureUrl, finalVideoLink, propertyId]
     );
+
+    return res.status(200).json({
+      message: "Brochure & Video Link updated successfully",
+      brochureFile: brochureUrl,
+      videoLink: finalVideoLink,
+    });
   } catch (error) {
-    console.error("Unexpected error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    console.error("uploadBrochureAndVideoLink error:", error);
+    return res.status(500).json({
+      message: "Server error",
+    });
   }
 };
-
-// * DELETE Brochure File *
 export const deleteBrochureFile = async (req, res) => {
   try {
     const propertyId = req.params.id;
-
     if (!propertyId) {
       return res.status(400).json({ message: "Property Id is required" });
     }
 
-    // Get existing brochure & video link
-    db.query(
-      "SELECT brochureFile FROM properties WHERE propertyid = ?",
-      [propertyId],
-      async (err, result) => {
-        if (err) {
-          console.error("Database error:", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-        }
+    /* ---------- FETCH EXISTING BROCHURE ---------- */
+    const [rows] = await db
+      .promise()
+      .query("SELECT brochureFile FROM properties WHERE propertyid = ?", [
+        propertyId,
+      ]);
 
-        if (result.length === 0) {
-          return res.status(404).json({ message: "Property not found" });
-        }
+    if (!rows.length) {
+      return res.status(404).json({ message: "Property not found" });
+    }
 
-        const oldBrochure = result[0].brochureFile;
+    const brochureUrl = rows[0].brochureFile;
 
-        // Delete brochure file if exists
-        if (oldBrochure) {
-          try {
-            const filePath = path.join(process.cwd(), oldBrochure);
-            await fs.unlink(filePath);
-          } catch (error) {
-            console.warn("Failed to delete brochure:", error.message);
-          }
-        }
-
-        // Clear brochureFile & videoLink from DB
-        db.query(
-          "UPDATE properties SET brochureFile = NULL WHERE propertyid = ?",
-          [propertyId],
-          (err) => {
-            if (err) {
-              console.error("Database update error:", err);
-              return res
-                .status(500)
-                .json({ message: "Database error", error: err });
-            }
-
-            res.status(200).json({
-              message: "Brochure and Video Link deleted successfully",
-            });
-          }
-        );
+    /* ---------- DELETE FROM S3 ---------- */
+    if (brochureUrl) {
+      try {
+        await deleteFromS3(brochureUrl);
+      } catch (err) {
+        console.warn("Failed to delete brochure from S3:", err.message);
       }
-    );
+    }
+
+    /* ---------- UPDATE DB ---------- */
+    await db
+      .promise()
+      .query("UPDATE properties SET brochureFile = NULL WHERE propertyid = ?", [
+        propertyId,
+      ]);
+
+    return res.status(200).json({
+      message: "Brochure deleted successfully",
+    });
   } catch (error) {
-    console.error("Unexpected error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    console.error("deleteBrochureFile error:", error);
+    return res.status(500).json({
+      message: "Server error",
+    });
   }
 };
 
@@ -1547,94 +1534,78 @@ export const updateImages = async (req, res) => {
   try {
     const files = req.files || {};
 
-    /* ☁ Upload images to S3 */
-    const uploadImagesToS3 = async (fieldFiles) => {
-      if (!fieldFiles || !fieldFiles.length) return null;
+    /* ---------- FETCH EXISTING PROPERTY ---------- */
+    const [rows] = await db
+      .promise()
+      .query("SELECT * FROM properties WHERE propertyid = ?", [Id]);
 
-      const uploadedUrls = await Promise.all(
-        fieldFiles.map((file) => uploadToS3(file))
+    if (!rows.length) {
+      return res.status(404).json({ message: "Property not found" });
+    }
+
+    const existing = rows[0];
+
+    /* ---------- COMPRESS IMAGES (WEBP) ---------- */
+    const compressedFiles = await convertImagesToWebp(files);
+
+    /* ---------- UPLOAD TO S3 ---------- */
+    const uploadImagesToS3 = async (field) => {
+      if (!compressedFiles[field]?.length) return null;
+
+      const urls = await Promise.all(
+        compressedFiles[field].map((file) => uploadToS3(file))
       );
 
-      return JSON.stringify(uploadedUrls);
+      return JSON.stringify(urls);
     };
 
-    // Fetch existing property (to preserve old images)
-    db.query(
-      "SELECT * FROM properties WHERE propertyid = ?",
-      [Id],
-      async (err, result) => {
-        if (err) {
-          console.error("DB error:", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-        }
+    const frontView = await uploadImagesToS3("frontView");
+    const sideView = await uploadImagesToS3("sideView");
+    const kitchenView = await uploadImagesToS3("kitchenView");
+    const hallView = await uploadImagesToS3("hallView");
+    const bedroomView = await uploadImagesToS3("bedroomView");
+    const bathroomView = await uploadImagesToS3("bathroomView");
+    const balconyView = await uploadImagesToS3("balconyView");
+    const nearestLandmark = await uploadImagesToS3("nearestLandmark");
+    const developedAmenities = await uploadImagesToS3("developedAmenities");
 
-        if (result.length === 0) {
-          return res.status(404).json({ message: "Property not found" });
-        }
+    /* ---------- UPDATE DB ---------- */
+    const updateSQL = `
+      UPDATE properties SET 
+        frontView = ?, 
+        sideView = ?, 
+        kitchenView = ?, 
+        hallView = ?, 
+        bedroomView = ?, 
+        bathroomView = ?, 
+        balconyView = ?, 
+        nearestLandmark = ?, 
+        developedAmenities = ?, 
+        updated_at = ?
+      WHERE propertyid = ?
+    `;
 
-        const existing = result[0];
+    const values = [
+      frontView || existing.frontView,
+      sideView || existing.sideView,
+      kitchenView || existing.kitchenView,
+      hallView || existing.hallView,
+      bedroomView || existing.bedroomView,
+      bathroomView || existing.bathroomView,
+      balconyView || existing.balconyView,
+      nearestLandmark || existing.nearestLandmark,
+      developedAmenities || existing.developedAmenities,
+      currentdate,
+      Id,
+    ];
 
-        // Upload new images (if any)
-        const frontView = await uploadImagesToS3(files.frontView);
-        const sideView = await uploadImagesToS3(files.sideView);
-        const kitchenView = await uploadImagesToS3(files.kitchenView);
-        const hallView = await uploadImagesToS3(files.hallView);
-        const bedroomView = await uploadImagesToS3(files.bedroomView);
-        const bathroomView = await uploadImagesToS3(files.bathroomView);
-        const balconyView = await uploadImagesToS3(files.balconyView);
-        const nearestLandmark = await uploadImagesToS3(files.nearestLandmark);
-        const developedAmenities = await uploadImagesToS3(
-          files.developedAmenities
-        );
+    await db.promise().query(updateSQL, values);
 
-        // Preserve old images if new ones are not uploaded
-        const updateSQL = `
-          UPDATE properties SET 
-            frontView = ?, 
-            sideView = ?, 
-            kitchenView = ?, 
-            hallView = ?, 
-            bedroomView = ?, 
-            bathroomView = ?, 
-            balconyView = ?, 
-            nearestLandmark = ?, 
-            developedAmenities = ?, 
-            updated_at = ?
-          WHERE propertyid = ?
-        `;
-
-        const values = [
-          frontView || existing.frontView,
-          sideView || existing.sideView,
-          kitchenView || existing.kitchenView,
-          hallView || existing.hallView,
-          bedroomView || existing.bedroomView,
-          bathroomView || existing.bathroomView,
-          balconyView || existing.balconyView,
-          nearestLandmark || existing.nearestLandmark,
-          developedAmenities || existing.developedAmenities,
-          currentdate,
-          Id,
-        ];
-
-        db.query(updateSQL, values, (err) => {
-          if (err) {
-            console.error("Update error:", err);
-            return res
-              .status(500)
-              .json({ message: "Update failed", error: err });
-          }
-
-          res.status(200).json({
-            message: "Property images updated successfully",
-          });
-        });
-      }
-    );
+    return res.status(200).json({
+      message: "Property images updated successfully",
+    });
   } catch (err) {
-    console.error("S3 upload error:", err);
+    console.error("updateImages error:", err);
     return res.status(500).json({
       message: "Image upload failed",
       error: err.message,

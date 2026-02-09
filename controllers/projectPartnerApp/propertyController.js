@@ -37,8 +37,7 @@ export const getAll = (req, res) => {
     res.json(formatted);
   });
 };
-/* ---------- ADD PROPERTY ---------- */
-/* ---------- ADD PROPERTY ---------- */
+
 export const addProperty = async (req, res) => {
   try {
     const {
@@ -55,7 +54,6 @@ export const addProperty = async (req, res) => {
       projectpartnerid,
     } = req.body;
 
-    /*  Check duplicate property */
     db.query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",
       [property_name],
@@ -72,7 +70,7 @@ export const addProperty = async (req, res) => {
           });
         }
 
-        /*  Parse areas */
+        /* Parse areas */
         let parsedAreas = [];
         if (typeof areas === "string") parsedAreas = JSON.parse(areas);
         if (Array.isArray(areas)) parsedAreas = areas;
@@ -85,11 +83,16 @@ export const addProperty = async (req, res) => {
           parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
             ?.value || null;
 
-        /*  Upload images FIELD-WISE */
+        /* COMPRESS + UPLOAD FIELD-WISE */
         const uploadField = async (field) => {
           if (!req.files || !req.files[field]) return [];
+
+          const converted = await convertImagesToWebp({
+            [field]: req.files[field],
+          });
+
           const urls = [];
-          for (const file of req.files[field]) {
+          for (const file of converted[field]) {
             const url = await uploadToS3(file);
             urls.push(url);
           }
@@ -106,8 +109,6 @@ export const addProperty = async (req, res) => {
         const nearestLandmark = await uploadField("nearestLandmark");
         const developedAmenities = await uploadField("developedAmenities");
 
-        console.log({ frontView, sideView, kitchenView });
-        /*  Insert property */
         const insertSQL = `
           INSERT INTO properties (
             projectpartnerid, propertyType, propertyCategory, propertyName,
@@ -155,25 +156,23 @@ export const addProperty = async (req, res) => {
               .json({ success: false, message: "Insert failed" });
           }
 
-          return res.status(201).json({
+          res.status(201).json({
             success: true,
             message: "Property added successfully",
             id: result.insertId,
           });
         });
-      },
+      }
     );
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-/* ---------- UPDATE PROPERTY ---------- */
 export const updateProperty = async (req, res) => {
   try {
     const { propertyid } = req.params;
-
     if (!propertyid) {
       return res.status(400).json({ message: "Property ID is required" });
     }
@@ -190,10 +189,8 @@ export const updateProperty = async (req, res) => {
       city,
     } = req.body;
 
-    /*  CHECK DUPLICATE NAME */
     db.query(
-      `SELECT propertyid FROM properties 
-       WHERE propertyName = ? AND propertyid != ?`,
+      `SELECT propertyid FROM properties WHERE propertyName = ? AND propertyid != ?`,
       [property_name, propertyid],
       async (err, exists) => {
         if (err)
@@ -207,7 +204,6 @@ export const updateProperty = async (req, res) => {
             .json({ message: "Property name already exists!" });
         }
 
-        /*  PARSE AREAS */
         let parsedAreas = [];
         if (typeof areas === "string") parsedAreas = JSON.parse(areas);
         else if (Array.isArray(areas)) parsedAreas = areas;
@@ -220,12 +216,16 @@ export const updateProperty = async (req, res) => {
           parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
             ?.value || null;
 
-        /*  IMAGE UPLOAD (ONLY IF SENT) */
+        /* COMPRESS + UPLOAD ONLY SENT IMAGES */
         const uploadField = async (field) => {
           if (!req.files || !req.files[field]) return null;
 
+          const converted = await convertImagesToWebp({
+            [field]: req.files[field],
+          });
+
           const urls = [];
-          for (const file of req.files[field]) {
+          for (const file of converted[field]) {
             const url = await uploadToS3(file);
             urls.push(url);
           }
@@ -244,7 +244,6 @@ export const updateProperty = async (req, res) => {
           developedAmenities: await uploadField("developedAmenities"),
         };
 
-        /*  BASE UPDATE QUERY */
         let updateSQL = `
           UPDATE properties SET
             propertyType = ?,
@@ -277,7 +276,6 @@ export const updateProperty = async (req, res) => {
           toSlug(property_name),
         ];
 
-        /*  ADD IMAGE FIELDS CONDITIONALLY */
         Object.entries(images).forEach(([key, value]) => {
           if (value !== null) {
             updateSQL += `, ${key} = ?`;
@@ -288,7 +286,6 @@ export const updateProperty = async (req, res) => {
         updateSQL += ` WHERE propertyid = ?`;
         values.push(propertyid);
 
-        /*  EXECUTE UPDATE */
         db.query(updateSQL, values, (err, result) => {
           if (err) {
             console.error("Update error:", err);
@@ -301,16 +298,16 @@ export const updateProperty = async (req, res) => {
             return res.status(404).json({ message: "Property not found" });
           }
 
-          return res.status(200).json({
+          res.status(200).json({
             success: true,
             message: "Property updated successfully",
             propertyid,
           });
         });
-      },
+      }
     );
   } catch (error) {
     console.error("Update error:", error);
-    return res.status(500).json({ message: "Server error", error });
+    res.status(500).json({ message: "Server error", error });
   }
 };

@@ -2,6 +2,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment";
 import bcrypt from "bcryptjs";
 import { uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 function toSlug(text) {
   return text
@@ -59,28 +60,37 @@ export const getById = (req, res) => {
   });
 };
 
-// **Add New **
+// **Add New Blog**
 export const add = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
     const { type, tittle, description, content } = req.body;
 
-    /*  Validation */
+    /* Validation */
     if (!tittle || !description || !content) {
-      return res.status(400).json({ message: "All Fields are Required" });
+      return res.status(400).json({ message: "All fields are required" });
     }
 
     const seoSlug = toSlug(tittle);
 
-    /*  Upload blog image to S3 */
+    /* Upload + Compress Blog Image */
     const uploadBlogImage = async () => {
       if (!req.files?.blogImage?.[0]) return null;
-      return await uploadToS3(req.files.blogImage[0]);
+
+      // Convert image to WebP
+      const compressedImage = await convertSingleImageToWebp(
+        req.files.blogImage[0]
+      );
+
+      if (!compressedImage) return null;
+
+      // Upload compressed image to S3
+      return await uploadToS3(compressedImage);
     };
 
     const blogImageUrl = await uploadBlogImage();
 
-    /*  Insert blog */
+    /* Insert Blog */
     const sql = `
       INSERT INTO blogs 
       (type, tittle, description, content, seoSlug, image, created_at, updated_at)
@@ -103,17 +113,17 @@ export const add = async (req, res) => {
     return res.status(201).json({
       message: "Blog added successfully",
       blogId: result.insertId,
+      image: blogImageUrl,
     });
   } catch (error) {
     console.error("Error inserting blog:", error);
     return res.status(500).json({
       message: "Server error",
-      error,
     });
   }
 };
 
-// **Edit **
+// **Edit Blog**
 export const edit = async (req, res) => {
   try {
     const blogId = req.params.id;
@@ -124,23 +134,42 @@ export const edit = async (req, res) => {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
     const { type, tittle, description, content } = req.body;
 
-    /*  Validation */
+    /* Validation */
     if (!tittle || !description || !content) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    /*  Upload new image to S3 (if provided) */
+    /* Upload + Compress new image (if provided) */
     let blogImageUrl = null;
+
     if (req.files?.blogImage?.[0]) {
-      blogImageUrl = await uploadToS3(req.files.blogImage[0]);
+      // Convert to WebP
+      const compressedImage = await convertSingleImageToWebp(
+        req.files.blogImage[0]
+      );
+
+      if (compressedImage) {
+        blogImageUrl = await uploadToS3(compressedImage);
+      }
     }
 
-    /*  Build update query dynamically */
+    /* Build update query dynamically */
     let updateSql = `
       UPDATE blogs 
-      SET type = ?, tittle = ?, description = ?, content = ?, updated_at = ?
+      SET 
+        type = ?, 
+        tittle = ?, 
+        description = ?, 
+        content = ?, 
+        updated_at = ?
     `;
-    const updateValues = [type, tittle, description, content, currentdate];
+    const updateValues = [
+      type,
+      tittle,
+      description,
+      content,
+      currentdate,
+    ];
 
     if (blogImageUrl) {
       updateSql += `, image = ?`;
@@ -158,12 +187,12 @@ export const edit = async (req, res) => {
 
     return res.status(200).json({
       message: "Blog updated successfully",
+      image: blogImageUrl || undefined,
     });
   } catch (error) {
     console.error("Error updating blog:", error);
     return res.status(500).json({
       message: "Server error",
-      error,
     });
   }
 };

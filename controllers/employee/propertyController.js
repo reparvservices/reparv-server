@@ -6,6 +6,7 @@ import csv from "csv-parser";
 import { convertImagesToWebp } from "../../utils/convertImagesToWebp.js";
 import { sanitize } from "../../utils/sanitize.js";
 import { uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 function toSlug(text) {
   return text
@@ -159,19 +160,30 @@ export const checkPropertyName = (req, res) => {
     });
   }
 };
-// Helper to upload multiple images for a field
+
+// Compress + upload multiple images for one field
 const uploadMultipleImagesToS3 = async (filesArray) => {
   if (!filesArray || filesArray.length === 0) return null;
+
   const urls = [];
-  for (let file of filesArray) {
+
+  for (const file of filesArray) {
     try {
-      const url = await uploadToS3(file);
+      // Convert to WebP (single file wrapper)
+      const converted = await convertImagesToWebp({ temp: [file] });
+
+      const webpFile = converted.temp?.[0];
+      if (!webpFile) continue;
+
+      // Upload compressed image
+      const url = await uploadToS3(webpFile);
       urls.push(url);
     } catch (err) {
       console.error("S3 upload error:", err);
       throw err;
     }
   }
+
   return JSON.stringify(urls);
 };
 
@@ -288,7 +300,7 @@ export const addProperty = async (req, res) => {
       registrationFees = (30000 / totalOfferPrice) * 100;
     } else {
       registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
-        propertyCategory,
+        propertyCategory
       )
         ? 0
         : 1;
@@ -301,7 +313,7 @@ export const addProperty = async (req, res) => {
       const r = 0.08 / 12;
       const n = 240;
       return Math.round(
-        (price * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1),
+        (price * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
       );
     };
     const emi = calculateEMI(Number(totalOfferPrice));
@@ -315,24 +327,24 @@ export const addProperty = async (req, res) => {
     const propertyTypeJson = JSON.stringify(
       Array.isArray(propertyType)
         ? propertyType
-        : propertyType?.split(",").map((i) => i.trim()) || [],
+        : propertyType?.split(",").map((i) => i.trim()) || []
     );
 
-    // Upload images to S3
+    // Upload images to S3 (NOW COMPRESSED)
     const frontView = await uploadMultipleImagesToS3(req.files?.frontView);
     const sideView = await uploadMultipleImagesToS3(req.files?.sideView);
     const kitchenView = await uploadMultipleImagesToS3(req.files?.kitchenView);
     const hallView = await uploadMultipleImagesToS3(req.files?.hallView);
     const bedroomView = await uploadMultipleImagesToS3(req.files?.bedroomView);
     const bathroomView = await uploadMultipleImagesToS3(
-      req.files?.bathroomView,
+      req.files?.bathroomView
     );
     const balconyView = await uploadMultipleImagesToS3(req.files?.balconyView);
     const nearestLandmark = await uploadMultipleImagesToS3(
-      req.files?.nearestLandmark,
+      req.files?.nearestLandmark
     );
     const developedAmenities = await uploadMultipleImagesToS3(
-      req.files?.developedAmenities,
+      req.files?.developedAmenities
     );
 
     // Check for duplicate property name
@@ -484,12 +496,12 @@ export const addProperty = async (req, res) => {
                     id: newPropertyId,
                     propertyCityId,
                   });
-                },
+                }
               );
-            },
+            }
           );
         });
-      },
+      }
     );
   } catch (error) {
     console.error("Add Property Error:", error);
@@ -610,7 +622,7 @@ export const update = async (req, res) => {
     registrationFees = (30000 / totalOfferPrice) * 100;
   } else {
     registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
-      propertyCategory,
+      propertyCategory
     )
       ? 0
       : 1;
@@ -659,7 +671,7 @@ export const update = async (req, res) => {
             const url = await uploadToS3(
               file.buffer,
               file.originalname,
-              file.mimetype,
+              file.mimetype
             );
             uploadedUrls.push(url);
           }
@@ -768,7 +780,7 @@ export const update = async (req, res) => {
 
         res.status(200).json({ message: "Property updated successfully" });
       });
-    },
+    }
   );
 };
 
@@ -840,7 +852,7 @@ export const del = (req, res) => {
           message: "Property and associated images deleted successfully",
         });
       });
-    },
+    }
   );
 };
 
@@ -881,9 +893,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -924,9 +936,9 @@ export const approve = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -989,9 +1001,9 @@ export const changePropertyLocation = (req, res) => {
           res
             .status(200)
             .json({ message: "Property Location Change Successfully" });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -1068,13 +1080,13 @@ export const uploadBrochureAndVideo = (req, res) => {
             videoPath: videoPath || oldVideo,
             videoLink: videoLink || oldVideoLink,
           });
-        },
+        }
       );
-    },
+    }
   );
 };
 
-// * UPLOAD Brochure & Video Link *
+// * UPLOAD Brochure & Video Link (S3 + Compressed Image)
 export const uploadBrochureAndVideoLink = async (req, res) => {
   try {
     const propertyId = req.params.id;
@@ -1083,8 +1095,8 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
       return res.status(400).json({ message: "Property Id is required" });
     }
 
-    const brochureFile = req.file || null; // brochure (image/pdf)
-    const { videoLink } = req.body; // YouTube or other video link
+    const brochureFile = req.file || null; // image / pdf
+    const { videoLink } = req.body;
 
     if (!brochureFile && !videoLink) {
       return res
@@ -1092,20 +1104,14 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
         .json({ message: "No brochure or video link provided" });
     }
 
-    const brochurePath = brochureFile
-      ? `/uploads/brochures/${brochureFile.filename}`
-      : null;
-
-    // Get old data
+    // Fetch old brochure & video
     db.query(
       "SELECT brochureFile, videoLink FROM properties WHERE propertyid = ?",
       [propertyId],
       async (err, result) => {
         if (err) {
           console.error("Database error:", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
+          return res.status(500).json({ message: "Database error", error: err });
         }
 
         if (result.length === 0) {
@@ -1115,36 +1121,60 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
         const oldBrochure = result[0].brochureFile;
         const oldVideoLink = result[0].videoLink;
 
-        // Delete old brochure if new one uploaded
-        if (brochureFile && oldBrochure) {
+        let newBrochureUrl = oldBrochure;
+
+        // Upload new brochure if provided
+        if (brochureFile) {
           try {
-            const oldPath = path.join(process.cwd(), oldBrochure);
-            await fs.unlink(oldPath);
-          } catch (error) {
-            console.warn("Failed to delete old brochure:", error.message);
+            let uploadFile = brochureFile;
+
+            // Compress only image (PDF untouched)
+            if (brochureFile.mimetype.startsWith("image/")) {
+              const compressedImage =
+                await convertSingleImageToWebp(brochureFile);
+
+              if (compressedImage) {
+                uploadFile = compressedImage;
+              }
+            }
+
+            // Upload to S3
+            newBrochureUrl = await uploadToS3(uploadFile);
+
+            // Delete old brochure from S3
+            if (oldBrochure) {
+              await deleteFromS3(oldBrochure);
+            }
+          } catch (s3Err) {
+            console.error("S3 upload/delete error:", s3Err);
+            return res.status(500).json({
+              message: "Failed to upload brochure",
+              error: s3Err,
+            });
           }
         }
 
-        // Update DB with new brochure & video link
+        // Update DB
         db.query(
           "UPDATE properties SET brochureFile = ?, videoLink = ? WHERE propertyid = ?",
-          [brochurePath || oldBrochure, videoLink || oldVideoLink, propertyId],
-          (err) => {
-            if (err) {
-              console.error("Error while saving brochure/video link:", err);
-              return res
-                .status(500)
-                .json({ message: "Database error", error: err });
+          [newBrochureUrl, videoLink || oldVideoLink, propertyId],
+          (updateErr) => {
+            if (updateErr) {
+              console.error("Database update error:", updateErr);
+              return res.status(500).json({
+                message: "Database error",
+                error: updateErr,
+              });
             }
 
             res.status(200).json({
               message: "Brochure & Video Link updated successfully",
-              brochurePath: brochurePath || oldBrochure,
+              brochureFile: newBrochureUrl,
               videoLink: videoLink || oldVideoLink,
             });
-          },
+          }
         );
-      },
+      }
     );
   } catch (error) {
     console.error("Unexpected error:", error);
@@ -1183,9 +1213,9 @@ export const seoDetails = (req, res) => {
               .json({ message: "Database error", error: err });
           }
           res.status(200).json({ message: "Seo Details Add successfully" });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -1221,9 +1251,9 @@ export const addRejectReason = (req, res) => {
           res
             .status(200)
             .json({ message: "Property Reject Reason Add successfully" });
-        },
+        }
       );
-    },
+    }
   );
 };
 
@@ -1328,7 +1358,7 @@ export const setPropertyCommission = (req, res) => {
           .status(200)
           .json({ message: "Property commission saved successfully" });
       });
-    },
+    }
   );
 };
 
@@ -1401,7 +1431,7 @@ export const updateImages = async (req, res) => {
             if (existing[field]) {
               try {
                 JSON.parse(existing[field]).forEach(
-                  async (url) => await deleteFromS3(url),
+                  async (url) => await deleteFromS3(url)
                 );
               } catch {}
             }
@@ -1440,7 +1470,7 @@ export const updateImages = async (req, res) => {
             .status(200)
             .json({ message: "Property images updated successfully" });
         });
-      },
+      }
     );
   } catch (err) {
     console.error("S3 upload error:", err);
@@ -1489,9 +1519,9 @@ export const deleteImages = async (req, res) => {
                 .status(500)
                 .json({ message: "DB update failed", error: err });
             res.status(200).json({ message: "Images deleted successfully" });
-          },
+          }
         );
-      },
+      }
     );
   } catch (err) {
     console.error("S3 delete error:", err);
@@ -1569,7 +1599,7 @@ export const additionalInfoAdd = (req, res) => {
         message: "Additional Info added successfully",
         Id: insertResult.insertId,
       });
-    },
+    }
   );
 };
 
@@ -1661,7 +1691,7 @@ export const editAdditionalInfo = (req, res) => {
   }
 
   const updateSQL = `UPDATE propertiesinfo SET ${updateFields.join(
-    ", ",
+    ", "
   )} WHERE propertyinfoid = ?`;
 
   updateValues.push(Id);

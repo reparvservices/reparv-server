@@ -3,6 +3,7 @@ import moment from "moment";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 const saltRounds = 10;
 
@@ -48,12 +49,12 @@ export const editProfile = async (req, res) => {
   }
 
   try {
-    // 1️⃣ Fetch existing user profile
+    // 1 Fetch existing user image
     const result = await new Promise((resolve, reject) => {
       db.query(
         "SELECT userimage FROM salespersons WHERE salespersonsid = ?",
         [userId],
-        (err, res) => (err ? reject(err) : resolve(res))
+        (err, rows) => (err ? reject(err) : resolve(rows))
       );
     });
 
@@ -64,23 +65,31 @@ export const editProfile = async (req, res) => {
     const existingImage = result[0].userimage;
     let finalImagePath = existingImage;
 
-    // 2️⃣ Upload new image if provided
+    // 2 Compress + Upload new image if provided
     if (req.file) {
-      // Upload to S3
-      finalImagePath = await uploadToS3(req.file);
+      // Convert to webp
+      const convertedImage = await convertSingleImageToWebp(req.file);
 
-      // Delete old image from S3 if it exists
+      // Upload compressed image to S3
+      finalImagePath = await uploadToS3(convertedImage);
+
+      // Delete old image from S3
       if (existingImage) {
-        await deleteFromS3(existingImage);
+        try {
+          await deleteFromS3(existingImage);
+        } catch (deleteErr) {
+          console.error("Failed to delete old image:", deleteErr);
+        }
       }
     }
 
-    // 3️⃣ Update profile in DB
+    // 3 Update profile
     const updateSql = `
       UPDATE salespersons 
       SET fullname = ?, username = ?, contact = ?, email = ?, userimage = ?, updated_at = ?
       WHERE salespersonsid = ?
     `;
+
     const updateValues = [
       fullname,
       username,
@@ -92,16 +101,20 @@ export const editProfile = async (req, res) => {
     ];
 
     await new Promise((resolve, reject) => {
-      db.query(updateSql, updateValues, (err, res) => (err ? reject(err) : resolve(res)));
+      db.query(updateSql, updateValues, (err) =>
+        err ? reject(err) : resolve()
+      );
     });
 
-    return res.status(200).json({ message: "Profile updated successfully", userimage: finalImagePath });
+    return res.status(200).json({
+      message: "Profile updated successfully",
+      userimage: finalImagePath,
+    });
   } catch (error) {
     console.error("Error updating profile:", error);
     return res.status(500).json({ message: "Server error", error });
   }
 };
-
 
 export const changePassword = async (req, res) => {
   const userId = req.salesUser?.id;
@@ -260,9 +273,7 @@ export const changeProjectPartnerRequestSend = async (req, res) => {
 
     const { changePartnerReason } = req.body;
     if (!changePartnerReason) {
-      res
-        .status(401)
-        .json({ success: false, message: "Reason is Required!" });
+      res.status(401).json({ success: false, message: "Reason is Required!" });
     }
     db.query(
       "UPDATE salespersons SET changeProjectPartnerReason = ? WHERE salespersonsid = ?",
@@ -278,7 +289,9 @@ export const changeProjectPartnerRequestSend = async (req, res) => {
 
         res
           .status(200)
-          .json({ message: "Project Partner changed Request Send Successfully " });
+          .json({
+            message: "Project Partner changed Request Send Successfully ",
+          });
       }
     );
   } catch (error) {

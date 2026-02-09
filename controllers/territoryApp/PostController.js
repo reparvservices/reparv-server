@@ -1,6 +1,7 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 // **Fetch All**
 export const getAll = (req, res) => {
@@ -73,7 +74,6 @@ ORDER BY
 };
 
 // **Add New **
-
 export const add = async (req, res) => {
   try {
     const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -89,10 +89,11 @@ export const add = async (req, res) => {
         .json({ message: "Either image or post content is required" });
     }
 
-    /* ---------- UPLOAD IMAGE TO S3 ---------- */
+    /* ---------- COMPRESS + UPLOAD IMAGE TO S3 ---------- */
     let imageUrl = null;
     if (req.file) {
-      imageUrl = await uploadToS3(req.file);
+      const convertedImage = await convertSingleImageToWebp(req.file);
+      imageUrl = await uploadToS3(convertedImage);
     }
 
     const sql = `
@@ -126,7 +127,7 @@ export const add = async (req, res) => {
           message: "Post added successfully",
           postId: result.insertId,
         });
-      },
+      }
     );
   } catch (error) {
     console.error("Add post error:", error);
@@ -135,47 +136,6 @@ export const add = async (req, res) => {
       error,
     });
   }
-};
-
-export const addLike = async (req, res) => {
-  const { postId } = req.body;
-  console.log(postId, "pppppp");
-
-  if (!postId) {
-    return res.status(400).json({ message: "postId is required" });
-  }
-
-  // Step 1: Check if post exists
-  db.query(
-    "SELECT * FROM territorypartnerposts WHERE postId = ?",
-    [postId],
-    (err, result) => {
-      if (err) {
-        console.log("Error checking post:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
-
-      if (!result || result.length === 0) {
-        return res.status(404).json({ message: "Post not found" });
-      }
-
-      // Step 2: Update like count
-      db.query(
-        "UPDATE territorypartnerposts SET likes = likes + 1 WHERE postId = ?",
-        [postId],
-        (err2, result2) => {
-          if (err2) {
-            console.log("Error updating likes:", err2);
-            return res
-              .status(500)
-              .json({ message: "Failed to update likes", error: err2 });
-          }
-
-          return res.status(200).json({ message: "Post liked successfully" });
-        },
-      );
-    },
-  );
 };
 
 export const updatePost = async (req, res) => {
@@ -204,9 +164,10 @@ export const updatePost = async (req, res) => {
 
       let newImageUrl = null;
 
-      /* ---------- UPLOAD NEW IMAGE ---------- */
+      /* ---------- COMPRESS + UPLOAD NEW IMAGE ---------- */
       if (req.file) {
-        newImageUrl = await uploadToS3(req.file);
+        const convertedImage = await convertSingleImageToWebp(req.file);
+        newImageUrl = await uploadToS3(convertedImage);
 
         // 🗑 Delete old image from S3
         if (rows[0].image) {
@@ -256,3 +217,45 @@ export const updatePost = async (req, res) => {
     });
   }
 };
+
+export const addLike = async (req, res) => {
+  const { postId } = req.body;
+  console.log(postId, "pppppp");
+
+  if (!postId) {
+    return res.status(400).json({ message: "postId is required" });
+  }
+
+  // Step 1: Check if post exists
+  db.query(
+    "SELECT * FROM territorypartnerposts WHERE postId = ?",
+    [postId],
+    (err, result) => {
+      if (err) {
+        console.log("Error checking post:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+
+      if (!result || result.length === 0) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+
+      // Step 2: Update like count
+      db.query(
+        "UPDATE territorypartnerposts SET likes = likes + 1 WHERE postId = ?",
+        [postId],
+        (err2, result2) => {
+          if (err2) {
+            console.log("Error updating likes:", err2);
+            return res
+              .status(500)
+              .json({ message: "Failed to update likes", error: err2 });
+          }
+
+          return res.status(200).json({ message: "Post liked successfully" });
+        },
+      );
+    },
+  );
+};
+
