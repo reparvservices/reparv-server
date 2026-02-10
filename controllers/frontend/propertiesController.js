@@ -6,8 +6,11 @@ export const getAll = (req, res) => {
 
   let sql = `
     SELECT p.*, 
+           pa.views,
            COUNT(DISTINCT w.guest_user_id) AS likes
     FROM properties p
+    LEFT JOIN property_analytics pa
+      ON pa.property_id = p.propertyid
     LEFT JOIN user_property_wishlist w
       ON w.property_id = p.propertyid
     WHERE p.status='Active' 
@@ -69,6 +72,8 @@ export const getAll = (req, res) => {
       return {
         ...row,
         propertyType: parsedType,
+        likes: Number(row.likes) || 0,
+        views: Number(row.views) || 0,
       };
     });
 
@@ -85,12 +90,16 @@ export const getAllBySlug = (req, res) => {
   let sql = `
     SELECT 
       p.*, 
+      pa.views,
       c.heading,
       c.content,
       c.metaTitle, 
       c.metaDescription,
       COUNT(DISTINCT w.guest_user_id) AS likes
     FROM properties p
+
+    LEFT JOIN property_analytics pa
+      ON pa.property_id = p.propertyid
     LEFT JOIN cities c 
       ON p.city = c.city
     LEFT JOIN user_property_wishlist w
@@ -150,6 +159,7 @@ export const getAllBySlug = (req, res) => {
         ...row,
         propertyType: Array.isArray(parsedType) ? parsedType : [],
         likes: Number(row.likes) || 0,
+        views: Number(row.views) || 0,
       };
     });
 
@@ -164,6 +174,7 @@ export const getById = (req, res) => {
   const sql = `
     SELECT 
       p.*,
+      pa.views,
       COUNT(DISTINCT CASE 
         WHEN pi.status = 'Available' THEN pi.propertyinfoid 
       END) AS availableCount,
@@ -172,6 +183,9 @@ export const getById = (req, res) => {
       END) AS bookedCount,
       COUNT(DISTINCT w.guest_user_id) AS likes
     FROM properties p
+    
+    LEFT JOIN property_analytics pa
+      ON pa.property_id = p.propertyid
     LEFT JOIN propertiesinfo pi 
       ON p.propertyid = pi.propertyid
     LEFT JOIN user_property_wishlist w
@@ -209,6 +223,7 @@ export const getById = (req, res) => {
         ? moment.utc(row.possessionDate).format("DD MMM YYYY")
         : null,
       likes: Number(row.likes) || 0,
+      views: Number(row.views) || 0,
     };
 
     res.json(formatted);

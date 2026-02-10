@@ -6,9 +6,11 @@ export const getAll = (req, res) => {
   const sql = `
     SELECT 
       properties.*,
+      property_analytics.views,
       COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
-
+    LEFT JOIN property_analytics 
+      ON property_analytics.property_id = properties.propertyid
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
 
@@ -41,6 +43,7 @@ export const getAll = (req, res) => {
         ...row,
         propertyType: parsedType,
         likes: Number(row.likes) || 0,
+        views: Number(row.views) || 0,
       };
     });
 
@@ -58,8 +61,12 @@ export const getAllByCity = (req, res) => {
   const sql = `
     SELECT 
       properties.*,
+      property_analytics.views,
       COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
+
+    LEFT JOIN property_analytics 
+      ON property_analytics.property_id = properties.propertyid
 
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
@@ -91,6 +98,7 @@ export const getAllByCity = (req, res) => {
         ...row,
         propertyType: parsedType,
         likes: Number(row.likes) || 0,
+        views: Number(row.views) || 0,
       };
     });
 
@@ -114,8 +122,12 @@ export const getAllByBudget = (req, res) => {
   const sql = `
     SELECT 
       properties.*,
-      COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes
+      property_analytics.views,
+      COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
+
+    LEFT JOIN property_analytics 
+      ON property_analytics.property_id = properties.propertyid
 
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
@@ -129,42 +141,34 @@ export const getAllByBudget = (req, res) => {
     ORDER BY properties.totalSalesPrice ASC
   `;
 
-  db.query(
-    sql,
-    [city, Number(minBudget), Number(maxBudget)],
-    (err, result) => {
-      if (err) {
-        console.error("Budget fetch error:", err);
-        return res.status(500).json({
-          message: "Database error",
-          error: err,
-        });
+  db.query(sql, [city, Number(minBudget), Number(maxBudget)], (err, result) => {
+    if (err) {
+      console.error("Budget fetch error:", err);
+      return res.status(500).json({
+        message: "Database error",
+        error: err,
+      });
+    }
+
+    const formatted = result.map((row) => {
+      let parsedType = [];
+
+      try {
+        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
+      } catch (e) {
+        console.warn("Invalid JSON in propertyType:", row.propertyid);
       }
 
-      const formatted = result.map((row) => {
-        let parsedType = [];
+      return {
+        ...row,
+        propertyType: parsedType,
+        likes: Number(row.likes) || 0,
+        views: Number(row.views) || 0,
+      };
+    });
 
-        try {
-          parsedType = row.propertyType
-            ? JSON.parse(row.propertyType)
-            : [];
-        } catch (e) {
-          console.warn(
-            "Invalid JSON in propertyType:",
-            row.propertyid
-          );
-        }
-
-        return {
-          ...row,
-          propertyType: parsedType,
-          likes: Number(row.likes) || 0,
-        };
-      });
-
-      res.json(formatted);
-    }
-  );
+    res.json(formatted);
+  });
 };
 
 // ** Fetch Hot Deal Properties **
@@ -177,8 +181,12 @@ export const getHotDealProperties = (req, res) => {
   const sql = `
     SELECT 
       properties.*,
+      property_analytics.views,
       COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
+
+    LEFT JOIN property_analytics 
+      ON property_analytics.property_id = properties.propertyid
 
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
@@ -211,6 +219,7 @@ export const getHotDealProperties = (req, res) => {
         ...row,
         propertyType: parsedType,
         likes: Number(row.likes) || 0,
+        views: Number(row.views) || 0,
       };
     });
 
@@ -230,8 +239,12 @@ export const getTopPicksProperties = (req, res) => {
     SELECT 
       properties.*,
       projectpartner.businessLogo,
-      COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes
+      property_analytics.views,
+      COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
+
+    LEFT JOIN property_analytics
+      ON property_analytics.property_id = properties.propertyid
 
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
@@ -270,6 +283,7 @@ export const getTopPicksProperties = (req, res) => {
         ...row,
         propertyType: parsedType,
         likes: Number(row.likes) || 0,
+        views: Number(row.views) || 0,
         businessLogo: row.businessLogo || null,
       };
     });
