@@ -93,6 +93,13 @@ export const add = (req, res) => {
     registration_no,
     dor,
     website,
+    experience,
+    about,
+    vision,
+    mission,
+    quality,
+    expertise,
+    why_choose,
     notes,
   } = req.body;
 
@@ -117,7 +124,8 @@ export const add = (req, res) => {
         return res.status(500).json({ message: "Database error", error: err });
 
       if (result.length === 0) {
-        const insertSQL = `INSERT INTO builders (company_name, contact_person, contact, email, uid, office_address, registration_no, dor, website, notes, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const insertSQL = `INSERT INTO builders (company_name, contact_person, contact, email, uid, office_address, registration_no, dor, website, experience, about, vision, mission,
+                           quality, expertise, why_choose, notes, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
         db.query(
           insertSQL,
@@ -131,6 +139,13 @@ export const add = (req, res) => {
             registration_no,
             date,
             website,
+            experience,
+            about,
+            vision,
+            mission,
+            quality,
+            expertise,
+            why_choose,
             notes,
             currentdate,
             currentdate,
@@ -146,12 +161,12 @@ export const add = (req, res) => {
               message: "Builder added successfully",
               Id: result.insertId,
             });
-          }
+          },
         );
       } else {
         return res.status(409).json({ message: "Builder already exists!" });
       }
-    }
+    },
   );
 };
 
@@ -169,6 +184,13 @@ export const update = (req, res) => {
     registration_no,
     dor,
     website,
+    experience,
+    about,
+    vision,
+    mission,
+    quality,
+    expertise,
+    why_choose,
     notes,
   } = req.body;
   const date = moment(dor).isValid()
@@ -194,7 +216,13 @@ export const update = (req, res) => {
       if (result.length === 0)
         return res.status(404).json({ message: "Builder not found" });
 
-      const sql = `UPDATE builders SET company_name=?, contact_person=?, contact=?, email=?, uid=?, office_address=?, registration_no=?, dor=?, website=?, notes=?, updated_at=? WHERE builderid=?`;
+      const sql = `UPDATE builders SET company_name=?, contact_person=?, contact=?, email=?, uid=?, office_address=?, registration_no=?, dor=?, website=?, experience = ?,
+            about = ?,
+            vision = ?,
+            mission = ?,
+            quality = ?,
+            expertise = ?,
+            why_choose = ?, notes=?, updated_at=? WHERE builderid=?`;
 
       db.query(
         sql,
@@ -208,6 +236,13 @@ export const update = (req, res) => {
           registration_no,
           date,
           website,
+          experience,
+          about,
+          vision,
+          mission,
+          quality,
+          expertise,
+          why_choose,
           notes,
           currentdate,
           Id,
@@ -220,9 +255,9 @@ export const update = (req, res) => {
               .json({ message: "Database error", error: err });
           }
           res.status(200).json({ message: "Builder updated successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -255,7 +290,7 @@ export const deleteBuilder = (req, res) => {
         }
         res.status(200).json({ message: "Builder deleted successfully" });
       });
-    }
+    },
   );
 };
 
@@ -295,9 +330,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: `Builder status changed to ${newStatus}` });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -348,7 +383,7 @@ export const assignLogin = async (req, res) => {
               username,
               password,
               "Builder",
-              "https://builder.reparv.in"
+              "https://builder.reparv.in",
             )
               .then(() => {
                 res.status(200).json({
@@ -362,9 +397,9 @@ export const assignLogin = async (req, res) => {
                   .status(500)
                   .json({ message: "Login updated but email failed to send." });
               });
-          }
+          },
         );
-      }
+      },
     );
   } catch (error) {
     console.error("Unexpected error:", error);

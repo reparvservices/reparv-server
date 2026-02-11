@@ -179,6 +179,13 @@ export const add = (req, res) => {
     registration_no,
     dor,
     website,
+    experience,
+    about,
+    vision,
+    mission,
+    quality,
+    expertise,
+    why_choose,
     notes,
   } = req.body;
 
@@ -209,8 +216,14 @@ export const add = (req, res) => {
       // Step 3: Insert new builder
       const insertSQL = `
           INSERT INTO builders 
-          (builderadder, company_name, contact_person, contact, email, uid, office_address, registration_no, dor, website, notes, updated_at, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (builderadder, company_name, contact_person, contact, email, uid, office_address, registration_no, dor, website, experience,
+    about,
+    vision,
+    mission,
+    quality,
+    expertise,
+    why_choose, notes, updated_at, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
       db.query(
@@ -226,6 +239,13 @@ export const add = (req, res) => {
           registration_no,
           dor,
           website,
+          experience,
+          about,
+          vision,
+          mission,
+          quality,
+          expertise,
+          why_choose,
           notes,
           currentdate,
           currentdate,
@@ -242,9 +262,9 @@ export const add = (req, res) => {
             message: "Builder added successfully",
             builderId: result.insertId,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -262,6 +282,13 @@ export const update = (req, res) => {
     registration_no,
     dor,
     website,
+    experience,
+    about,
+    vision,
+    mission,
+    quality,
+    expertise,
+    why_choose,
     notes,
   } = req.body;
 
@@ -285,7 +312,13 @@ export const update = (req, res) => {
       if (result.length === 0)
         return res.status(404).json({ message: "Builder not found" });
 
-      const sql = `UPDATE builders SET company_name=?, contact_person=?, contact=?, email=?, uid=?, office_address=?, registration_no=?, dor=?, website=?, notes=?, updated_at=? WHERE builderid=?`;
+      const sql = `UPDATE builders SET company_name=?, contact_person=?, contact=?, email=?, uid=?, office_address=?, registration_no=?, dor=?, website=?, experience = ?,
+    about = ?,
+    vision = ?,
+    mission = ?,
+    quality = ?,
+    expertise = ?,
+    why_choose = ?, notes=?, updated_at=? WHERE builderid=?`;
 
       db.query(
         sql,
@@ -299,6 +332,13 @@ export const update = (req, res) => {
           registration_no,
           dor,
           website,
+          experience,
+          about,
+          vision,
+          mission,
+          quality,
+          expertise,
+          why_choose,
           notes,
           currentdate,
           Id,
@@ -311,9 +351,9 @@ export const update = (req, res) => {
               .json({ message: "Database error", error: err });
           }
           res.status(200).json({ message: "Builder updated successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -346,7 +386,7 @@ export const deleteBuilder = (req, res) => {
         }
         res.status(200).json({ message: "Builder deleted successfully" });
       });
-    }
+    },
   );
 };
 
@@ -386,9 +426,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: `Builder status changed to ${newStatus}` });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -447,9 +487,9 @@ export const assignLogin = async (req, res) => {
                   .status(500)
                   .json({ message: "Login updated but email failed to send." });
               });
-          }
+          },
         );
-      }
+      },
     );
   } catch (error) {
     console.error("Unexpected error:", error);
