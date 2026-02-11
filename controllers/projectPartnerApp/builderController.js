@@ -59,6 +59,7 @@ export const getById = (req, res) => {
 // **Add New Builder**
 export const add = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
   const {
     company_name,
     contact_person,
@@ -69,64 +70,117 @@ export const add = (req, res) => {
     registration_no,
     dor,
     projectpartnerid,
+
+    website,
+    notes,
+    about,
+    vision,
+    mission,
+    quality,
+    whyChoose,
+    expertise,
+    experience,
   } = req.body;
+
+  console.log(req.body);
+
+  // 🔒 Login Check
   if (!projectpartnerid) {
     return res
       .status(401)
       .json({ message: "Unauthorized! Please Login Again." });
   }
-  if (
-    !company_name ||
-    !contact_person ||
-    !contact ||
-    !email ||
-    !registration_no ||
-    !dor
-  ) {
-    return res.status(400).json({ message: "All fields are required" });
+
+  // 🔒 Required Field Validation
+  if (!company_name || !contact_person || !contact) {
+    return res.status(400).json({ message: "Required fields are missing" });
   }
 
+  // 🔍 Check duplicate by contact OR email
   db.query(
-    "SELECT * FROM builders WHERE contact = ? OR email = ?",
+    "SELECT id FROM builders WHERE contact = ? OR email = ?",
     [contact, email],
     (err, result) => {
-      if (err)
-        return res.status(500).json({ message: "Database error", error: err });
-
-      if (result.length === 0) {
-        const insertSQL = `INSERT INTO builders (builderadder, company_name, contact_person, contact, email, uid, office_address, registration_no, dor, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-        db.query(
-          insertSQL,
-          [
-            projectpartnerid,
-            company_name,
-            contact_person,
-            contact,
-            email,
-            uid,
-            office_address,
-            registration_no,
-            dor,
-            currentdate,
-            currentdate,
-          ],
-          (err, result) => {
-            if (err) {
-              console.error("Error inserting:", err);
-              return res
-                .status(500)
-                .json({ message: "Database error", error: err });
-            }
-            res.status(201).json({
-              message: "Builder added successfully",
-              Id: result.insertId,
-            });
-          },
-        );
-      } else {
-        return res.status(409).json({ message: "Builder already exists!" });
+      if (err) {
+        return res.status(500).json({
+          message: "Database error",
+          error: err,
+        });
       }
+
+      if (result.length > 0) {
+        return res.status(409).json({
+          message: "Builder already exists!",
+        });
+      }
+
+      // ✅ Insert Builder
+      const insertSQL = `
+        INSERT INTO builders (
+          builderadder,
+          company_name,
+          contact_person,
+          contact,
+          email,
+          uid,
+          office_address,
+          registration_no,
+          dor,
+          website,
+          notes,
+          about,
+          vision,
+          mission,
+          quality,
+          why_choose,
+          expertise,
+          experience,
+          updated_at,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      db.query(
+        insertSQL,
+        [
+          projectpartnerid,
+          company_name,
+          contact_person,
+          contact,
+          email,
+          uid,
+          office_address,
+          registration_no,
+          dor,
+          website || null,
+          notes || null,
+          about || null,
+          vision || null,
+          mission || null,
+          quality || null,
+          whyChoose || null,
+          expertise || null,
+          experience || null,
+          currentdate,
+          currentdate,
+        ],
+        (err, result) => {
+          if (err) {
+            console.error("Insert Error:", err);
+            return res.status(500).json({
+              message: "Database error",
+              error: err,
+            });
+          }
+
+          return res.status(201).json({
+            success: true,
+            message: "Builder added successfully",
+            id: result.insertId,
+          });
+        },
+      );
     },
   );
 };
@@ -134,7 +188,9 @@ export const add = (req, res) => {
 // **Edit Builder**
 export const update = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
   const Id = req.body.builderid;
+
   const {
     company_name,
     contact_person,
@@ -146,31 +202,66 @@ export const update = (req, res) => {
     dor,
     website,
     notes,
+    about,
+    vision,
+    mission,
+    quality,
+    whyChoose,
+    expertise,
+    experience,
   } = req.body;
-  const date = moment(dor).isValid()
-    ? moment(dor).add(1, "days").format("YYYY-MM-DD")
-    : "";
-  if (
-    !company_name ||
-    !contact_person ||
-    !contact ||
-    !email ||
-    !registration_no ||
-    !dor
-  ) {
-    return res.status(400).json({ message: "All fields are required" });
+
+  // ✅ Only required validation (as per your new rule)
+  if (!company_name || !contact_person || !contact) {
+    return res.status(400).json({ message: "Required fields are missing" });
   }
 
+  // ✅ Format date safely (NO need to add +1 day unless required)
+  const formattedDate = moment(dor).isValid()
+    ? moment(dor).format("YYYY-MM-DD")
+    : null;
+
+  // 🔍 Check builder exists
   db.query(
-    "SELECT * FROM builders WHERE builderid = ?",
+    "SELECT builderid FROM builders WHERE builderid = ?",
     [Id],
     (err, result) => {
-      if (err)
-        return res.status(500).json({ message: "Database error", error: err });
-      if (result.length === 0)
-        return res.status(404).json({ message: "Builder not found" });
+      if (err) {
+        return res.status(500).json({
+          message: "Database error",
+          error: err,
+        });
+      }
 
-      const sql = `UPDATE builders SET company_name=?, contact_person=?, contact=?, email=?, uid=?, office_address=?, registration_no=?, dor=?, website=?, notes=?, updated_at=? WHERE builderid=?`;
+      if (result.length === 0) {
+        return res.status(404).json({
+          message: "Builder not found",
+        });
+      }
+
+      // ✅ Update query with all new fields
+      const sql = `
+        UPDATE builders SET
+          company_name = ?,
+          contact_person = ?,
+          contact = ?,
+          email = ?,
+          uid = ?,
+          office_address = ?,
+          registration_no = ?,
+          dor = ?,
+          website = ?,
+          notes = ?,
+          about = ?,
+          vision = ?,
+          mission = ?,
+          quality = ?,
+          whyChoose = ?,
+          expertise = ?,
+          experience = ?,
+          updated_at = ?
+        WHERE builderid = ?
+      `;
 
       db.query(
         sql,
@@ -178,24 +269,36 @@ export const update = (req, res) => {
           company_name,
           contact_person,
           contact,
-          email,
-          uid,
-          office_address,
-          registration_no,
-          date,
-          website,
-          notes,
+          email || null,
+          uid || null,
+          office_address || null,
+          registration_no || null,
+          formattedDate,
+          website || null,
+          notes || null,
+          about || null,
+          vision || null,
+          mission || null,
+          quality || null,
+          whyChoose || null,
+          expertise || null,
+          experience || null,
           currentdate,
           Id,
         ],
         (err) => {
           if (err) {
             console.error("Error updating:", err);
-            return res
-              .status(500)
-              .json({ message: "Database error", error: err });
+            return res.status(500).json({
+              message: "Database error",
+              error: err,
+            });
           }
-          res.status(200).json({ message: "Builder updated successfully" });
+
+          return res.status(200).json({
+            success: true,
+            message: "Builder updated successfully",
+          });
         },
       );
     },
