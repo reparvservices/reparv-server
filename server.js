@@ -52,9 +52,9 @@ import scheduledRequestRoutes from "./routes/admin/scheduledRequestRoutes.js";
 import FAQRoutes from "./routes/admin/FAQRoutes.js";
 import propertyAnalyticsRoutes from "./routes/admin/propertyAnalyticsRoutes.js";
 import blogAnalyticsRoutes from "./routes/admin/blogAnalyticsRoutes.js";
-import newsRoutes from "./routes/admin/newsRoute.js"
+import newsRoutes from "./routes/admin/newsRoute.js";
 import newsAnalyticsRoutes from "./routes/admin/newsAnalyticsRoutes.js";
-import subscribersRoutes from "./routes/admin/subscribersRoutes.js"
+import subscribersRoutes from "./routes/admin/subscribersRoutes.js";
 
 //frontend
 import allPropertiesRoutes from "./routes/frontend/allPropertiesRoutes.js";
@@ -67,7 +67,7 @@ import sliderImagesRoutes from "./routes/frontend/sliderRoutes.js";
 import testimonialFeedbackRoutes from "./routes/frontend/testimonialRoutes.js";
 import frontendEmiRoutes from "./routes/frontend/emiRoutes.js";
 import frontendContactUsRoutes from "./routes/frontend/contactUsRoutes.js";
-import frontendNewsRoute from "./routes/frontend/newsRoute.js"
+import frontendNewsRoute from "./routes/frontend/newsRoute.js";
 // frontend project-partner landing page
 import frontendProjectPartnerRoutes from "./routes/frontend/projectPartnerRoutes.js";
 
@@ -447,7 +447,7 @@ export const verifyToken = (req, res, next) => {
     "/admin/blog",
     "/admin/subscribers",
     "/admin/partner",
-    //"/projectpartner/builders",
+    "/projectpartner/builders",
     "/projectPartner/property",
   ];
 
@@ -519,7 +519,7 @@ app.use("/frontend/slider", sliderImagesRoutes);
 app.use("/frontend/testimonial", testimonialFeedbackRoutes);
 app.use("/frontend/emi", frontendEmiRoutes);
 app.use("/frontend/contact-us", frontendContactUsRoutes);
-app.use("/frontend/news",frontendNewsRoute)
+app.use("/frontend/news", frontendNewsRoute);
 // frontend project-partner landing page
 app.use("/frontend/project-partner", frontendProjectPartnerRoutes);
 
@@ -585,7 +585,7 @@ app.use("/admin/scheduled-requests", scheduledRequestRoutes);
 app.use("/admin/faqs", FAQRoutes);
 app.use("/admin/propertyAnalytics", propertyAnalyticsRoutes);
 app.use("/admin/blogAnalytics", blogAnalyticsRoutes);
-app.use("/admin/news",newsRoutes);
+app.use("/admin/news", newsRoutes);
 app.use("/admin/newsAnalytics", newsAnalyticsRoutes);
 app.use("/admin/subscribers", subscribersRoutes);
 
