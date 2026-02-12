@@ -255,7 +255,6 @@ export const addProperty = async (req, res) => {
 
     // Required fields check
     if (
-      !builderid ||
       !propertyCategory ||
       !propertyName ||
       !address ||
@@ -577,7 +576,6 @@ export const update = async (req, res) => {
 
   // Validation
   if (
-    !builderid ||
     !propertyCategory ||
     !propertyName ||
     !address ||

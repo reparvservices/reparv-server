@@ -265,7 +265,7 @@ export const addProperty = async (req, res) => {
     } = req.body;
 
     /*  Required validation */
-    if (!builderid || !propertyCategory || !propertyName || !city) {
+    if (!propertyCategory || !propertyName || !city) {
       return res.status(400).json({ message: "Required fields missing" });
     }
 
@@ -503,7 +503,6 @@ export const update = async (req, res) => {
 
   // Validation
   if (
-    !builderid ||
     !propertyCategory ||
     !propertyName ||
     !address ||

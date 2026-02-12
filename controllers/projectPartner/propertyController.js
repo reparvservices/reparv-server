@@ -178,6 +178,11 @@ export const addProperty = async (req, res) => {
       city,
     } = req.body;
 
+    /*  Required validation */
+    if (!propertyCategory || !propertyName || !state || !city) {
+      return res.status(400).json({ message: "Property name, category, city, and state are required" });
+    }
+
     /* ---------- DUPLICATE PROPERTY CHECK ---------- */
     db.query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",
@@ -643,7 +648,6 @@ export const update = async (req, res) => {
 
   // Validation
   if (
-    !builderid ||
     !propertyCategory ||
     !propertyName ||
     !address ||
