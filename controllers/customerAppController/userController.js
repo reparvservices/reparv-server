@@ -40,7 +40,7 @@ export const add = async (req, res) => {
 
     const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
 
-    // 🔍 Check existing guest user
+    //  Check existing guest user
     const checkSql = "SELECT id FROM guestUsers WHERE contact = ?";
 
     db.query(checkSql, [contact], async (err, users) => {
@@ -99,7 +99,6 @@ export const add = async (req, res) => {
     });
   }
 };
-
 
 export const verifyOtp = (req, res) => {
   try {
@@ -248,7 +247,6 @@ export const getProfile = (req, res) => {
   });
 };
 
-
 export const update = async (req, res) => {
   try {
     const { user_id, fullname, email, contact } = req.body;
@@ -316,7 +314,6 @@ export const update = async (req, res) => {
     });
   }
 };
-
 
 export const googleLogin = async (req, res) => {
   try {
@@ -506,4 +503,3 @@ export const facebookLogin = async (req, res) => {
     });
   }
 };
-

@@ -604,7 +604,7 @@ const queryAsync = (sql, params = []) => {
 // Please renew your subscription before it expires to continue:
 // - Receiving new leads and enquiries 📈
 // - Accessing premium tools and analytics 📊
-// - Maintaining your active Sales Partner status ✅
+// - Maintaining your active Sales Partner status 
 
 // Renew now to avoid any interruption in your services.
 
