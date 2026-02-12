@@ -35,7 +35,7 @@ export const getAll = (req, res) => {
     let fetchBuildersQuery = "";
     let queryParams = [];
 
-    // ✅ If adharno exists → fetch by BOTH id & adharno
+    //  If adharno exists → fetch by BOTH id & adharno
     if (partnerAdhar) {
       fetchBuildersQuery = `
         SELECT *
@@ -45,7 +45,7 @@ export const getAll = (req, res) => {
       `;
       queryParams = [projectPartnerId, partnerAdhar];
     }
-    // ✅ If adharno does NOT exist → fetch by id only
+    //  If adharno does NOT exist → fetch by id only
     else {
       fetchBuildersQuery = `
         SELECT *
@@ -107,7 +107,7 @@ export const getAllActive = (req, res) => {
     let sql = "";
     let params = [];
 
-    // ✅ If adharno exists → fetch by BOTH
+    //  If adharno exists → fetch by BOTH
     if (partnerAdhar) {
       sql = `
         SELECT *
@@ -118,7 +118,7 @@ export const getAllActive = (req, res) => {
       `;
       params = [projectPartnerId, partnerAdhar];
     }
-    // ✅ If adharno does not exist → fetch by id only
+    //  If adharno does not exist → fetch by id only
     else {
       sql = `
         SELECT *

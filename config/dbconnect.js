@@ -7,7 +7,7 @@ const db = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT,
-  connectTimeout: 10000, 
+  connectTimeout: 10000,
 });
 
 // Test connection on startup
@@ -15,7 +15,7 @@ const db = mysql.createPool({
 //   if (err) {
 //     console.error("❌ MySQL connection failed:", err.message);
 //   } else {
-//     console.log("✅ MySQL connected successfully");
+//     console.log(" MySQL connected successfully");
 //     connection.release();
 //   }
 // });

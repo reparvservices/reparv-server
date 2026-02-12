@@ -56,7 +56,6 @@ export const getById = (req, res) => {
   });
 };
 
-// **Add New Builder**
 export const add = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
@@ -70,7 +69,8 @@ export const add = (req, res) => {
     registration_no,
     dor,
     projectpartnerid,
-
+    state,
+    city,
     website,
     notes,
     about,
@@ -88,7 +88,7 @@ export const add = (req, res) => {
   if (!projectpartnerid) {
     return res
       .status(401)
-      .json({ message: "Unauthorized! Please Login Again." });
+      .json({ message: "Unauthorized! Please login again." });
   }
 
   // 🔒 Required Field Validation
@@ -96,25 +96,27 @@ export const add = (req, res) => {
     return res.status(400).json({ message: "Required fields are missing" });
   }
 
-  // 🔍 Check duplicate by contact OR email
+  // Ensure JSON arrays are strings
+  const whyChooseStr =
+    whyChoose && Array.isArray(whyChoose) ? JSON.stringify(whyChoose) : null;
+  const expertiseStr =
+    expertise && Array.isArray(expertise) ? JSON.stringify(expertise) : null;
+
+  // Check duplicates
   db.query(
-    "SELECT id FROM builders WHERE contact = ? OR email = ?",
-    [contact, email],
+    "SELECT builderid FROM builders WHERE contact = ? OR email = ?",
+    [contact, email || ""],
     (err, result) => {
       if (err) {
-        return res.status(500).json({
-          message: "Database error",
-          error: err,
-        });
+        console.error("Duplicate check error:", err);
+        return res.status(500).json({ message: "Database error", error: err });
       }
 
       if (result.length > 0) {
-        return res.status(409).json({
-          message: "Builder already exists!",
-        });
+        return res.status(409).json({ message: "Builder already exists!" });
       }
 
-      // ✅ Insert Builder
+      // Insert builder safely
       const insertSQL = `
         INSERT INTO builders (
           builderadder,
@@ -148,19 +150,19 @@ export const add = (req, res) => {
           company_name,
           contact_person,
           contact,
-          email,
-          uid,
-          office_address,
-          registration_no,
-          dor,
+          email || null,
+          uid || null,
+          office_address || null,
+          registration_no || null,
+          dor || null,
           website || null,
           notes || null,
           about || null,
           vision || null,
           mission || null,
           quality || null,
-          whyChoose || null,
-          expertise || null,
+          whyChooseStr,
+          expertiseStr,
           experience || null,
           currentdate,
           currentdate,
@@ -168,10 +170,9 @@ export const add = (req, res) => {
         (err, result) => {
           if (err) {
             console.error("Insert Error:", err);
-            return res.status(500).json({
-              message: "Database error",
-              error: err,
-            });
+            return res
+              .status(500)
+              .json({ message: "Database error", error: err });
           }
 
           return res.status(201).json({
@@ -186,9 +187,9 @@ export const add = (req, res) => {
 };
 
 // **Edit Builder**
+
 export const update = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-
   const Id = req.body.builderid;
 
   const {
@@ -211,96 +212,101 @@ export const update = (req, res) => {
     experience,
   } = req.body;
 
-  // ✅ Only required validation (as per your new rule)
+  console.log("Update request body:", req.body);
+
+  // ✅ Required fields validation
   if (!company_name || !contact_person || !contact) {
     return res.status(400).json({ message: "Required fields are missing" });
   }
 
-  // ✅ Format date safely (NO need to add +1 day unless required)
-  const formattedDate = moment(dor).isValid()
+  // ✅ Format date safely
+  const formattedDate = moment(dor, "YYYY-MM-DD", true).isValid()
     ? moment(dor).format("YYYY-MM-DD")
     : null;
 
-  // 🔍 Check builder exists
+  // ✅ Convert arrays to JSON strings or set NULL
+  const whyChooseValue =
+    Array.isArray(whyChoose) && whyChoose.length > 0
+      ? JSON.stringify(whyChoose)
+      : null;
+
+  const expertiseValue =
+    Array.isArray(expertise) && expertise.length > 0
+      ? JSON.stringify(expertise)
+      : null;
+
+  // ✅ Check if builder exists
   db.query(
     "SELECT builderid FROM builders WHERE builderid = ?",
     [Id],
     (err, result) => {
       if (err) {
-        return res.status(500).json({
-          message: "Database error",
-          error: err,
-        });
+        return res.status(500).json({ message: "Database error", error: err });
       }
 
       if (result.length === 0) {
-        return res.status(404).json({
-          message: "Builder not found",
-        });
+        return res.status(404).json({ message: "Builder not found" });
       }
 
-      // ✅ Update query with all new fields
+      // ✅ Update query
       const sql = `
-        UPDATE builders SET
-          company_name = ?,
-          contact_person = ?,
-          contact = ?,
-          email = ?,
-          uid = ?,
-          office_address = ?,
-          registration_no = ?,
-          dor = ?,
-          website = ?,
-          notes = ?,
-          about = ?,
-          vision = ?,
-          mission = ?,
-          quality = ?,
-          whyChoose = ?,
-          expertise = ?,
-          experience = ?,
-          updated_at = ?
-        WHERE builderid = ?
-      `;
+      UPDATE builders SET
+        company_name = ?,
+        contact_person = ?,
+        contact = ?,
+        email = ?,
+        uid = ?,
+        office_address = ?,
+        registration_no = ?,
+        dor = ?,
+        website = ?,
+        notes = ?,
+        about = ?,
+        vision = ?,
+        mission = ?,
+        quality = ?,
+        why_choose = ?,
+        expertise = ?,
+        experience = ?,
+        updated_at = ?
+      WHERE builderid = ?
+    `;
 
-      db.query(
-        sql,
-        [
-          company_name,
-          contact_person,
-          contact,
-          email || null,
-          uid || null,
-          office_address || null,
-          registration_no || null,
-          formattedDate,
-          website || null,
-          notes || null,
-          about || null,
-          vision || null,
-          mission || null,
-          quality || null,
-          whyChoose || null,
-          expertise || null,
-          experience || null,
-          currentdate,
-          Id,
-        ],
-        (err) => {
-          if (err) {
-            console.error("Error updating:", err);
-            return res.status(500).json({
-              message: "Database error",
-              error: err,
-            });
-          }
+      const values = [
+        company_name,
+        contact_person,
+        contact,
+        email || null,
+        uid || null,
+        office_address || null,
+        registration_no || null,
+        formattedDate,
+        website || null,
+        notes || null,
+        about || null,
+        vision || null,
+        mission || null,
+        quality || null,
+        whyChooseValue,
+        expertiseValue,
+        experience || null,
+        currentdate,
+        Id,
+      ];
 
-          return res.status(200).json({
-            success: true,
-            message: "Builder updated successfully",
-          });
-        },
-      );
+      db.query(sql, values, (err) => {
+        if (err) {
+          console.error("Error updating builder:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: "Builder updated successfully",
+        });
+      });
     },
   );
 };
