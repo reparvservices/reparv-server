@@ -125,7 +125,7 @@ export const add = (req, res) => {
 
       if (result.length === 0) {
         const insertSQL = `INSERT INTO builders (company_name, contact_person, contact, email, uid, office_address, registration_no, dor, website, experience, about, vision, mission,
-                           quality, expertise, why_choose, notes, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                           quality, expertise, why_choose, notes, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
         db.query(
           insertSQL,
