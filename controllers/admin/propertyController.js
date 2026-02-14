@@ -269,7 +269,7 @@ export const addProperty = async (req, res) => {
       return res.status(400).json({ message: "Required fields missing" });
     }
 
-    /* 🔁 Duplicate check */
+    /* Duplicate check */
     const [exists] = await db
       .promise()
       .query("SELECT propertyid FROM properties WHERE propertyName = ?", [
@@ -290,7 +290,7 @@ export const addProperty = async (req, res) => {
         ? 0
         : 1;
 
-    /* 🏦 EMI */
+    /* EMI */
     const calculateEMI = (price) => {
       const r = 0.08 / 12;
       const n = 240;
@@ -300,12 +300,12 @@ export const addProperty = async (req, res) => {
     };
     const emi = calculateEMI(Number(totalOfferPrice));
 
-    /* 📅 Possession date */
+    /* Possession date */
     const formattedPossessionDate = possessionDate
       ? moment(possessionDate).format("YYYY-MM-DD")
       : null;
 
-    /* 🏷 Property type array */
+    /* Property type array */
     const propertyTypeJson = JSON.stringify(
       Array.isArray(propertyType)
         ? propertyType
@@ -315,7 +315,7 @@ export const addProperty = async (req, res) => {
             .filter(Boolean)
     );
 
-    /* ☁ Upload images to S3 */
+    /* Upload images to S3 */
     const uploadImagesToS3 = async (fieldFiles) => {
       if (!fieldFiles) return null;
       const uploadedUrls = [];
@@ -355,7 +355,7 @@ export const addProperty = async (req, res) => {
         frontView, sideView, kitchenView, hallView, bedroomView,
         bathroomView, balconyView, nearestLandmark, developedAmenities,
         seoSlug, created_at, updated_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `;
 
     const [result] = await db
@@ -424,6 +424,8 @@ export const addProperty = async (req, res) => {
         nearestLandmark,
         developedAmenities,
         toSlug(propertyName),
+        currentdate,
+        currentdate
       ]);
 
     return res.status(201).json({
@@ -518,20 +520,12 @@ export const update = async (req, res) => {
     !stampDuty ||
     !other ||
     !tags ||
-    !builtYear ||
     !ownershipType ||
     !carpetArea ||
-    !parkingAvailability ||
     !loanAvailability ||
     !propertyFacing ||
     !waterSupply ||
     !powerBackup ||
-    !locationFeature ||
-    !sizeAreaFeature ||
-    !parkingFeature ||
-    !ageOfPropertyFeature ||
-    !amenitiesFeature ||
-    !propertyStatusFeature ||
     !securityBenefit ||
     !primeLocationBenefit ||
     !rentalIncomeBenefit ||

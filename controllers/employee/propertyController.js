@@ -270,20 +270,12 @@ export const addProperty = async (req, res) => {
       !stampDuty ||
       !other ||
       !tags ||
-      !builtYear ||
       !ownershipType ||
       !carpetArea ||
-      !parkingAvailability ||
       !loanAvailability ||
       !propertyFacing ||
       !waterSupply ||
       !powerBackup ||
-      !locationFeature ||
-      !sizeAreaFeature ||
-      !parkingFeature ||
-      !ageOfPropertyFeature ||
-      !amenitiesFeature ||
-      !propertyStatusFeature ||
       !securityBenefit ||
       !primeLocationBenefit ||
       !rentalIncomeBenefit ||
@@ -591,20 +583,12 @@ export const update = async (req, res) => {
     !stampDuty ||
     !other ||
     !tags ||
-    !builtYear ||
     !ownershipType ||
     !carpetArea ||
-    !parkingAvailability ||
     !loanAvailability ||
     !propertyFacing ||
     !waterSupply ||
     !powerBackup ||
-    !locationFeature ||
-    !sizeAreaFeature ||
-    !parkingFeature ||
-    !ageOfPropertyFeature ||
-    !amenitiesFeature ||
-    !propertyStatusFeature ||
     !securityBenefit ||
     !primeLocationBenefit ||
     !rentalIncomeBenefit ||
