@@ -39,11 +39,11 @@ const memoryStorage = multer.memoryStorage();
 /* ================= IMAGE UPLOAD ================= */
 const upload = multer({
   storage: memoryStorage,
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  limits: { fileSize: 55 * 1024 * 1024 }, // 50MB
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
+    const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
     if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error("Only JPEG, PNG, and JPG images are allowed"));
+      return cb(new Error("Only WEBP, JPEG, PNG, and JPG images are allowed"));
     }
     cb(null, true);
   },

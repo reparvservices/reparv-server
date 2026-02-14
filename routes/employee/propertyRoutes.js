@@ -32,11 +32,11 @@ const router = express.Router();
 /* ---------- MULTER MEMORY STORAGE FOR IMAGES ---------- */
 const imageUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  limits: { fileSize: 55 * 1024 * 1024 }, // 55MB
   fileFilter: (req, file, cb) => {
     const allowed = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
     if (!allowed.includes(file.mimetype)) {
-      return cb(new Error("Only JPEG, PNG, JPG, WEBP allowed"));
+      return cb(new Error("Only WEBP, JPEG, PNG, JPG, WEBP allowed"));
     }
     cb(null, true);
   },
