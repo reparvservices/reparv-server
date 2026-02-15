@@ -1,5 +1,42 @@
 import moment from "moment";
 import db from "../../config/dbconnect.js";
+import { sendOtpSMS } from "../../utils/OtpSender.js";
+
+function generateOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+export const sendOtp = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone || phone.length !== 10) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid phone number",
+      });
+    }
+
+    const otp = generateOtp();
+
+    await sendOtpSMS({
+      phone: phone,
+      otp,
+    });
+
+    return res.json({
+      otp: otp, // In production, do not send OTP back in response
+      success: true,
+      message: "OTP sent successfully",
+    });
+  } catch (error) {
+    console.error("Send OTP Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
 
 export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -83,7 +120,7 @@ export const add = async (req, res) => {
             propertyCategory,
           });
         });
-      }
+      },
     );
   });
 };
@@ -304,7 +341,7 @@ export const addLeadNotification = (req, res) => {
           message: "Notification request saved successfully!",
           status: true,
         });
-      }
+      },
     );
   } catch (error) {
     console.log("Lead Notify Error:", error);
@@ -411,7 +448,7 @@ export const addVisitor = (req, res) => {
               message: "Analytics updated",
               source: source || "direct",
             });
-          }
+          },
         );
       } else {
         //  INSERT ONLY ONCE (first visit)
@@ -434,7 +471,7 @@ export const addVisitor = (req, res) => {
               message: "Analytics created",
               source: source || "direct",
             });
-          }
+          },
         );
       }
     });
