@@ -43,7 +43,8 @@
     "papaparse": "^5.5.3",
     "razorpay": "^2.9.6",
     "server.js": "^1.0.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

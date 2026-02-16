@@ -1,26 +1,46 @@
 import express from "express";
 import multer from "multer";
-import { addProperty, getAll, updateProperty } from "../../controllers/projectPartnerApp/propertyController.js";
+import {
+  addProperty,
+  getAll,
+  update,
+} from "../../controllers/projectPartnerApp/propertyController.js";
 
 const router = express.Router();
 
-/* ---------- MULTER (MEMORY) ---------- */
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 1024 * 1024 * 50, 
+    fileSize: 200 * 1024 * 1024, // 200MB max
   },
   fileFilter: (req, file, cb) => {
-    const allowed = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
-    if (!allowed.includes(file.mimetype)) {
-      return cb(new Error("Only JPEG, PNG, JPG, WEBP allowed"));
+    const allowedTypes = [
+      // images
+      "image/jpeg",
+      "image/png",
+      "image/jpg",
+      "image/webp",
+
+      // videos
+      "video/mp4",
+      "video/mpeg",
+      "video/quicktime",
+      "video/x-matroska",
+      "video/webm",
+    ];
+
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(
+        new Error("Only images and MP4/MOV/MKV/WEBM videos are allowed"),
+      );
     }
+
     cb(null, true);
   },
 });
 
 /* ---------- ROUTES ---------- */
-router.get("/getAll/:id",getAll);
+router.get("/getAll/:id", getAll);
 router.post(
   "/post",
   upload.fields([
@@ -33,23 +53,25 @@ router.post(
     { name: "balconyView", maxCount: 3 },
     { name: "nearestLandmark", maxCount: 3 },
     { name: "developedAmenities", maxCount: 3 },
+    { name: "propertyVideo", maxCount: 1 },
   ]),
   addProperty,
 );
 router.put(
-  "/update/:propertyid",
+  "/edit/:id",
   upload.fields([
-    { name: "frontView" },
-    { name: "sideView" },
-    { name: "kitchenView" },
-    { name: "hallView" },
-    { name: "bedroomView" },
-    { name: "bathroomView" },
-    { name: "balconyView" },
-    { name: "nearestLandmark" },
-    { name: "developedAmenities" },
+    { name: "frontView", maxCount: 3 },
+    { name: "sideView", maxCount: 3 },
+    { name: "kitchenView", maxCount: 3 },
+    { name: "hallView", maxCount: 3 },
+    { name: "bedroomView", maxCount: 3 },
+    { name: "bathroomView", maxCount: 3 },
+    { name: "balconyView", maxCount: 3 },
+    { name: "nearestLandmark", maxCount: 3 },
+    { name: "developedAmenities", maxCount: 3 },
+    { name: "propertyVideo", maxCount: 1 },
   ]),
-  updateProperty,
+  update,
 );
 
 /* ---------- MULTER ERROR HANDLER ---------- */
