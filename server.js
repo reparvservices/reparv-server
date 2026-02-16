@@ -88,6 +88,9 @@ import geocodeRoutes from "./routes/geocodeRoutes.js";
 // S3 Route
 import s3Routes from "./routes/s3Routes.js";
 
+// OTP Route
+import otpRoutes from "./routes/otpRoutes.js";
+
 // Guest User Routes
 import guestUserLoginRoutes from "./routes/guestUser/userRoutes.js";
 import guestUserProfileRoutes from "./routes/guestUser/profileRoutes.js";
@@ -374,6 +377,7 @@ export const verifyToken = (req, res, next) => {
     "/admin/faqs",
     "/api/payment/create-order",
     "/api/payment/verify-payment",
+    "/api/user",
     "/frontend/properties",
     "/frontend/all-properties",
     "/frontend/joinourteam",
@@ -538,6 +542,9 @@ app.use("/api/map", geocodeRoutes);
 
 // S3 Route Call
 app.use("/api/s3", s3Routes);
+
+// S3 Route Call
+app.use("/api/user", otpRoutes);
 
 app.use(verifyToken);
 app.use("/admin/profile", profileRoutes);

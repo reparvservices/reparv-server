@@ -83,7 +83,7 @@ router.post("/verify-otp", async (req, res) => {
         (err, results) => {
           if (err) reject(err);
           resolve(results[0]);
-        }
+        },
       );
     });
 
@@ -101,7 +101,7 @@ router.post("/verify-otp", async (req, res) => {
           (err, result) => {
             if (err) reject(err);
             resolve(result);
-          }
+          },
         );
       });
 
@@ -126,7 +126,7 @@ router.post("/verify-otp", async (req, res) => {
     const token = jwt.sign(
       { id: userData.id, contact: userData.contact, email: userData.email },
       process.env.JWT_SECRET,
-      { expiresIn: "10d" }
+      { expiresIn: "10d" },
     );
 
     /* ---------------- SESSION ---------------- */
