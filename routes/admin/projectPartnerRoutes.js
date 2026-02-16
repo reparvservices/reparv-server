@@ -16,6 +16,7 @@ import {
   addFollowUp,
   fetchFollowUpList,
   getAllByCity,
+  setFreePartner,
 } from "../../controllers/admin/projectPartnerController.js";
 
 const router = express.Router();
@@ -60,6 +61,7 @@ router.put(
   edit,
 );
 router.put("/status/:id", status);
+router.put("/free-partner/:id", setFreePartner);
 router.put("/update/paymentid/:id", updatePaymentId);
 router.put("/seo/:id", seoDetails);
 router.get("/followup/list/:id", fetchFollowUpList);

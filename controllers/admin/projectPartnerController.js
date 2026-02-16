@@ -737,6 +737,44 @@ export const status = (req, res) => {
   });
 };
 
+//** Set free Partner */
+export const setFreePartner = (req, res) => {
+  const Id = parseInt(req.params.id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid Partner ID" });
+  }
+
+  db.query("SELECT * FROM projectpartner WHERE id = ?", [Id], (err, result) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    let status = "";
+    if (result[0].freeProjectPartner === "Active") {
+      status = "Inactive";
+    } else {
+      status = "Active";
+    }
+    //console.log(status);
+    db.query(
+      "UPDATE projectpartner SET freeProjectPartner = ? WHERE id = ?",
+      [status, Id],
+      (err, result) => {
+        if (err) {
+          console.error("Error deleting :", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+        res
+          .status(200)
+          .json({ message: "Set Subscription Free Successfully" });
+      }
+    );
+  });
+};
+
 // Update Payment ID and Send Email
 export const updatePaymentId = async (req, res) => {
   try {
