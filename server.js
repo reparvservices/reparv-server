@@ -452,7 +452,8 @@ export const verifyToken = (req, res, next) => {
     "/admin/subscribers",
     "/admin/partner",
     "/projectpartner/builders",
-    "/projectPartner/property",
+    "/projectPartner/property/",
+    "/projectpartner/property/",
   ];
 
   // Skip verification for public routes

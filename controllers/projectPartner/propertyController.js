@@ -303,12 +303,12 @@ export const addProperty = async (req, res) => {
                     id: newPropertyId,
                     propertyCityId,
                   });
-                }
+                },
               );
-            }
+            },
           );
         });
-      }
+      },
     );
   } catch (error) {
     console.error("Add property error:", error);
@@ -426,7 +426,7 @@ export const addPropertyOld = async (req, res) => {
           (totalOfferPrice *
             interestRate *
             Math.pow(1 + interestRate, tenureMonths)) /
-            (Math.pow(1 + interestRate, tenureMonths) - 1)
+            (Math.pow(1 + interestRate, tenureMonths) - 1),
         );
 
         // Handle possession date formatting
@@ -436,7 +436,7 @@ export const addPropertyOld = async (req, res) => {
           moment(
             possessionDate,
             ["YYYY-MM-DD", moment.ISO_8601],
-            true
+            true,
           ).isValid()
         ) {
           formattedDate = moment(possessionDate).format("YYYY-MM-DD");
@@ -565,12 +565,12 @@ export const addPropertyOld = async (req, res) => {
                     id: newPropertyId,
                     propertyCityId,
                   });
-                }
+                },
               );
-            }
+            },
           );
         });
-      }
+      },
     );
   } catch (uploadErr) {
     console.error("S3 upload error:", uploadErr);
@@ -584,6 +584,7 @@ export const addPropertyOld = async (req, res) => {
 export const update = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const Id = req.params.id;
+  console.log(Id);
 
   if (!Id) {
     return res.status(400).json({ message: "Invalid property ID" });
@@ -684,7 +685,7 @@ export const update = async (req, res) => {
     registrationFees = (30000 / totalOfferPrice) * 100;
   } else {
     registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
-      propertyCategory
+      propertyCategory,
     )
       ? 0
       : 1;
@@ -704,11 +705,11 @@ export const update = async (req, res) => {
   const propertyTypeArray = Array.isArray(propertyType)
     ? propertyType
     : typeof propertyType === "string"
-    ? propertyType
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean)
-    : [];
+      ? propertyType
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
   const propertyTypeJson = JSON.stringify(propertyTypeArray);
 
   // Fetch existing property
@@ -845,7 +846,7 @@ export const update = async (req, res) => {
           .status(500)
           .json({ message: "Image upload failed", error: s3Err });
       }
-    }
+    },
   );
 };
 
@@ -897,7 +898,7 @@ export const del = (req, res) => {
                   } catch (s3Err) {
                     console.error(
                       `Failed to delete S3 image ${imgPath}:`,
-                      s3Err
+                      s3Err,
                     );
                   }
                 } else {
@@ -930,7 +931,7 @@ export const del = (req, res) => {
           message: "Property and associated images deleted successfully",
         });
       });
-    }
+    },
   );
 };
 
@@ -971,9 +972,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1014,9 +1015,9 @@ export const approve = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1079,9 +1080,9 @@ export const changePropertyLocation = (req, res) => {
           res
             .status(200)
             .json({ message: "Property Location Change Successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1158,9 +1159,9 @@ export const uploadBrochureAndVideo = (req, res) => {
             videoPath: videoPath || oldVideo,
             videoLink: videoLink || oldVideoLink,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1191,7 +1192,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
           if (!result.length)
             return reject({ status: 404, message: "Property not found" });
           resolve(result);
-        }
+        },
       );
     });
 
@@ -1234,7 +1235,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
           brochureUrl,
           videoLink: videoLink || oldData.videoLink,
         });
-      }
+      },
     );
   } catch (error) {
     console.error("Unexpected error:", error);
@@ -1275,9 +1276,9 @@ export const seoDetails = (req, res) => {
               .json({ message: "Database error", error: err });
           }
           res.status(200).json({ message: "Seo Details Add successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1313,9 +1314,9 @@ export const addRejectReason = (req, res) => {
           res
             .status(200)
             .json({ message: "Property Reject Reason Add successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1420,7 +1421,7 @@ export const setPropertyCommission = (req, res) => {
           .status(200)
           .json({ message: "Property commission saved successfully" });
       });
-    }
+    },
   );
 };
 
@@ -1545,7 +1546,7 @@ export const updateImages = async (req, res) => {
             message: "Property images updated successfully",
           });
         });
-      }
+      },
     );
   } catch (err) {
     console.error("Image conversion or S3 upload error:", err);
@@ -1604,7 +1605,7 @@ export const deleteImages = async (req, res) => {
                   if (err && err.code !== "ENOENT") {
                     console.warn(
                       `Could not delete file: ${fullPath}`,
-                      err.message
+                      err.message,
                     );
                   }
                 });
@@ -1612,7 +1613,7 @@ export const deleteImages = async (req, res) => {
             } catch (deleteErr) {
               console.error(`Error deleting image ${imgPath}:`, deleteErr);
             }
-          })
+          }),
         );
 
         // Update DB to remove image references
@@ -1628,9 +1629,9 @@ export const deleteImages = async (req, res) => {
             }
 
             res.status(200).json({ message: "Images deleted successfully" });
-          }
+          },
         );
-      }
+      },
     );
   } catch (err) {
     console.error("Unexpected error:", err);
@@ -1708,7 +1709,7 @@ export const additionalInfoAdd = (req, res) => {
         message: "Additional Info added successfully",
         Id: insertResult.insertId,
       });
-    }
+    },
   );
 };
 
@@ -1800,7 +1801,7 @@ export const editAdditionalInfo = (req, res) => {
   }
 
   const updateSQL = `UPDATE propertiesinfo SET ${updateFields.join(
-    ", "
+    ", ",
   )} WHERE propertyinfoid = ?`;
 
   updateValues.push(Id);

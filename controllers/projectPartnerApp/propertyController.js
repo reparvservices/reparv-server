@@ -4,7 +4,8 @@ import fs from "fs";
 import path from "path";
 import { uploadToS3 } from "../../utils/imageUpload.js";
 import { convertImagesToWebp } from "../../utils/convertImagesToWebp.js";
-
+import { uploadVideoToS3 } from "../../utils/videoUpload.js";
+import { sanitize } from "../../utils/sanitize.js";
 function toSlug(text) {
   return text
     .toLowerCase() // Convert to lowercase
@@ -13,6 +14,19 @@ function toSlug(text) {
     .replace(/\s+/g, "-") // Replace spaces with hyphens
     .replace(/-+/g, "-"); // Replace multiple hyphens with single
 }
+
+const calculateEMI = (principal, rate = 9, years = 20) => {
+  const monthlyRate = rate / 12 / 100;
+  const months = years * 12;
+
+  if (monthlyRate === 0) return principal / months;
+
+  const emi =
+    (principal * monthlyRate * Math.pow(1 + monthlyRate, months)) /
+    (Math.pow(1 + monthlyRate, months) - 1);
+
+  return Math.round(emi);
+};
 
 // **Fetch All Properties**
 export const getAll = (req, res) => {
@@ -54,14 +68,16 @@ export const addProperty = async (req, res) => {
       projectpartnerid,
     } = req.body;
 
+    /* ---------------- CHECK DUPLICATE NAME ---------------- */
     db.query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",
       [property_name],
       async (err, result) => {
-        if (err)
+        if (err) {
           return res
             .status(500)
             .json({ success: false, message: "Database error" });
+        }
 
         if (result.length > 0) {
           return res.status(409).json({
@@ -70,10 +86,18 @@ export const addProperty = async (req, res) => {
           });
         }
 
-        /* Parse areas */
+        /* ---------------- PARSE AREAS ---------------- */
         let parsedAreas = [];
-        if (typeof areas === "string") parsedAreas = JSON.parse(areas);
-        if (Array.isArray(areas)) parsedAreas = areas;
+
+        try {
+          if (typeof areas === "string") {
+            parsedAreas = JSON.parse(areas);
+          } else if (Array.isArray(areas)) {
+            parsedAreas = areas;
+          }
+        } catch (e) {
+          parsedAreas = [];
+        }
 
         const builtUpArea =
           parsedAreas.find((a) => a.label?.toLowerCase().includes("built-up"))
@@ -83,7 +107,7 @@ export const addProperty = async (req, res) => {
           parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
             ?.value || null;
 
-        /* COMPRESS + UPLOAD FIELD-WISE */
+        /* ---------------- IMAGE UPLOAD ---------------- */
         const uploadField = async (field) => {
           if (!req.files || !req.files[field]) return [];
 
@@ -96,9 +120,19 @@ export const addProperty = async (req, res) => {
             const url = await uploadToS3(file);
             urls.push(url);
           }
+
           return urls;
         };
 
+        /* ---------------- VIDEO UPLOAD ---------------- */
+        let propertyVideoUrl = null;
+
+        if (req.files?.propertyVideo?.length > 0) {
+          const videoFile = req.files.propertyVideo[0];
+          propertyVideoUrl = await uploadVideoToS3(videoFile);
+        }
+
+        /* ---------------- PROCESS IMAGES ---------------- */
         const frontView = await uploadField("frontView");
         const sideView = await uploadField("sideView");
         const kitchenView = await uploadField("kitchenView");
@@ -109,18 +143,22 @@ export const addProperty = async (req, res) => {
         const nearestLandmark = await uploadField("nearestLandmark");
         const developedAmenities = await uploadField("developedAmenities");
 
+        /* ---------------- INSERT QUERY ---------------- */
+        const seoSlug = toSlug(property_name);
+
         const insertSQL = `
-          INSERT INTO properties (
-            projectpartnerid, propertyType, propertyCategory, propertyName,
-            totalSalesPrice, totalOfferPrice, contact, projectBy,
-            state, city, address, builtUpArea, carpetArea,
-            frontView, sideView, kitchenView, hallView,
-            bedroomView, bathroomView, balconyView,
-            nearestLandmark, developedAmenities,
-            seoSlug, created_at, updated_at
-          )
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
-        `;
+  INSERT INTO properties (
+    projectpartnerid, propertyType, propertyCategory, propertyName,
+    totalSalesPrice, totalOfferPrice, contact, projectBy,
+    state, city, address, builtUpArea, carpetArea,
+    frontView, sideView, kitchenView, hallView,
+    bedroomView, bathroomView, balconyView,
+    nearestLandmark, developedAmenities,
+    propertyVideo,
+    seoSlug, created_at, updated_at
+  )
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+`;
 
         const values = [
           projectpartnerid,
@@ -145,169 +183,314 @@ export const addProperty = async (req, res) => {
           JSON.stringify(balconyView),
           JSON.stringify(nearestLandmark),
           JSON.stringify(developedAmenities),
-          toSlug(property_name),
+          propertyVideoUrl,
+          seoSlug,
         ];
 
         db.query(insertSQL, values, (err, result) => {
           if (err) {
-            console.error(err);
+            console.error("INSERT ERROR:", err);
             return res
               .status(500)
               .json({ success: false, message: "Insert failed" });
           }
 
-          res.status(201).json({
+          return res.status(201).json({
             success: true,
             message: "Property added successfully",
             id: result.insertId,
           });
         });
-      }
+      },
     );
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("SERVER ERROR:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-export const updateProperty = async (req, res) => {
-  try {
-    const { propertyid } = req.params;
-    if (!propertyid) {
-      return res.status(400).json({ message: "Property ID is required" });
+// Update property controller
+export const update = async (req, res) => {
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+  const Id = req.params.id;
+  console.log("Received update request for property ID:", Id);
+  if (!Id) {
+    return res.status(400).json({ message: "Invalid property ID" });
+  }
+
+  const files = await convertImagesToWebp(req.files);
+
+  const {
+    builderid,
+    projectBy,
+    possessionDate,
+    propertyCategory,
+    propertyApprovedBy,
+    propertyName,
+    address,
+    state,
+    city,
+    pincode,
+    location,
+    distanceFromCityCenter,
+    latitude,
+    longitude,
+    totalSalesPrice,
+    totalOfferPrice,
+    stampDuty,
+    registrationFee,
+    gst,
+    advocateFee,
+    msebWater,
+    maintenance,
+    other,
+    tags,
+    propertyType,
+    builtYear,
+    ownershipType,
+    builtUpArea,
+    carpetArea,
+    parkingAvailability,
+    totalFloors,
+    floorNo,
+    loanAvailability,
+    propertyFacing,
+    reraRegistered,
+    furnishing,
+    waterSupply,
+    powerBackup,
+    locationFeature,
+    sizeAreaFeature,
+    parkingFeature,
+    terraceFeature,
+    ageOfPropertyFeature,
+    amenitiesFeature,
+    propertyStatusFeature,
+    smartHomeFeature,
+    securityBenefit,
+    primeLocationBenefit,
+    rentalIncomeBenefit,
+    qualityBenefit,
+    capitalAppreciationBenefit,
+    ecofriendlyBenefit,
+  } = req.body;
+
+  // Validation
+  if (
+    !builderid ||
+    !propertyCategory ||
+    !propertyName ||
+    !address ||
+    !state ||
+    !city ||
+    !pincode ||
+    !location ||
+    !distanceFromCityCenter ||
+    !latitude ||
+    !longitude ||
+    !totalSalesPrice ||
+    !totalOfferPrice ||
+    !stampDuty ||
+    !other ||
+    !tags ||
+    !builtYear ||
+    !ownershipType ||
+    !carpetArea ||
+    !parkingAvailability ||
+    !loanAvailability ||
+    !propertyFacing ||
+    !waterSupply ||
+    !powerBackup ||
+    !locationFeature ||
+    !sizeAreaFeature ||
+    !parkingFeature ||
+    !ageOfPropertyFeature ||
+    !amenitiesFeature ||
+    !propertyStatusFeature ||
+    !securityBenefit ||
+    !primeLocationBenefit ||
+    !rentalIncomeBenefit ||
+    !capitalAppreciationBenefit ||
+    !ecofriendlyBenefit
+  ) {
+    return res.status(400).json({ message: "All Fields are required" });
+  }
+
+  // Property Registration Fee calculation
+  let registrationFees;
+  if (totalOfferPrice > 3000000) {
+    registrationFees = (30000 / totalOfferPrice) * 100;
+  } else {
+    registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
+      propertyCategory,
+    )
+      ? 0
+      : 1;
+  }
+
+  const emi = calculateEMI(Number(totalOfferPrice));
+
+  let formattedPossessionDate = null;
+  if (possessionDate && possessionDate.trim() !== "") {
+    if (
+      moment(possessionDate, ["YYYY-MM-DD", moment.ISO_8601], true).isValid()
+    ) {
+      formattedPossessionDate = moment(possessionDate).format("YYYY-MM-DD");
     }
+  }
 
-    const {
-      property_type,
-      property_name,
-      price,
-      ownername,
-      contact,
-      areas,
-      ofprice,
-      state,
-      city,
-    } = req.body;
+  const propertyTypeArray = Array.isArray(propertyType)
+    ? propertyType
+    : typeof propertyType === "string"
+      ? propertyType
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
+  const propertyTypeJson = JSON.stringify(propertyTypeArray);
 
-    db.query(
-      `SELECT propertyid FROM properties WHERE propertyName = ? AND propertyid != ?`,
-      [property_name, propertyid],
-      async (err, exists) => {
-        if (err)
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
+  // Fetch existing property
+  db.query(
+    "SELECT * FROM properties WHERE propertyid = ?",
+    [Id],
+    async (err, result) => {
+      if (err)
+        return res.status(500).json({ message: "Database error", error: err });
+      if (result.length === 0)
+        return res.status(404).json({ message: "Property not found" });
 
-        if (exists.length > 0) {
-          return res
-            .status(409)
-            .json({ message: "Property name already exists!" });
+      const existing = result[0];
+
+      // Function to upload new images to S3 or keep existing
+      const getImagePaths = async (field) => {
+        if (files[field]) {
+          const uploadedUrls = [];
+          for (const file of files[field]) {
+            const url = await uploadToS3(file);
+            uploadedUrls.push(url);
+          }
+          return JSON.stringify(uploadedUrls);
+        } else {
+          return existing[field]; // keep old images
+        }
+      };
+
+      try {
+        const frontView = await getImagePaths("frontView");
+        const sideView = await getImagePaths("sideView");
+        const kitchenView = await getImagePaths("kitchenView");
+        const hallView = await getImagePaths("hallView");
+        const bedroomView = await getImagePaths("bedroomView");
+        const bathroomView = await getImagePaths("bathroomView");
+        const balconyView = await getImagePaths("balconyView");
+        const nearestLandmark = await getImagePaths("nearestLandmark");
+        const developedAmenities = await getImagePaths("developedAmenities");
+
+        // ---------------- ADD VIDEO LOGIC ----------------
+        let propertyVideo = existing.propertyVideo || null;
+        if (req.files?.propertyVideo?.length > 0) {
+          propertyVideo = await uploadVideoToS3(req.files.propertyVideo[0]);
         }
 
-        let parsedAreas = [];
-        if (typeof areas === "string") parsedAreas = JSON.parse(areas);
-        else if (Array.isArray(areas)) parsedAreas = areas;
-
-        const builtUpArea =
-          parsedAreas.find((a) => a.label?.toLowerCase().includes("built-up"))
-            ?.value || null;
-
-        const carpetArea =
-          parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
-            ?.value || null;
-
-        /* COMPRESS + UPLOAD ONLY SENT IMAGES */
-        const uploadField = async (field) => {
-          if (!req.files || !req.files[field]) return null;
-
-          const converted = await convertImagesToWebp({
-            [field]: req.files[field],
-          });
-
-          const urls = [];
-          for (const file of converted[field]) {
-            const url = await uploadToS3(file);
-            urls.push(url);
-          }
-          return JSON.stringify(urls);
-        };
-
-        const images = {
-          frontView: await uploadField("frontView"),
-          sideView: await uploadField("sideView"),
-          kitchenView: await uploadField("kitchenView"),
-          hallView: await uploadField("hallView"),
-          bedroomView: await uploadField("bedroomView"),
-          bathroomView: await uploadField("bathroomView"),
-          balconyView: await uploadField("balconyView"),
-          nearestLandmark: await uploadField("nearestLandmark"),
-          developedAmenities: await uploadField("developedAmenities"),
-        };
-
-        let updateSQL = `
-          UPDATE properties SET
-            propertyType = ?,
-            propertyCategory = ?,
-            propertyName = ?,
-            totalSalesPrice = ?,
-            totalOfferPrice = ?,
-            contact = ?,
-            projectBy = ?,
-            state = ?,
-            city = ?,
-            builtUpArea = ?,
-            carpetArea = ?,
-            seoSlug = ?,
-            updated_at = NOW()
-        `;
+        const updateSQL = `
+        UPDATE properties SET 
+          builderid=?, projectBy=?, possessionDate=?, propertyCategory=?, propertyApprovedBy=?, propertyName=?, address=?, state=?, city=?, pincode=?, location=?,
+          distanceFromCityCenter=?, latitude=?, longitude=?, totalSalesPrice=?, totalOfferPrice=?, emi=?, stampDuty=?, registrationFee=?, gst=?, advocateFee=?, 
+          msebWater=?, maintenance=?, other=?, tags=?, propertyType=?, builtYear=?, ownershipType=?,
+          builtUpArea=?, carpetArea=?, parkingAvailability=?, totalFloors=?, floorNo=?, loanAvailability=?,
+          propertyFacing=?, reraRegistered=?, furnishing=?, waterSupply=?, powerBackup=?, locationFeature=?, sizeAreaFeature=?, parkingFeature=?, terraceFeature=?,
+          ageOfPropertyFeature=?, amenitiesFeature=?, propertyStatusFeature=?, smartHomeFeature=?,
+          securityBenefit=?, primeLocationBenefit=?, rentalIncomeBenefit=?, qualityBenefit=?, capitalAppreciationBenefit=?, ecofriendlyBenefit=?,
+          frontView=?, sideView=?, kitchenView=?, hallView=?, bedroomView=?, bathroomView=?, balconyView=?,
+          nearestLandmark=?, developedAmenities=?, propertyVideo=?, updated_at=?
+        WHERE propertyid = ?
+      `;
 
         const values = [
-          property_type,
-          property_type,
-          property_name,
-          price,
-          ofprice,
-          contact,
-          ownername,
+          builderid,
+          sanitize(projectBy),
+          sanitize(formattedPossessionDate),
+          propertyCategory,
+          propertyApprovedBy,
+          propertyName,
+          address,
           state,
           city,
+          pincode,
+          location,
+          distanceFromCityCenter,
+          latitude,
+          longitude,
+          totalSalesPrice,
+          totalOfferPrice,
+          emi,
+          stampDuty,
+          registrationFees,
+          gst,
+          advocateFee,
+          msebWater,
+          maintenance,
+          other,
+          tags,
+          propertyTypeJson,
+          builtYear,
+          ownershipType,
           builtUpArea,
           carpetArea,
-          toSlug(property_name),
+          parkingAvailability,
+          totalFloors,
+          floorNo,
+          loanAvailability,
+          propertyFacing,
+          reraRegistered,
+          furnishing,
+          waterSupply,
+          powerBackup,
+          locationFeature,
+          sizeAreaFeature,
+          parkingFeature,
+          terraceFeature,
+          ageOfPropertyFeature,
+          amenitiesFeature,
+          propertyStatusFeature,
+          smartHomeFeature,
+          securityBenefit,
+          primeLocationBenefit,
+          rentalIncomeBenefit,
+          qualityBenefit,
+          capitalAppreciationBenefit,
+          ecofriendlyBenefit,
+          frontView,
+          sideView,
+          kitchenView,
+          hallView,
+          bedroomView,
+          bathroomView,
+          balconyView,
+          nearestLandmark,
+          developedAmenities,
+          propertyVideo, // added here
+          currentdate,
+          Id,
         ];
 
-        Object.entries(images).forEach(([key, value]) => {
-          if (value !== null) {
-            updateSQL += `, ${key} = ?`;
-            values.push(value);
-          }
-        });
-
-        updateSQL += ` WHERE propertyid = ?`;
-        values.push(propertyid);
-
-        db.query(updateSQL, values, (err, result) => {
+        db.query(updateSQL, values, (err) => {
           if (err) {
-            console.error("Update error:", err);
+            console.error("Error updating property:", err);
             return res
               .status(500)
               .json({ message: "Update failed", error: err });
           }
+          console.log(values);
 
-          if (result.affectedRows === 0) {
-            return res.status(404).json({ message: "Property not found" });
-          }
-
-          res.status(200).json({
-            success: true,
-            message: "Property updated successfully",
-            propertyid,
-          });
+          res.status(200).json({ message: "Property updated successfully" });
         });
+      } catch (s3Err) {
+        console.error("S3 upload error:", s3Err);
+        return res
+          .status(500)
+          .json({ message: "Image/Video upload failed", error: s3Err });
       }
-    );
-  } catch (error) {
-    console.error("Update error:", error);
-    res.status(500).json({ message: "Server error", error });
-  }
+    },
+  );
 };
