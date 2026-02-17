@@ -16,7 +16,6 @@ export const getAll = (req, res) => {
   });
 };
 
-// **Fetch All **
 export const getAllPlans = (req, res) => {
   const partnerType = req.params.partnerType;
 
@@ -27,10 +26,16 @@ export const getAllPlans = (req, res) => {
       rc.discount, 
       rc.startDate, 
       rc.endDate
-    FROM subscriptionPricing AS sp
-    LEFT JOIN redeem_codes AS rc 
-      ON sp.id = rc.planId 
-      AND rc.status = 'Active'
+    FROM subscriptionPricing sp
+    LEFT JOIN redeem_codes rc 
+      ON rc.id = (
+        SELECT id 
+        FROM redeem_codes 
+        WHERE planId = sp.id 
+          AND status = 'Active'
+        ORDER BY startDate DESC
+        LIMIT 1
+      )
     WHERE sp.status = 'Active' 
       AND sp.partnerType = ?
     ORDER BY sp.totalPrice;
