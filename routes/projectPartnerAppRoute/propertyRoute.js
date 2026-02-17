@@ -5,6 +5,7 @@ import {
   getAll,
   update,
 } from "../../controllers/projectPartnerApp/propertyController.js";
+import { generateUploadUrl } from "../../controllers/projectPartnerApp/uploadController.js";
 
 const router = express.Router();
 
@@ -67,6 +68,8 @@ router.put(
   ]),
   update,
 );
+
+router.post("/generate-upload-url", generateUploadUrl);
 
 /* ---------- MULTER ERROR HANDLER ---------- */
 router.use((err, req, res, next) => {

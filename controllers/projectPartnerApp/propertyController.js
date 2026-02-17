@@ -66,6 +66,7 @@ export const addProperty = async (req, res) => {
       city,
       address,
       projectpartnerid,
+      propertyVideo,
     } = req.body;
 
     /* ---------------- CHECK DUPLICATE NAME ---------------- */
@@ -124,14 +125,6 @@ export const addProperty = async (req, res) => {
           return urls;
         };
 
-        /* ---------------- VIDEO UPLOAD ---------------- */
-        let propertyVideoUrl = null;
-
-        if (req.files?.propertyVideo?.length > 0) {
-          const videoFile = req.files.propertyVideo[0];
-          propertyVideoUrl = await uploadVideoToS3(videoFile);
-        }
-
         /* ---------------- PROCESS IMAGES ---------------- */
         const frontView = await uploadField("frontView");
         const sideView = await uploadField("sideView");
@@ -183,7 +176,7 @@ export const addProperty = async (req, res) => {
           JSON.stringify(balconyView),
           JSON.stringify(nearestLandmark),
           JSON.stringify(developedAmenities),
-          propertyVideoUrl,
+          propertyVideo,
           seoSlug,
         ];
 
@@ -273,6 +266,7 @@ export const update = async (req, res) => {
     qualityBenefit,
     capitalAppreciationBenefit,
     ecofriendlyBenefit,
+    propertyVideo,
   } = req.body;
 
   // Validation
@@ -385,12 +379,6 @@ export const update = async (req, res) => {
         const balconyView = await getImagePaths("balconyView");
         const nearestLandmark = await getImagePaths("nearestLandmark");
         const developedAmenities = await getImagePaths("developedAmenities");
-
-        // ---------------- ADD VIDEO LOGIC ----------------
-        let propertyVideo = existing.propertyVideo || null;
-        if (req.files?.propertyVideo?.length > 0) {
-          propertyVideo = await uploadVideoToS3(req.files.propertyVideo[0]);
-        }
 
         const updateSQL = `
         UPDATE properties SET 
