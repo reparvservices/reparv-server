@@ -10,17 +10,17 @@ export const getAll = (req, res) => {
 
   let sql = "";
   switch (filterStatus) {
-    case "New":
-    case "Eligible":
-    case "Not Eligible":
-      sql = `SELECT * FROM loanemiforperson WHERE status = ? ORDER BY created_at DESC`;
+    case "In Progress":
+    case "Approved":
+    case "Not Approved":
+      sql = `SELECT * FROM loanemiforperson WHERE approved = ? ORDER BY created_at DESC`;
       break;
     case "All":
     default:
       sql = `SELECT * FROM loanemiforperson ORDER BY created_at DESC`;
   }
 
-  const queryParams = ["New", "Eligible", "Not Eligible"].includes(filterStatus)
+  const queryParams = ["In Progress", "Approved", "Not Approved"].includes(filterStatus)
     ? [filterStatus]
     : [];
 
@@ -30,11 +30,11 @@ export const getAll = (req, res) => {
       return res.status(500).json({ message: "Database error", error: err });
     }
 
-    // Count query for loanemiforperson by status
+    // Count query by filterStatus
     const countQuery = `
-      SELECT status, COUNT(*) AS count
+      SELECT approved, COUNT(*) AS count
       FROM loanemiforperson
-      GROUP BY status
+      GROUP BY approved
     `;
 
     db.query(countQuery, (countErr, counts) => {
@@ -57,7 +57,7 @@ export const getAll = (req, res) => {
 
       const statusCounts = {};
       counts.forEach((item) => {
-        statusCounts[item.status] = item.count;
+        statusCounts[item.approved] = item.count;
       });
 
       return res.json({
@@ -177,8 +177,47 @@ export const edit = (req, res) => {
   });
 };
 
-//* Change status */
+//**Change status */
 export const status = (req, res) => {
+  const Id = parseInt(req.params.id);
+  console.log(Id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid ID" });
+  }
+
+  db.query("SELECT * FROM loanemiforperson WHERE id = ?", [Id], (err, result) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    let status = "";
+    if (result[0].status === "Active") {
+      status = "Inactive";
+    } else {
+      status = "Active";
+    }
+    console.log(status);
+    db.query(
+      "UPDATE loanemiforperson SET status = ? WHERE id = ?",
+      [status, Id],
+      (err, result) => {
+        if (err) {
+          console.error("Error deleting :", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+        res
+          .status(200)
+          .json({ message: "status change successfully" });
+      }
+    );
+  });
+};
+
+//* Change Approved status */
+export const changeLoanApprovedStatus = (req, res) => {
   const Id = parseInt(req.params.id);
   if (isNaN(Id)) {
     return res.status(400).json({ message: "Invalid ID" });
@@ -198,16 +237,16 @@ export const status = (req, res) => {
       }
 
       db.query(
-        "UPDATE loanemiforperson SET status = ? WHERE id = ?",
+        "UPDATE loanemiforperson SET approved = ? WHERE id = ?",
         [status, Id],
         (err, result) => {
           if (err) {
-            console.error("Error Changing status :", err);
+            console.error("Error Approved :", err);
             return res
               .status(500)
               .json({ message: "Database error", error: err });
           }
-          res.status(200).json({ message: "status change successfully" });
+          res.status(200).json({ message: "Approved Status change successfully" });
         }
       );
     }

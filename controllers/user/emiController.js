@@ -16,7 +16,7 @@ export const getAll = (req, res) => {
       l.*,
       SUM(CASE WHEN l.status = 'Active' THEN 1 ELSE 0 END) OVER() AS activeCount,
       SUM(CASE WHEN l.status = 'Inactive' THEN 1 ELSE 0 END) OVER() AS inactiveCount,
-      SUM(CASE WHEN l.approved = 'Active' THEN 1 ELSE 0 END) OVER() AS approvedCount
+      SUM(CASE WHEN l.approved = 'Approved' THEN 1 ELSE 0 END) OVER() AS approvedCount
     FROM loanemiforperson l
     WHERE l.user_id = ?
     ORDER BY l.id DESC
