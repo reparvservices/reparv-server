@@ -449,7 +449,8 @@ export const verifyToken = (req, res, next) => {
     "/admin/partner",
     "/projectpartner/builders",
     "/projectPartner/property/",
-    "/projectpartner/property/",
+    "/projectpartner/property",
+    "/projectpartner/property/generate-upload-url",
   ];
 
   // Skip verification for public routes
