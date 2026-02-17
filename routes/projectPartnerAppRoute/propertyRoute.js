@@ -10,9 +10,6 @@ const router = express.Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 500 * 1024 * 1024, // 200MB max
-  },
   fileFilter: (req, file, cb) => {
     const allowedTypes = [
       // images
@@ -23,16 +20,13 @@ const upload = multer({
 
       // videos
       "video/mp4",
-      "video/mpeg",
       "video/quicktime",
       "video/x-matroska",
       "video/webm",
     ];
 
     if (!allowedTypes.includes(file.mimetype)) {
-      return cb(
-        new Error("Only images and MP4/MOV/MKV/WEBM videos are allowed"),
-      );
+      return cb(new Error("Only images and videos are allowed"));
     }
 
     cb(null, true);
