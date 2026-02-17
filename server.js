@@ -502,7 +502,7 @@ export const verifyToken = (req, res, next) => {
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
-    message: "Backend is running successfully update 1.1.1!",
+    message: "Backend is running successfully update 1.1.1.1!",
   });
 });
 
