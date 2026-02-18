@@ -95,7 +95,13 @@ export const verifyPayment = async (req, res) => {
     };
     //const password = generatePassword();
     // Hash the password securely
-    const hashedPassword = await bcrypt.hash(password, 10);
+    let finalPassword = password;
+
+    if (!finalPassword) {
+      finalPassword = generatePassword();
+    }
+
+    const hashedPassword = await bcrypt.hash(finalPassword, 10);
 
     const query = `UPDATE ${database} SET loginstatus = 'Active', username = ?, password = ?, paymentstatus = ?, paymentid = ?, amount = ? WHERE ${updatedId} = ?`;
     const paymentStatus = "Success";
@@ -113,7 +119,7 @@ export const verifyPayment = async (req, res) => {
       (err, results) => {
         if (err) throw err;
         console.log("Rows updated:", results.affectedRows);
-      }
+      },
     );
     // Send email after successful update
     sendEmail(student_id, username, password, role, url);
