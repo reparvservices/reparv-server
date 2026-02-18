@@ -6,13 +6,10 @@ import nodemailer from "nodemailer";
 import { OAuth2Client } from "google-auth-library";
 import e from "express";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
-<<<<<<< HEAD
-import { sendOtpSMS } from "../../utils/sendOtpSMS.js";
-=======
 
->>>>>>> updateEnquiry
-import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 import { sendOtpSMS } from "../../utils/sendOtpSMS.js";
+
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 const client = new OAuth2Client(process.env.MOBILE_GOOGLE_LOGIN_CLIENT_ID);
 
 dotenv.config();
