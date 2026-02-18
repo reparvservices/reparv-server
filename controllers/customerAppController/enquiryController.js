@@ -19,10 +19,7 @@ export const sendOtp = async (req, res) => {
 
     const otp = generateOtp();
 
-    await sendOtpSMS({
-      phone: phone,
-      otp,
-    });
+    await sendOtpSMS(phone, otp);
 
     return res.json({
       otp: otp, // In production, do not send OTP back in response
