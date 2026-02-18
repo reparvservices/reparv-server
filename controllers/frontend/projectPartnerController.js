@@ -61,7 +61,9 @@ export const getAllProperties = (req, res) => {
     FROM properties
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
-    WHERE properties.projectpartnerid = ?
+    WHERE properties.status = 'Active' 
+      AND properties.approve = 'Approved' 
+      properties.projectpartnerid = ?
       AND properties.city = ?
   `;
 
@@ -122,7 +124,7 @@ export const getHotDealProperties = (req, res) => {
       ON properties.builderid = builders.builderid
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
-    WHERE properties.projectpartnerid = ?
+    WHERE properties.approve = 'Approved' AND properties.projectpartnerid = ?
       AND properties.city = ?
       AND properties.hotDeal = ?
   `;
@@ -182,7 +184,7 @@ export const getPremiumProperties = (req, res) => {
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
     WHERE properties.projectpartnerid = ?
-      AND properties.city = ?
+      AND properties.city = ? AND properties.approve = 'Approved'
   `;
 
   const params = [projectPartnerId, selectedCity];
