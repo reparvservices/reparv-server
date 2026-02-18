@@ -9,6 +9,7 @@ function generateOtp() {
 export const sendOtp = async (req, res) => {
   try {
     const { phone } = req.body;
+    console.log("fff");
 
     if (!phone || phone.length !== 10) {
       return res.status(400).json({
