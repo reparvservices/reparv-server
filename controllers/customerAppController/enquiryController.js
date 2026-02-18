@@ -1,6 +1,6 @@
 import moment from "moment";
 import db from "../../config/dbconnect.js";
-import { sendOtpSMS } from "../../utils/OtpSender.js";
+import { sendOtpSMS } from "../../utils/sendOtpSMS.js";
 
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
