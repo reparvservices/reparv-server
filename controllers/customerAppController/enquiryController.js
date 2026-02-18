@@ -1,6 +1,6 @@
 import moment from "moment";
 import db from "../../config/dbconnect.js";
-import { sendOtpSMS } from "../../utils/OtpSender.js";
+import { sendOtpSMS } from "../../utils/sendOtpSMS.js";
 
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -9,6 +9,7 @@ function generateOtp() {
 export const sendOtp = async (req, res) => {
   try {
     const { phone } = req.body;
+    console.log("fff");
 
     if (!phone || phone.length !== 10) {
       return res.status(400).json({
@@ -19,10 +20,7 @@ export const sendOtp = async (req, res) => {
 
     const otp = generateOtp();
 
-    await sendOtpSMS({
-      phone: phone,
-      otp,
-    });
+    await sendOtpSMS(phone, otp);
 
     return res.json({
       otp: otp, // In production, do not send OTP back in response

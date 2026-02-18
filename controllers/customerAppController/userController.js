@@ -6,8 +6,9 @@ import nodemailer from "nodemailer";
 import { OAuth2Client } from "google-auth-library";
 import e from "express";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
-import { sendOtpSMS } from "../../utils/OtpSender.js";
+
 import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
+import { sendOtpSMS } from "../../utils/sendOtpSMS.js";
 const client = new OAuth2Client(process.env.MOBILE_GOOGLE_LOGIN_CLIENT_ID);
 
 dotenv.config();
@@ -35,7 +36,7 @@ export const add = async (req, res) => {
       });
     }
 
-    const otp = generateOtp();
+    const otp = Math.floor(100000 + Math.random() * 900000);
     const otpExpiry = moment().add(5, "minutes").format("YYYY-MM-DD HH:mm:ss");
 
     const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -60,11 +61,10 @@ export const add = async (req, res) => {
           [otp, otpExpiry, timestamp, guestUserId],
         );
 
-        await sendOtpSMS({ phone: contact, otp });
-
+        await sendOtpSMS(contact, otp);
+        console.log("OTP for", contact, "is", otp);
         return res.status(200).json({
           success: true,
-          otp: otp,
           message: "OTP sent successfully",
         });
       }
@@ -83,8 +83,8 @@ export const add = async (req, res) => {
             });
           }
 
-          await sendOtpSMS({ phone: contact, otp });
-
+          await sendOtpSMS(contact, otp);
+          console.log("OTP for", contact, "is", otp);
           return res.status(201).json({
             success: true,
             message: "Guest signup successful, OTP sent",
