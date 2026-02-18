@@ -176,7 +176,7 @@ export const add = async (req, res) => {
         if (err) return callback(err, null);
         if (results.length > 0) return generateUniqueReferralCode(callback);
         return callback(null, code);
-      }
+      },
     );
   };
 
@@ -225,8 +225,8 @@ export const add = async (req, res) => {
           field: duplicateField.includes("Contact")
             ? "contact"
             : duplicateField.includes("Email")
-            ? "email"
-            : "username",
+              ? "email"
+              : "username",
         });
       }
 
@@ -299,7 +299,7 @@ export const add = async (req, res) => {
               (updateErr) => {
                 if (updateErr)
                   console.error("Error updating status:", updateErr);
-              }
+              },
             );
 
             //  Add follow-up
@@ -333,7 +333,7 @@ export const add = async (req, res) => {
                       username,
                       password,
                       "Project Partner",
-                      "https://projectpartner.reparv.in"
+                      "https://projectpartner.reparv.in",
                     );
                   } catch (err) {
                     console.error("Email send failed:", err);
@@ -346,9 +346,9 @@ export const add = async (req, res) => {
                     : "Project Partner added successfully",
                   Id: insertResult.insertId,
                 });
-              }
+              },
             );
-          }
+          },
         );
       });
     });
@@ -394,8 +394,8 @@ export const edit = async (req, res) => {
       db.query(
         "SELECT adharimage, panimage, reraimage FROM projectpartner WHERE id = ?",
         [partnerid],
-        (err, results) => (err ? reject(err) : resolve(results))
-      )
+        (err, results) => (err ? reject(err) : resolve(results)),
+      ),
     );
 
     if (!rows || rows.length === 0) {
@@ -503,8 +503,8 @@ export const edit = async (req, res) => {
 
     await new Promise((resolve, reject) =>
       db.query(updateSql, updateValues, (err) =>
-        err ? reject(err) : resolve()
-      )
+        err ? reject(err) : resolve(),
+      ),
     );
 
     res.status(200).json({ message: "Project Partner updated successfully" });
@@ -516,8 +516,8 @@ export const edit = async (req, res) => {
 
 export const updateBusinessDetails = async (req, res) => {
   try {
-    const partnerid = parseInt(req.params.id);
-    if (isNaN(partnerid)) {
+    const partnerid = Number(req.params.id);
+    if (!Number.isInteger(partnerid) || partnerid <= 0) {
       return res.status(400).json({ message: "Invalid Partner ID" });
     }
 
@@ -533,11 +533,11 @@ export const updateBusinessDetails = async (req, res) => {
 
     // Validation
     if (
-      !whatsappNumber ||
-      !businessAddress ||
-      !businessState ||
-      !businessCity ||
-      !businessPincode
+      !whatsappNumber?.toString().trim() ||
+      !businessAddress?.trim() ||
+      !businessState?.trim() ||
+      !businessCity?.trim() ||
+      !businessPincode?.toString().trim()
     ) {
       return res.status(400).json({ message: "All fields are required" });
     }
@@ -549,41 +549,39 @@ export const updateBusinessDetails = async (req, res) => {
         partnerid,
       ]);
 
-    if (!rows || rows.length === 0) {
+    if (!rows?.length) {
       return res.status(404).json({ message: "Project Partner not found" });
     }
 
-    const oldLogoUrl = rows[0].businessLogo || null;
+    const oldLogoUrl = rows[0]?.businessLogo || null;
     let newLogoUrl = oldLogoUrl;
 
-    // Upload new logo to S3 (if provided)
+    // Upload new logo if provided
     if (req.file) {
+      let uploadFile = req.file;
+
       try {
-        let uploadFile = req.file;
-
-        // Compress only if image
         if (req.file.mimetype?.startsWith("image/")) {
-          const compressedImage = await convertSingleImageToWebp(req.file);
-          if (compressedImage) {
-            uploadFile = compressedImage;
-          }
-        }
-
-        newLogoUrl = await uploadToS3(uploadFile);
-
-        // Delete old logo from S3
-        if (oldLogoUrl) {
           try {
-            await deleteFromS3(oldLogoUrl);
+            const compressedImage = await convertSingleImageToWebp(req.file);
+            if (compressedImage) uploadFile = compressedImage;
           } catch (err) {
-            console.error("Failed to delete old business logo:", err);
+            console.error("Image compression failed, uploading original:", err);
           }
         }
-      } catch (s3Err) {
-        console.error("S3 upload error:", s3Err);
+
+        const uploadedUrl = await uploadToS3(uploadFile);
+
+        if (oldLogoUrl) {
+          deleteFromS3(oldLogoUrl).catch(() => {});
+        }
+
+        newLogoUrl = uploadedUrl;
+      } catch (err) {
+        console.error("S3 upload failed:", err);
         return res.status(500).json({
           message: "Business logo upload failed",
-          error: s3Err,
+          error: err.message || err,
         });
       }
     }
@@ -610,14 +608,14 @@ export const updateBusinessDetails = async (req, res) => {
       ]);
 
     return res.status(200).json({
+      success: true,
       message: "Business details updated successfully",
       businessLogo: newLogoUrl,
     });
   } catch (error) {
     console.error("Error updating business details:", error);
     return res.status(500).json({
-      message: "Server error",
-      error,
+      message: "Internal server error",
     });
   }
 };
@@ -667,7 +665,7 @@ export const seoDetails = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Seo Details Add successfully" });
-      }
+      },
     );
   });
 };
@@ -732,7 +730,7 @@ export const status = (req, res) => {
         res
           .status(200)
           .json({ message: "Project Partner status change successfully" });
-      }
+      },
     );
   });
 };
@@ -767,10 +765,8 @@ export const setFreePartner = (req, res) => {
             .status(500)
             .json({ message: "Database error", error: err });
         }
-        res
-          .status(200)
-          .json({ message: "Set Subscription Free Successfully" });
-      }
+        res.status(200).json({ message: "Set Subscription Free Successfully" });
+      },
     );
   });
 };
@@ -872,7 +868,7 @@ export const updatePaymentId = async (req, res) => {
               username,
               password,
               "Project Partner",
-              "https://projectpartner.reparv.in"
+              "https://projectpartner.reparv.in",
             );
             return res.status(200).json({
               message: "Payment ID updated and email sent successfully.",
@@ -894,7 +890,7 @@ export const updatePaymentId = async (req, res) => {
             });
           }
         });
-      }
+      },
     );
   } catch (err) {
     console.error("Unexpected server error:", err);
@@ -986,9 +982,9 @@ export const addFollowUp = async (req, res) => {
               message:
                 "Partner follow-up added and payment status updated to 'Follow Up'.",
             });
-          }
+          },
         );
-      }
+      },
     );
   });
 };
@@ -1038,7 +1034,7 @@ export const assignLogin = async (req, res) => {
               username,
               password,
               "Project Partner",
-              "https://projectpartner.reparv.in"
+              "https://projectpartner.reparv.in",
             )
               .then(() => {
                 res.status(200).json({
@@ -1052,9 +1048,9 @@ export const assignLogin = async (req, res) => {
                   .status(500)
                   .json({ message: "Login updated but email failed to send." });
               });
-          }
+          },
         );
-      }
+      },
     );
   } catch (error) {
     console.error("Unexpected error:", error);

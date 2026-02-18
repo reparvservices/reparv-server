@@ -124,7 +124,8 @@ export const getHotDealProperties = (req, res) => {
       ON properties.builderid = builders.builderid
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
-    WHERE properties.approve = 'Approved' AND properties.projectpartnerid = ?
+    WHERE properties.status = 'Active' 
+      AND properties.approve = 'Approved' AND properties.projectpartnerid = ?
       AND properties.city = ?
       AND properties.hotDeal = ?
   `;
@@ -184,7 +185,8 @@ export const getPremiumProperties = (req, res) => {
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
     WHERE properties.projectpartnerid = ?
-      AND properties.city = ? AND properties.approve = 'Approved'
+      AND properties.city = ? AND properties.status = 'Active' 
+      AND properties.approve = 'Approved'
   `;
 
   const params = [projectPartnerId, selectedCity];
@@ -260,6 +262,6 @@ export const addMessage = async (req, res) => {
         message: "Message added successfully",
         id: result.insertId,
       });
-    }
+    },
   );
 };
