@@ -6,6 +6,7 @@ export async function sendOtpSMS(phone, otp) {
     const payload = new URLSearchParams({
       module: "TRANS_SMS",
       apikey: process.env.OTP_KEY,
+      to: phone.startsWith("91") ? phone : `91${phone}`,
       to: `91${phone}`, // e.g. "917410756686" or "7410756686" depending on provider
       from: "REPARV",
       msg: `Your OTP for Reparv app ${otp}. Valid for 5 minutes. Do not share with anyone.`,
