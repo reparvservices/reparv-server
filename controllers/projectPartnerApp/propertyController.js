@@ -271,7 +271,6 @@ export const update = async (req, res) => {
 
   // Validation
   if (
-    !builderid ||
     !propertyCategory ||
     !propertyName ||
     !address ||
@@ -279,33 +278,16 @@ export const update = async (req, res) => {
     !city ||
     !pincode ||
     !location ||
-    !distanceFromCityCenter ||
-    !latitude ||
-    !longitude ||
     !totalSalesPrice ||
     !totalOfferPrice ||
     !stampDuty ||
     !other ||
-    !tags ||
     !builtYear ||
     !ownershipType ||
     !carpetArea ||
     !parkingAvailability ||
     !loanAvailability ||
-    !propertyFacing ||
-    !waterSupply ||
-    !powerBackup ||
-    !locationFeature ||
-    !sizeAreaFeature ||
-    !parkingFeature ||
-    !ageOfPropertyFeature ||
-    !amenitiesFeature ||
-    !propertyStatusFeature ||
-    !securityBenefit ||
-    !primeLocationBenefit ||
-    !rentalIncomeBenefit ||
-    !capitalAppreciationBenefit ||
-    !ecofriendlyBenefit
+    !propertyFacing
   ) {
     return res.status(400).json({ message: "All Fields are required" });
   }
