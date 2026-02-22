@@ -233,10 +233,10 @@ export const addProperty = async (req, res) => {
             state, city,
             frontView, sideView, kitchenView, hallView,
             bedroomView, bathroomView, balconyView,
-            nearestLandmark, developedAmenities,
+            nearestLandmark, developedAmenities, seoSlug,
             updated_at, created_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const values = [
@@ -258,6 +258,7 @@ export const addProperty = async (req, res) => {
           balconyView,
           nearestLandmark,
           developedAmenities,
+          toSlug(propertyName),
           currentdate,
           currentdate,
         ];
