@@ -63,7 +63,7 @@ export const getAllProperties = (req, res) => {
       ON user_property_wishlist.property_id = properties.propertyid
     WHERE properties.status = 'Active' 
       AND properties.approve = 'Approved' 
-      properties.projectpartnerid = ?
+      AND properties.projectpartnerid = ?
       AND properties.city = ?
   `;
 
