@@ -206,11 +206,11 @@ export const addProperty = async (req, res) => {
 export const update = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const Id = req.params.id;
+
   console.log("Received update request for property ID:", Id);
   if (!Id) {
     return res.status(400).json({ message: "Invalid property ID" });
   }
-
   const files = await convertImagesToWebp(req.files);
 
   const {
@@ -270,26 +270,59 @@ export const update = async (req, res) => {
   } = req.body;
 
   // Validation
-  if (
-    !propertyCategory ||
-    !propertyName ||
-    !address ||
-    !state ||
-    !city ||
-    !pincode ||
-    !location ||
-    !totalSalesPrice ||
-    !totalOfferPrice ||
-    !stampDuty ||
-    !other ||
-    !builtYear ||
-    !ownershipType ||
-    !carpetArea ||
-    !parkingAvailability ||
-    !loanAvailability ||
-    !propertyFacing
-  ) {
-    return res.status(400).json({ message: "All Fields are required" });
+  if (!propertyCategory) {
+    console.log("propertyCategory is missing");
+    return res.status(400).json({ message: "Property Category is required" });
+  }
+
+  if (!propertyName) {
+    console.log("propertyName is missing");
+    return res.status(400).json({ message: "Property Name is required" });
+  }
+
+  if (!address) {
+    console.log("address is missing");
+    return res.status(400).json({ message: "Address is required" });
+  }
+
+  if (!state) {
+    console.log("state is missing");
+    return res.status(400).json({ message: "State is required" });
+  }
+
+  if (!city) {
+    console.log("city is missing");
+    return res.status(400).json({ message: "City is required" });
+  }
+
+  if (!pincode) {
+    console.log("pincode is missing");
+    return res.status(400).json({ message: "Pincode is required" });
+  }
+
+  if (!location) {
+    console.log("location is missing");
+    return res.status(400).json({ message: "Location is required" });
+  }
+
+  if (!totalSalesPrice) {
+    console.log("totalSalesPrice is missing");
+    return res.status(400).json({ message: "Total Sales Price is required" });
+  }
+
+  if (!totalOfferPrice) {
+    console.log("totalOfferPrice is missing");
+    return res.status(400).json({ message: "Total Offer Price is required" });
+  }
+
+  if (!ownershipType) {
+    console.log("ownershipType is missing");
+    return res.status(400).json({ message: "Ownership Type is required" });
+  }
+
+  if (!carpetArea) {
+    console.log("carpetArea is missing");
+    return res.status(400).json({ message: "Carpet Area is required" });
   }
 
   // Property Registration Fee calculation
