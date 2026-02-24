@@ -10,14 +10,4 @@ const db = mysql.createPool({
   connectTimeout: 10000,
 });
 
-// Test connection on startup
-// db.getConnection((err, connection) => {
-//   if (err) {
-//     console.error("❌ MySQL connection failed:", err.message);
-//   } else {
-//     console.log(" MySQL connected successfully");
-//     connection.release();
-//   }
-// });
-
 export default db;

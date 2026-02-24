@@ -266,6 +266,12 @@ import builderEnquiryCustomerRoute from "./routes/builderAppRoute/builderPropert
 import builderCommunityRoute from "./routes/builderAppRoute/communityRoute.js";
 import builderTicketRoute from "./routes/builderAppRoute/BuilderTicketRoutes.js";
 import builderpostRoute from "./routes/builderAppRoute/BuilderpostRoutes.js";
+
+// Meta Leads routes
+
+import "./controllers/metacontroller/metalead.controller.js";
+import metaLeadRoutes from "./routes/metaleadRoutes/metalead.routes.js";
+
 import db from "./config/dbconnect.js";
 
 const app = express();
@@ -277,11 +283,10 @@ app.use(
     secret: process.env.SESSION_SECRET || "your_secret_key",
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false, httpOnly: true }, // Use `secure: true` in production with HTTPS
+    cookie: { secure: false, httpOnly: true },
   }),
 );
 
-app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ extended: true, limit: "500mb" }));
 // Serve static files from 'uploads' directory
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
@@ -455,7 +460,21 @@ export const verifyToken = (req, res, next) => {
     "/projectPartner/property/",
     "/projectpartner/property",
     "/projectpartner/property/generate-upload-url",
+    "/meta",
   ];
+
+  // dont remove it form this place other wise it will not work
+  app.use(
+    "/meta",
+    express.json({
+      verify: (req, res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+    metaLeadRoutes,
+  );
+
+  app.use(express.json({ limit: "500mb" }));
 
   // Skip verification for public routes
   if (publicRoutes.some((route) => req.path.startsWith(route))) {
