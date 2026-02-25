@@ -6,7 +6,24 @@ import {
 
 const router = express.Router();
 
-router.get("/webhook", verifyWebhook);
-router.post("/webhook", handleWebhook);
+router.get(
+  "/webhook",
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+  verifyWebhook,
+);
+
+router.post(
+  "/webhook",
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+  handleWebhook,
+);
 
 export default router;

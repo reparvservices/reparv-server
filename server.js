@@ -342,6 +342,9 @@ app.options(
     credentials: true,
   }),
 );
+
+app.use(express.json({ limit: "500mb" }));
+
 app.use(cookieParser());
 
 export const verifyToken = (req, res, next) => {
@@ -462,19 +465,6 @@ export const verifyToken = (req, res, next) => {
     "/projectpartner/property/generate-upload-url",
     "/meta",
   ];
-
-  // dont remove it form this place other wise it will not work
-  app.use(
-    "/meta",
-    express.json({
-      verify: (req, res, buf) => {
-        req.rawBody = buf;
-      },
-    }),
-    metaLeadRoutes,
-  );
-
-  app.use(express.json({ limit: "500mb" }));
 
   // Skip verification for public routes
   if (publicRoutes.some((route) => req.path.startsWith(route))) {
@@ -802,6 +792,9 @@ app.use("/builderapp/customer", builderEnquiryCustomerRoute);
 app.use("/builderapp/community", builderCommunityRoute);
 app.use("/builderapp/ticket", builderTicketRoute);
 app.use("/builderapp/post", builderpostRoute);
+
+// dont remove it form this place other wise it will not work
+app.use("/meta", metaLeadRoutes);
 
 app.post("/api/saveSheetData", async (req, res) => {
   try {
