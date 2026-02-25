@@ -343,6 +343,9 @@ app.options(
   }),
 );
 
+// dont remove it form this place other wise it will not work
+app.use("/meta", metaLeadRoutes);
+
 app.use(express.json({ limit: "500mb" }));
 
 app.use(cookieParser());
@@ -792,9 +795,6 @@ app.use("/builderapp/customer", builderEnquiryCustomerRoute);
 app.use("/builderapp/community", builderCommunityRoute);
 app.use("/builderapp/ticket", builderTicketRoute);
 app.use("/builderapp/post", builderpostRoute);
-
-// dont remove it form this place other wise it will not work
-app.use("/meta", metaLeadRoutes);
 
 app.post("/api/saveSheetData", async (req, res) => {
   try {
