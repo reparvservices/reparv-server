@@ -85,6 +85,12 @@ const processLead = async (leadId) => {
       email: formattedFields.email || null,
       city: formattedFields.city || null,
 
+      property_id: formattedFields.property_id
+        ? parseInt(formattedFields.property_id)
+        : null,
+
+      enquire_for: formattedFields.reparv_lead || null,
+
       form_id: data.form_id || null,
       campaign_id: data.campaign_id || null,
       campaign_name: data.campaign_name || null,
@@ -99,6 +105,7 @@ const processLead = async (leadId) => {
       raw_payload: JSON.stringify(data),
     };
 
+    await saveEnquiry(leadData);
     await saveLead(leadData);
 
     console.log("✅ Lead Saved:", leadData.lead_id);
@@ -113,11 +120,12 @@ const processLead = async (leadId) => {
 const saveLead = async (lead) => {
   const query = `
     INSERT INTO meta_leads
-    (lead_id, full_name, phone_number, email, city,
-     form_id, campaign_id, campaign_name,
-     adset_id, adset_name, ad_id, ad_name,
-     is_organic, platform, created_time, raw_payload)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (lead_id, full_name, phone_number, email, city,
+       property_id, enquire_for,
+      form_id, campaign_id, campaign_name,
+      adset_id, adset_name, ad_id, ad_name,
+      is_organic, platform, created_time, raw_payload)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       full_name = VALUES(full_name),
       phone_number = VALUES(phone_number),
@@ -126,21 +134,43 @@ const saveLead = async (lead) => {
   `;
 
   await db.execute(query, [
-    lead.lead_id,
-    lead.full_name,
-    lead.phone_number,
-    lead.email,
-    lead.city,
-    lead.form_id,
-    lead.campaign_id,
-    lead.campaign_name,
-    lead.adset_id,
-    lead.adset_name,
-    lead.ad_id,
-    lead.ad_name,
-    lead.is_organic,
-    lead.platform,
-    lead.created_time,
-    lead.raw_payload,
+    lead.lead_id ?? null,
+    lead.full_name ?? null,
+    lead.phone_number ?? null,
+    lead.email ?? null,
+    lead.city ?? null,
+    lead.property_id ?? null,
+    lead.enquire_for ?? null,
+    lead.form_id ?? null,
+    lead.campaign_id ?? null,
+    lead.campaign_name ?? null,
+    lead.adset_id ?? null,
+    lead.adset_name ?? null,
+    lead.ad_id ?? null,
+    lead.ad_name ?? null,
+    lead.is_organic ?? false,
+    lead.platform ?? null,
+    lead.created_time ?? null,
+    lead.raw_payload ?? null,
+  ]);
+};
+
+const saveEnquiry = async (lead) => {
+  const query = `
+    INSERT INTO enquirers
+    (adsid, propertyid, source, customer, contact, location, city)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      updated_at = CURRENT_TIMESTAMP
+  `;
+
+  await db.execute(query, [
+    lead.lead_id ?? null,
+    lead.property_id ?? null,
+    lead.platform ?? "meta",
+    lead.full_name ?? null,
+    lead.phone_number ?? null,
+    lead.enquire_for ?? null,
+    lead.city ?? null,
   ]);
 };
