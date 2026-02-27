@@ -3,7 +3,10 @@ import {
   verifyWebhook,
   handleWebhook,
 } from "../../controllers/metacontroller/metalead.controller.js";
-import { getAllLeads } from "../../controllers/metacontroller/meta.controller.js";
+import {
+  getAllLeads,
+  deleteLead,
+} from "../../controllers/metacontroller/meta.controller.js";
 
 const router = express.Router();
 
@@ -28,5 +31,6 @@ router.post(
 );
 
 router.get("/", getAllLeads);
+router.delete("/delete-lead/:id", deleteLead);
 
 export default router;
