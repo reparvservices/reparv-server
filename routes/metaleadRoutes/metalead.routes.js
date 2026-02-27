@@ -3,6 +3,7 @@ import {
   verifyWebhook,
   handleWebhook,
 } from "../../controllers/metacontroller/metalead.controller.js";
+import { getAllLeads } from "../../controllers/metacontroller/meta.controller.js";
 
 const router = express.Router();
 
@@ -25,5 +26,7 @@ router.post(
   }),
   handleWebhook,
 );
+
+router.get("/", getAllLeads);
 
 export default router;
