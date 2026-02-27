@@ -136,7 +136,7 @@ export const add = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const { blogId, location, type, question, answer } = req.body;
 
-  if (!blogId || !location || !type || !question || !answer) {
+  if (!location || !type || !question || !answer) {
     return res.status(400).json({
       message: "Location, type, question, and answer are required",
     });
