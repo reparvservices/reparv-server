@@ -51,7 +51,7 @@ export const handleWebhook = async (req, res) => {
   for (const entry of body.entry || []) {
     for (const change of entry.changes || []) {
       if (change.field === "leadgen" && change.value?.leadgen_id) {
-        processLead(change.value.leadgen_id);
+        await processLead(change.value.leadgen_id);
       }
     }
   }
@@ -74,9 +74,13 @@ const processLead = async (leadId) => {
     );
 
     const formattedFields = {};
-    (data.field_data || []).forEach((field) => {
-      formattedFields[field.name] = field.values[0];
-    });
+
+    for (const field of data.field_data || []) {
+      formattedFields[field.name] =
+        Array.isArray(field.values) && field.values.length > 0
+          ? field.values[0]
+          : null;
+    }
 
     const leadData = {
       lead_id: data.id,
@@ -107,8 +111,6 @@ const processLead = async (leadId) => {
 
     await saveEnquiry(leadData);
     await saveLead(leadData);
-
-    console.log("✅ Lead Saved:", leadData.lead_id);
   } catch (error) {
     console.error("Meta Lead Error:", error.response?.data || error.message);
   }
@@ -156,10 +158,25 @@ const saveLead = async (lead) => {
 };
 
 const saveEnquiry = async (lead) => {
+  let projectPartnerId = null;
+
+  // 1️⃣ Fetch projectpartnerid using propertyid
+  if (lead.property_id) {
+    const [rows] = await db.execute(
+      "SELECT projectpartnerid FROM properties WHERE propertyid = ?",
+      [lead.property_id],
+    );
+
+    if (rows.length > 0) {
+      projectPartnerId = rows[0].projectpartnerid;
+    }
+  }
+
+  // 2️⃣ Insert into enquirers
   const query = `
     INSERT INTO enquirers
-    (adsid, propertyid, source, customer, contact, location, city)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    (adsid, propertyid, projectpartnerid, source, customer, contact, location, city)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       updated_at = CURRENT_TIMESTAMP
   `;
@@ -167,6 +184,7 @@ const saveEnquiry = async (lead) => {
   await db.execute(query, [
     lead.lead_id ?? null,
     lead.property_id ?? null,
+    projectPartnerId ?? null,
     lead.platform ?? "meta",
     lead.full_name ?? null,
     lead.phone_number ?? null,
