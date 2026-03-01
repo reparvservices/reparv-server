@@ -38,6 +38,7 @@ export const verifyWebhook = (req, res) => {
 /* =========================
    Webhook Listener
 ========================= */
+// In handleWebhook – extract form_id from webhook and pass to processLead
 export const handleWebhook = async (req, res) => {
   if (!verifySignature(req)) {
     return res.sendStatus(403);
@@ -51,17 +52,25 @@ export const handleWebhook = async (req, res) => {
   for (const entry of body.entry || []) {
     for (const change of entry.changes || []) {
       if (change.field === "leadgen" && change.value?.leadgen_id) {
-        await processLead(change.value.leadgen_id);
+        const leadgenId = change.value.leadgen_id;
+        const formId = change.value.form_id;
+
+        if (!formId) {
+          console.warn("No form_id in webhook for lead:", leadgenId);
+        }
+
+        await processLead(leadgenId, formId);
       }
     }
   }
 };
 
-/* =========================
-   Fetch Lead & Save
-========================= */
-const processLead = async (leadId) => {
+// Updated processLead – now takes formId as second param (can be null)
+const processLead = async (leadId, formId = null) => {
+  let leadData = null;
+
   try {
+    // Primary: Fast direct fetch by leadgen_id
     const { data } = await axios.get(
       `https://graph.facebook.com/v24.0/${leadId}`,
       {
@@ -73,8 +82,10 @@ const processLead = async (leadId) => {
       },
     );
 
-    const formattedFields = {};
+    console.log("Direct fetch success for lead:", leadId);
 
+    // Format fields
+    const formattedFields = {};
     for (const field of data.field_data || []) {
       formattedFields[field.name] =
         Array.isArray(field.values) && field.values.length > 0
@@ -82,19 +93,16 @@ const processLead = async (leadId) => {
           : null;
     }
 
-    const leadData = {
+    leadData = {
       lead_id: data.id,
       full_name: formattedFields.full_name || null,
       phone_number: formattedFields.phone_number || null,
       email: formattedFields.email || null,
       city: formattedFields.city || null,
-
       property_id: formattedFields.property_id
         ? parseInt(formattedFields.property_id)
         : null,
-
       enquire_for: formattedFields.reparv_lead || null,
-
       form_id: data.form_id || null,
       campaign_id: data.campaign_id || null,
       campaign_name: data.campaign_name || null,
@@ -102,17 +110,96 @@ const processLead = async (leadId) => {
       adset_name: data.adset_name || null,
       ad_id: data.ad_id || null,
       ad_name: data.ad_name || null,
-
       is_organic: data.is_organic || false,
       platform: data.platform || null,
       created_time: data.created_time,
       raw_payload: JSON.stringify(data),
     };
+  } catch (directError) {
+    console.error("Direct fetch failed for lead:", leadId);
+    console.error(
+      "Error details:",
+      directError.response?.data || directError.message,
+    );
 
+    // Fallback only if we have form_id from webhook
+    if (formId) {
+      try {
+        console.log(`Fallback: Trying /${formId}/leads for lead ${leadId}`);
+
+        const fallbackRes = await axios.get(
+          `https://graph.facebook.com/v24.0/${formId}/leads`,
+          {
+            params: {
+              fields: "created_time,id,ad_id,form_id,field_data",
+              access_token: PAGE_ACCESS_TOKEN,
+              limit: 10, // small page – we expect recent/new leads
+              // Optional: time_since or filter if you want tighter, but usually recent leads are first
+            },
+          },
+        );
+
+        // Find our specific lead in the recent list
+        const matchingLead = fallbackRes.data.data?.find(
+          (l) => l.id === leadId,
+        );
+
+        if (matchingLead) {
+          console.log("Fallback success – found lead via form");
+
+          const formattedFields = {};
+          for (const field of matchingLead.field_data || []) {
+            formattedFields[field.name] =
+              Array.isArray(field.values) && field.values.length > 0
+                ? field.values[0]
+                : null;
+          }
+
+          leadData = {
+            lead_id: matchingLead.id,
+            full_name: formattedFields.full_name || null,
+            phone_number: formattedFields.phone_number || null,
+            email: formattedFields.email || null,
+            city: formattedFields.city || null,
+            property_id: formattedFields.property_id
+              ? parseInt(formattedFields.property_id)
+              : null,
+            enquire_for: formattedFields.reparv_lead || null,
+            form_id: matchingLead.form_id || formId,
+            // Note: fallback may miss ad/campaign details – set to null or fetch separately if critical
+            campaign_id: null,
+            campaign_name: null,
+            adset_id: null,
+            adset_name: null,
+            ad_id: null,
+            ad_name: null,
+            is_organic: null,
+            platform: null,
+            created_time: matchingLead.created_time,
+            raw_payload: JSON.stringify(matchingLead),
+          };
+        } else {
+          console.warn(`Lead ${leadId} not found in recent form leads`);
+        }
+      } catch (fallbackErr) {
+        console.error(
+          "Fallback failed too:",
+          fallbackErr.response?.data || fallbackErr.message,
+        );
+      }
+    } else {
+      console.warn("No form_id available for fallback – skipping");
+    }
+  }
+
+  // Only save if we have data (direct or fallback)
+  if (leadData) {
     await saveEnquiry(leadData);
     await saveLead(leadData);
-  } catch (error) {
-    console.error("Meta Lead Error:", error.response?.data || error.message);
+  } else {
+    console.warn(
+      `No data fetched for lead ${leadId} – check permissions or lead type`,
+    );
   }
 };
 
