@@ -1,6 +1,6 @@
 import axios from "axios";
 import crypto from "crypto";
-import db from "../../config/dbconnect.js";
+import db from "../../config/db-promise.js";
 
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const APP_SECRET = process.env.APP_SECRET;
@@ -158,37 +158,49 @@ const saveLead = async (lead) => {
 };
 
 const saveEnquiry = async (lead) => {
-  let projectPartnerId = null;
+  try {
+    let projectPartnerId = null;
 
-  // 1️⃣ Fetch projectpartnerid using propertyid
-  if (lead.property_id) {
-    const [rows] = await db.execute(
-      "SELECT projectpartnerid FROM properties WHERE propertyid = ?",
-      [lead.property_id],
+    // 1️⃣ Fetch projectpartnerid
+    if (lead.property_id) {
+      const [rows] = await db.execute(
+        "SELECT projectpartnerid FROM properties WHERE propertyid = ? LIMIT 1",
+        [lead.property_id],
+      );
+
+      if (rows.length > 0) {
+        projectPartnerId = rows[0].projectpartnerid;
+        console.log("Found projectPartnerId:", projectPartnerId);
+      } else {
+        console.warn("Property not found:", lead.property_id);
+      }
+    }
+
+    // 2️⃣ Insert into enquirers
+    await db.execute(
+      `
+      INSERT INTO enquirers
+      (adsid, propertyid, projectpartnerid, source, customer, contact, location, city)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        projectpartnerid = VALUES(projectpartnerid),
+        updated_at = CURRENT_TIMESTAMP
+      `,
+      [
+        lead.lead_id ?? null,
+        lead.property_id ?? null,
+        projectPartnerId ?? null,
+        lead.platform || "meta",
+        lead.full_name ?? null,
+        lead.phone_number ?? null,
+        lead.enquire_for ?? null,
+        lead.city ?? null,
+      ],
     );
 
-    if (rows.length > 0) {
-      projectPartnerId = rows[0].projectpartnerid;
-    }
+    console.log("Enquiry saved successfully");
+  } catch (error) {
+    console.error("SAVE ENQUIRY ERROR:", error.message);
+    throw error;
   }
-
-  // 2️⃣ Insert into enquirers
-  const query = `
-    INSERT INTO enquirers
-    (adsid, propertyid, projectpartnerid, source, customer, contact, location, city)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE
-      updated_at = CURRENT_TIMESTAMP
-  `;
-
-  await db.execute(query, [
-    lead.lead_id ?? null,
-    lead.property_id ?? null,
-    projectPartnerId ?? null,
-    lead.platform ?? "meta",
-    lead.full_name ?? null,
-    lead.phone_number ?? null,
-    lead.enquire_for ?? null,
-    lead.city ?? null,
-  ]);
 };
