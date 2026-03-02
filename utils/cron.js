@@ -20,7 +20,7 @@ dayjs.extend(timezone);
 // Territory Partner Firebase app
 
 const territoryPartnerServiceAccount = JSON.parse(
-  process.env.FIREBASE_SERVICE_ACCOUNT_TERRITORY
+  process.env.FIREBASE_SERVICE_ACCOUNT_TERRITORY,
 );
 const tpApp = admin.initializeApp(
   {
@@ -28,15 +28,15 @@ const tpApp = admin.initializeApp(
       ...territoryPartnerServiceAccount,
       private_key: territoryPartnerServiceAccount.private_key.replace(
         /\\n/g,
-        "\n"
+        "\n",
       ),
     }),
   },
-  "territoryPartnerApp"
+  "territoryPartnerApp",
 );
 
 const salespersonServiceAccount = JSON.parse(
-  process.env.FIREBASE_SERVICE_ACCOUNT_SALES
+  process.env.FIREBASE_SERVICE_ACCOUNT_SALES,
 );
 const spApp = admin.initializeApp(
   {
@@ -45,12 +45,12 @@ const spApp = admin.initializeApp(
       private_key: salespersonServiceAccount.private_key.replace(/\\n/g, "\n"),
     }),
   },
-  "salespersonApp"
+  "salespersonApp",
 );
 
 //PROJECT
 const projectpartnerServiceAccount = JSON.parse(
-  process.env.FIREBASE_SERVICE_ACCOUNT_PROJECT
+  process.env.FIREBASE_SERVICE_ACCOUNT_PROJECT,
 );
 const projectApp = admin.initializeApp(
   {
@@ -58,11 +58,11 @@ const projectApp = admin.initializeApp(
       ...projectpartnerServiceAccount,
       private_key: projectpartnerServiceAccount.private_key.replace(
         /\\n/g,
-        "\n"
+        "\n",
       ),
     }),
   },
-  "projectpartner"
+  "projectpartner",
 );
 
 async function sendTPNotification(token, title, body) {
@@ -105,7 +105,7 @@ async function sendPPNotification(
   token,
   title,
   body,
-  screenName = "Enquiries"
+  screenName = "Enquiries",
 ) {
   if (!token) return;
 
@@ -205,7 +205,7 @@ const cleanInactiveUntil = async () => {
           `UPDATE territorypartner
              SET inactive_until = ?
            WHERE id = ?`,
-          [futureDates.length ? JSON.stringify(futureDates) : null, row.id]
+          [futureDates.length ? JSON.stringify(futureDates) : null, row.id],
         );
         console.log(`Cleaned past dates for partner ${row.id}`);
       }
@@ -336,7 +336,7 @@ Please make sure to follow up on time and provide the best service.
  Reminder: Be punctual and prepared for the visit!
 
 Thank you,
-Team Reparv`
+Team Reparv`,
       );
     }
   });
@@ -382,7 +382,7 @@ cron.schedule("* * * * *", () => {
       !notifiedSlotsToday.has(slotKey)
     ) {
       console.log(
-        `🔔 Sending notification for slot "${slot}" at ${now.format("HH:mm")}`
+        `🔔 Sending notification for slot "${slot}" at ${now.format("HH:mm")}`,
       );
       notifySlot(slot);
       notifiedSlotsToday.add(slotKey); // mark as notified
@@ -415,7 +415,7 @@ export const checkNewEnquiries = async () => {
 
     for (const enquiry of results) {
       console.log(
-        `Sending notification to OneSignal ID: ${enquiry.onesignalid} for enquiry ID: ${enquiry.enquirersid}`
+        `Sending notification to OneSignal ID: ${enquiry.onesignalid} for enquiry ID: ${enquiry.enquirersid}`,
       );
 
       await sendTPNotification(
@@ -434,7 +434,7 @@ Please take action on this enquiry: Accept  or Reject .
 Ensure timely follow-up and provide the best service.
 
 Thank you,
-Team Reparv`
+Team Reparv`,
       );
 
       //  Mark as notified
@@ -443,7 +443,7 @@ Team Reparv`
         if (err) {
           console.error(
             ` Failed to update enquiry ${enquiry.enquirersid}:`,
-            err
+            err,
           );
         } else {
           console.log(` Enquiry ${enquiry.enquirersid} marked as notified.`);
@@ -499,7 +499,7 @@ Team Reparv
 
 
 
-`
+`,
         );
       }
       // Notify Territory Partner
@@ -521,7 +521,7 @@ Thank you,
 Team Reparv   
 
 
-`
+`,
         );
       }
 
@@ -531,7 +531,7 @@ Team Reparv
         [row.followupid],
         (err) => {
           if (err) console.error(" Failed to mark notification_sent:", err);
-        }
+        },
       );
     }
   });
@@ -552,8 +552,6 @@ const queryAsync = (sql, params = []) => {
   });
 };
 
-<<<<<<< HEAD
-=======
 // cron.schedule("0 0 * * *", async () => {
 //   try {
 //     console.log("🕛 Running daily subscription status & reminder check...");
@@ -604,7 +602,7 @@ const queryAsync = (sql, params = []) => {
 // Please renew your subscription before it expires to continue:
 // - Receiving new leads and enquiries 📈
 // - Accessing premium tools and analytics 📊
-// - Maintaining your active Sales Partner status 
+// - Maintaining your active Sales Partner status
 
 // Renew now to avoid any interruption in your services.
 
@@ -628,7 +626,6 @@ const queryAsync = (sql, params = []) => {
 //   }
 // });
 
->>>>>>> feature/update-customer
 export const checkcalendernotes = () => {
   const sql = `
     SELECT c.id, c.note, c.date, c.time,
@@ -661,7 +658,7 @@ export const checkcalendernotes = () => {
     results.forEach(async (row) => {
       const title = "⏰ Upcoming Reminder";
       const msg = `You have a scheduled note at ${formatTime(
-        row.time
+        row.time,
       )} on ${formatDate(row.date)}.
 Note: ${row.note}`;
 
@@ -672,7 +669,7 @@ Note: ${row.note}`;
             row.project_onesignal,
             title,
             msg,
-            "Calender"
+            "Calender",
           );
           console.log("PP notified:", row.project_onesignal);
         } catch (e) {
@@ -697,7 +694,7 @@ Note: ${row.note}`;
             row.territory_onesignal,
             title,
             msg,
-            "Calender"
+            "Calender",
           );
           console.log("Territory notified:", row.territory_onesignal);
         } catch (e) {
@@ -713,7 +710,7 @@ Note: ${row.note}`;
           if (updateErr) {
             console.error("Update notify flag error:", updateErr);
           }
-        }
+        },
       );
     });
   });
@@ -780,15 +777,15 @@ function notifyProjectPartnerForNewEnquiry() {
                 console.log(
                   "Error updating pp_notified for enquiry:",
                   enquirersid,
-                  updateErr
+                  updateErr,
                 );
               } else {
                 console.log(`pp_notified updated for enquiry ${enquirersid}`);
               }
-            }
+            },
           );
         }
-      }
+      },
     );
   } catch (error) {
     console.log("Error sending new enquiry notifications:", error);
@@ -828,12 +825,10 @@ const getAllPropertySheets = () => {
       (err, result) => {
         if (err) return reject(err);
         resolve(result);
-      }
+      },
     );
   });
 };
-
-
 
 const auth = new google.auth.GoogleAuth({
   credentials: {
@@ -896,7 +891,7 @@ async function syncAllPropertySheets() {
         }
 
         console.log(
-          `Property ${property.propertyid} contains ${rows.length - 1} rows`
+          `Property ${property.propertyid} contains ${rows.length - 1} rows`,
         );
 
         await axios.post(process.env.API_URL, {
@@ -908,7 +903,7 @@ async function syncAllPropertySheets() {
       } catch (err) {
         console.error(
           `Sheet processing error for property ${property.propertyid}:`,
-          err.message
+          err.message,
         );
       }
     }
