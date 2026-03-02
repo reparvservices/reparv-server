@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import db from "../../config/dbconnect.js";
 import sendEmail from "../../utils/nodeMailer.js";
-import moment from "moment";
+import moment from "moment-timezone";
 
 const router = express.Router();
 

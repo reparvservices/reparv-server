@@ -1,7 +1,7 @@
 import db from "../../config/dbconnect.js";
 import fs from "fs";
 import path from "path";
-import moment from "moment";
+import moment from "moment-timezone";
 
 // **Fetch All **
 export const getAll = (req, res) => {

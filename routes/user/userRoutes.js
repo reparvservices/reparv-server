@@ -1,7 +1,7 @@
 import express from "express";
 import jwt from "jsonwebtoken";
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 import { sendOtpSMS } from "../../utils/sendOtpSMS.js";
 
 const router = express.Router();

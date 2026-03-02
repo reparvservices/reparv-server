@@ -1,5 +1,5 @@
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 import { sanitize } from "../../utils/sanitize.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { s3 } from "../../utils/s3Client.js";

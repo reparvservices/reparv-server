@@ -1,5 +1,5 @@
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 
 export const getAllSalesPartner = async (req, res) => {
   try {

@@ -1,6 +1,6 @@
 import axios from "axios";
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 import { sanitize } from "../../utils/sanitize.js";
 import { uploadToS3 } from "../../utils/imageUpload.js";
 import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
@@ -196,10 +196,10 @@ export const getAll = (req, res) => {
     const formatted = result.map((row) => ({
       ...row,
       created_at: row.created_at
-        ? moment(row.created_at).format("DD MMM YYYY | hh:mm A")
+        ? moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
         : null,
       updated_at: row.updated_at
-        ? moment(row.updated_at).format("DD MMM YYYY | hh:mm A")
+        ? moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
         : null,
     }));
 
@@ -301,10 +301,10 @@ export const getAllDigitalBroker = (req, res) => {
     const formatted = result.map((row) => ({
       ...row,
       created_at: row.created_at
-        ? moment(row.created_at).format("DD MMM YYYY | hh:mm A")
+        ? moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
         : null,
       updated_at: row.updated_at
-        ? moment(row.updated_at).format("DD MMM YYYY | hh:mm A")
+        ? moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
         : null,
     }));
 

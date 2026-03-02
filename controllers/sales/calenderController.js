@@ -1,5 +1,5 @@
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 
 //Fetch All
 export const getAll = (req, res) => {
@@ -92,7 +92,7 @@ export const getNotes = (req, res) => {
 
       const formatted = result.map((row) => ({
         ...row,
-        created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
+        created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
         date: moment(row.date).format(date, "yyyy-MM-dd"),
       }));
 

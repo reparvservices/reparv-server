@@ -5,7 +5,7 @@ import cookieParser from "cookie-parser";
 import session from "express-session";
 import path from "path";
 import "dotenv/config";
-// import "./utils/cron.js";
+import "./utils/cron.js";
 
 import loginRoutes from "./routes/admin/loginRoutes.js";
 import profileRoutes from "./routes/admin/profileRoutes.js";

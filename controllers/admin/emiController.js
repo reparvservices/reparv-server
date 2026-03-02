@@ -1,5 +1,5 @@
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 
 export const getAll = (req, res) => {
   const filterStatus = req.params.filterStatus;
@@ -47,8 +47,8 @@ export const getAll = (req, res) => {
 
       const formatted = (partners || []).map((row) => ({
         ...row,
-        created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-        updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+        created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+        updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
         followUp: row.followUp || null,
         followUpDate: row.followUpDate
           ? moment(row.followUpDate).format("DD MMM YYYY | hh:mm A")

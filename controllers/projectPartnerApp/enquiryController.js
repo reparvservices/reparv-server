@@ -1,6 +1,6 @@
 import axios from "axios";
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 
 export const getAll = (req, res) => {
   try {
@@ -76,10 +76,10 @@ export const getAll = (req, res) => {
       const formatted = result.map((row) => ({
         ...row,
         created_at: row.created_at
-          ? moment(row.created_at).format("DD MMM YYYY | hh:mm A")
+          ? moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
           : null,
         updated_at: row.updated_at
-          ? moment(row.updated_at).format("DD MMM YYYY | hh:mm A")
+          ? moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
           : null,
       }));
 
@@ -145,8 +145,8 @@ export const getPartnersEnquiry = (req, res) => {
 
     const formatted = results.map((row) => ({
       ...row,
-      created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -436,8 +436,8 @@ export const getAllCreatedEnquiry = (req, res) => {
 
     const formatted = results.map((row) => ({
       ...row,
-      created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json({ data: formatted });
@@ -575,8 +575,8 @@ export const assignToReparv = (req, res) => {
 
 //     const formatted = results.map((row) => ({
 //       ...row,
-//       created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-//       updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+//       created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+//       updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
 //     }));
 
 //     res.json( {data: formatted});
@@ -626,8 +626,8 @@ export const getAllDigitalEnquiry = (req, res) => {
 
       const formatted = results.map((row) => ({
         ...row,
-        created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-        updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+        created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+        updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
       }));
 
       res.json({ data: formatted });

@@ -1,5 +1,5 @@
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 
 export const getAll = (req, res) => {
   // STEP 1: Fetch properties + projectpartner
@@ -180,8 +180,8 @@ export const getAllActive = (req, res) => {
       ...row,
       startDate: moment(row.startDate).format("DD MMM YYYY | hh:mm A"),
       endDate: moment(row.endDate).format("DD MMM YYYY | hh:mm A"),
-      created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -371,8 +371,8 @@ export const fetchProjectPartnerData = (req, res) => {
         startDate: null,
         endDate: null,
         subscriptionCreatedAt: null,
-        created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-        updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+        created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+        updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
       };
       return res.json(formatted);
     }
@@ -397,8 +397,8 @@ export const fetchProjectPartnerData = (req, res) => {
         endDate: row.endDate
           ? moment(row.endDate).format("DD MMM YYYY | hh:mm A")
           : null,
-        created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-        updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+        created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+        updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
         subscriptionCreatedAt: row.subscriptionCreatedAt
           ? moment(row.subscriptionCreatedAt).format("DD MMM YYYY | hh:mm A")
           : null,
@@ -523,8 +523,8 @@ export const getPropertiesByProject = (req, res) => {
 
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment(row.created_at).format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);

@@ -1,4 +1,4 @@
-import moment from "moment";
+import moment from "moment-timezone";
 import db from "../../config/dbconnect.js";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";

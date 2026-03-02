@@ -1,5 +1,5 @@
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 
 // **Fetch All Active & Approved Properties (with Likes Count)**
 export const getAll = (req, res) => {

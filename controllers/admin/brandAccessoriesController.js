@@ -1,5 +1,5 @@
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 import path from "path";
 import fs from "fs";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";

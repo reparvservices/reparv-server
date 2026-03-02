@@ -1,7 +1,7 @@
 import db from "../../config/dbconnect.js";
 import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 import { uploadToS3 } from "../../utils/imageUpload.js";
-import moment from "moment";
+import moment from "moment-timezone";
 
 // GET ALL LOAN APPLICATIONS + COUNTS
 export const getAll = (req, res) => {
@@ -35,7 +35,7 @@ export const getAll = (req, res) => {
         ? moment(row.created_at).format("DD MMM YYYY")
         : null,
       // updated_at: row.updated_at
-      //   ? moment(row.updated_at).format("DD MMM YYYY | hh:mm A")
+      //   ? moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
       //   : null,
     }));
 
@@ -89,7 +89,7 @@ export const getById = (req, res) => {
     const formatted = rows.map((row) => ({
       ...row,
       created_at: moment(row.created_at).format("DD MMM YYYY"),
-      //updated_at: moment(row.updated_at).format("DD MMM YYYY | hh:mm A"),
+      //updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted[0]);

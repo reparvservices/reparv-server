@@ -1,5 +1,5 @@
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 
 /// Fetch Single Property by SEO Slug
 export const getById = (req, res) => {

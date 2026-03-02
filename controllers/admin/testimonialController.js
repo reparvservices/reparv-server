@@ -1,5 +1,5 @@
 import db from "../../config/dbconnect.js";
-import moment from "moment";
+import moment from "moment-timezone";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
 import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
