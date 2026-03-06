@@ -232,6 +232,7 @@ import territoryClientRoute from "./routes/territoryAppRoute/profileRoute.js";
 import territoryEnquiryRoute from "./routes/territoryAppRoute/enquiryRoute.js";
 import territoryPropertyEnquiryRoute from "./routes/territoryAppRoute/propertyEnquiriesRoute.js";
 import territorySubscription from "./routes/territoryAppRoute/subscription.js";
+import territoryAuth from "./routes/territoryAppRoute/authRoutes.js";
 import salesSubscription from "./routes/salesAppRoute/subscription.js";
 import scheduleNotesRoutes from "./routes/salesAppRoute/notesRoute.js";
 //Onboarding App
@@ -250,6 +251,7 @@ import projectpartnerappDepartment from "./routes/projectPartnerAppRoute/departm
 import projectPartnerRoles from "./routes/projectPartnerAppRoute/roleRoutes.js";
 import projectPartnerAppPropertyRoute from "./routes/projectPartnerAppRoute/propertyRoute.js";
 import projectPartnerAppBuilderRoute from "./routes/projectPartnerAppRoute/builderRoutes.js";
+import projectPartnerAppAuth from "./routes/projectPartnerAppRoute/authRoutes.js";
 //Customer App
 import customerEmi from "./routes/customerAppRoute/EmiRoute.js";
 import customerSignUp from "./routes/customerAppRoute/userRoute.js";
@@ -405,6 +407,7 @@ export const verifyToken = (req, res, next) => {
     "/frontend/news",
     "/salesapp/enquiry",
     "/api/booking",
+    "/salesapp/api",
     "/salesapp/api/login",
     "/sales/flat",
     "/salesapp/flats",
@@ -468,6 +471,8 @@ export const verifyToken = (req, res, next) => {
     "/projectpartner/property/generate-upload-url",
     "/meta",
     "/customerapp/notifications",
+    "/projectpartner/auth/",
+    "/territoryapp/auth",
   ];
 
   // Skip verification for public routes
@@ -735,10 +740,10 @@ app.use("/territory-partner/customers", territoryPartnerCustomerRoutes);
 app.use("/territory-partner/enquirers", territoryPartnerEnquirersRoutes);
 app.use("/territory-partner/enquiry", territoryPartnerEnquiryRoutes);
 app.use("/territory-partner/calender", territoryPartnerCalenderRoutes);
+
 // Property Pages Routes
 app.use("/territory-partner/properties", territoryPartnerPropertiesRoutes);
 app.use("/territory-partner/propertyinfo", territoryPartnerPropertyinfoRoutes);
-
 //Sales App Routes
 app.use("/salesapp/api", authRoute);
 app.use("/salesapp/flats", appFlatRoute);
@@ -758,6 +763,7 @@ app.use("/territoryapp/client", territoryClientRoute);
 app.use("/territoryapp/enquiry", territoryEnquiryRoute);
 app.use("/territoryapp/property/enquiry", territoryPropertyEnquiryRoute);
 app.use("/territoryapp/subscription", territorySubscription);
+app.use("/territoryapp/auth", territoryAuth);
 //Book Enquiry Property
 app.use("/api/booking", bookPropertyRoute);
 //get territory Book Enquiry Property
@@ -779,7 +785,7 @@ app.use("/projectpartner/departments", projectpartnerappDepartment);
 app.use("/projectpartner/roles", projectPartnerRoles);
 app.use("/projectpartner/property", projectPartnerAppPropertyRoute);
 app.use("/projectpartner/builders", projectPartnerAppBuilderRoute);
-
+app.use("/projectpartner/auth", projectPartnerAppAuth);
 //Customer app
 app.use("/customerapp/loans", customerEmi);
 app.use("/customerapp/user", customerSignUp);
