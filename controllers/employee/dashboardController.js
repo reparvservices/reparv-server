@@ -9,7 +9,6 @@ export const getCount = (req, res) => {
     });
   }
 
-  // Step 1: Fetch the Project Partner's adharno using projectpartnerid
   const getProjectPartnerAdharQuery =
     "SELECT adharno FROM projectpartner WHERE id = ?";
 
@@ -25,25 +24,27 @@ export const getCount = (req, res) => {
 
     const projectPartnerAdhar = result[0].adharno;
 
-    // Step 2: Dashboard Query
     const query = `
       SELECT
+        /* DEAL AMOUNT */
         (
-          SELECT IFNULL(SUM(pf.dealamount), 0)
+          SELECT IFNULL(SUM(pf.dealamount),0)
           FROM propertyfollowup pf
           JOIN enquirers e ON pf.enquirerid = e.enquirersid
           JOIN properties p ON e.propertyid = p.propertyid
           WHERE pf.status = 'Token' AND p.projectpartnerid = ?
         ) AS totalDealAmount,
         
+        /* SELF EARNING */
         (
-          SELECT IFNULL(SUM(pf.reparvcommission) / 2, 0)
+          SELECT IFNULL(SUM(pf.reparvcommission)/2,0)
           FROM propertyfollowup pf
           JOIN enquirers e ON pf.enquirerid = e.enquirersid
           JOIN properties p ON e.propertyid = p.propertyid
           WHERE pf.status = 'Token' AND p.projectpartnerid = ?
         ) AS selfEarning,
 
+        /* CUSTOMERS */
         (
           SELECT COUNT(e.enquirersid)
           FROM enquirers e
@@ -51,72 +52,144 @@ export const getCount = (req, res) => {
           WHERE e.status = 'Token' AND p.projectpartnerid = ?
         ) AS totalCustomer,
 
+        /* ENQUIRIES */
         (
           SELECT COUNT(e.enquirersid)
           FROM enquirers e
           JOIN properties p ON e.propertyid = p.propertyid
-          WHERE (e.status != 'Token' AND p.projectpartnerid = ?) OR e.projectpartnerid = ?
+          WHERE (e.status != 'Token' AND p.projectpartnerid = ?) 
+          OR e.projectpartnerid = ?
         ) AS totalEnquiry,
 
+        /* SQFT DEAL */
         (
-          SELECT IFNULL(SUM(p.carpetArea), 0)
+          SELECT IFNULL(SUM(p.carpetArea),0)
           FROM enquirers e
           JOIN properties p ON e.propertyid = p.propertyid
           WHERE e.status = 'Token' AND p.projectpartnerid = ?
         ) AS totalDealInSquareFeet,
 
+        /* BUILDERS */
         (
-          SELECT COUNT(builderid) 
-          FROM builders  
+          SELECT COUNT(builderid)
+          FROM builders
           WHERE builderadder = ?
         ) AS totalBuilder,
 
+        /* EMPLOYEES */
         (
-          SELECT COUNT(id) 
-          FROM employees 
+          SELECT COUNT(id)
+          FROM employees
           WHERE projectpartnerid = ?
         ) AS totalEmployee,
 
+        /* PROPERTIES */
         (
-          SELECT COUNT(propertyid) 
-          FROM properties 
+          SELECT COUNT(propertyid)
+          FROM properties
           WHERE projectpartnerid = ?
         ) AS totalProperty,
 
+        /* SALES PERSONS */
         (
-          SELECT COUNT(salespersonsid) 
+          SELECT COUNT(salespersonsid)
           FROM salespersons
           WHERE projectpartnerid = ?
         ) AS totalSalesPerson,
 
+        /* TERRITORY PARTNERS */
         (
-          SELECT COUNT(id) 
-          FROM territorypartner 
+          SELECT COUNT(id)
+          FROM territorypartner
           WHERE projectpartnerid = ?
         ) AS totalTerritoryPartner,
 
+        /* TICKETS */
         (
-          SELECT COUNT(ticketid) 
-          FROM tickets 
+          SELECT COUNT(ticketid)
+          FROM tickets
           WHERE ticketadder = ?
-        ) AS totalTicket
+        ) AS totalTicket,
+
+        /* PROPERTY ANALYTICS */
+        (
+          SELECT IFNULL(SUM(pa.views),0)
+          FROM property_analytics pa
+          JOIN properties p ON pa.property_id = p.propertyid
+          WHERE p.projectpartnerid = ?
+        ) AS propertyViews,
+
+        (
+          SELECT COUNT(*)
+          FROM user_property_wishlist w
+          JOIN properties p ON w.property_id = p.propertyid
+          WHERE p.projectpartnerid = ?
+        ) AS propertyLikes,
+
+        (
+          SELECT IFNULL(SUM(pa.share),0)
+          FROM property_analytics pa
+          JOIN properties p ON pa.property_id = p.propertyid
+          WHERE p.projectpartnerid = ?
+        ) AS propertyShares,
+
+        /* BLOG ANALYTICS */
+        (SELECT COUNT(id) FROM blogs) AS totalBlog,
+
+        (
+          SELECT IFNULL(SUM(views),0)
+          FROM blog_analyst
+        ) AS blogViews,
+
+        (
+          SELECT COUNT(*)
+          FROM user_blog_wishlist
+        ) AS blogLikes,
+
+        (
+          SELECT IFNULL(SUM(shares),0)
+          FROM blog_analyst
+        ) AS blogShares,
+
+        /* NEWS ANALYTICS */
+        (SELECT COUNT(id) FROM news) AS totalNews,
+
+        (
+          SELECT IFNULL(SUM(views),0)
+          FROM news_analyst
+        ) AS newsViews,
+
+        (
+          SELECT COUNT(*)
+          FROM user_news_wishlist
+        ) AS newsLikes,
+
+        (
+          SELECT IFNULL(SUM(shares),0)
+          FROM news_analyst
+        ) AS newsShares
     `;
 
     db.query(
       query,
       [
-        projectPartnerId, // totalDealAmount
-        projectPartnerId, // selfEarning
-        projectPartnerId, // totalCustomer
-        projectPartnerId, // totalEnquirer
-        projectPartnerId, // totalEnquirer (second OR condition)
-        projectPartnerId, // totalDealInSquareFeet
-        projectPartnerAdhar, // totalBuilder — uses adharno
-        projectPartnerId, // totalEmployee
-        projectPartnerId, // totalProperty
-        projectPartnerId, // totalSalesPartner
-        projectPartnerId, // totalTerritoryPartner
-        projectPartnerAdhar, // totalTicket — uses adharno
+        projectPartnerId,
+        projectPartnerId,
+        projectPartnerId,
+        projectPartnerId,
+        projectPartnerId,
+        projectPartnerId,
+        projectPartnerAdhar,
+        projectPartnerId,
+        projectPartnerId,
+        projectPartnerId,
+        projectPartnerId,
+        projectPartnerAdhar,
+
+        /* Property Analytics */
+        projectPartnerId,
+        projectPartnerId,
+        projectPartnerId
       ],
       (err, results) => {
         if (err) {

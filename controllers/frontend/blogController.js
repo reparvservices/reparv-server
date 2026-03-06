@@ -1,18 +1,58 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment-timezone";
 
-// **Fetch All**
+// **Fetch All Blogs with Analytics**
 export const getAll = (req, res) => {
-  const sql = "SELECT * FROM blogs WHERE status='Active' ORDER BY id DESC";
+  const sql = `
+    SELECT 
+      b.*,
+
+      /* Likes (distinct users) */
+      COALESCE(likesData.likes, 0) AS likes,
+
+      /* Views & Shares */
+      COALESCE(ba.views, 0) AS views,
+      COALESCE(ba.shares, 0) AS shares
+
+    FROM blogs b
+
+    /* Likes */
+    LEFT JOIN (
+      SELECT 
+        blog_id,
+        COUNT(DISTINCT guest_user_id) AS likes
+      FROM user_blog_wishlist
+      GROUP BY blog_id
+    ) likesData
+      ON likesData.blog_id = b.id
+
+    /* Blog Analytics */
+    LEFT JOIN blog_analyst ba
+      ON ba.blog_id = b.id
+
+    WHERE b.status = 'Active'
+    ORDER BY b.id DESC
+  `;
+
   db.query(sql, (err, result) => {
     if (err) {
-      console.error("Error fetching:", err);
+      console.error("Error fetching blogs:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
+
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      likes: Number(row.likes) || 0,
+      views: Number(row.views) || 0,
+      shares: Number(row.shares) || 0,
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -71,8 +111,14 @@ export const getById = (req, res) => {
       likes: Number(row.likes) || 0,
       views: Number(row.views) || 0,
       shares: Number(row.shares) || 0,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     });
   });
 };
@@ -101,6 +147,6 @@ export const addFeedback = (req, res) => {
       return res.status(201).json({
         message: "Feedback added successfully",
       });
-    }
+    },
   );
 };

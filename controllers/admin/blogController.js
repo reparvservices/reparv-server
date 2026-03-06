@@ -13,50 +13,158 @@ function toSlug(text) {
     .replace(/-+/g, "-"); // Replace multiple hyphens with single
 }
 
-// **Fetch All **
+// **Fetch All Blogs**
 export const getAll = (req, res) => {
-  const sql = "SELECT * FROM blogs ORDER BY created_at DESC";
+  const sql = `
+    SELECT 
+      b.*,
+
+      /* Likes */
+      COALESCE(likesData.likes,0) AS likes,
+
+      /* Views */
+      COALESCE(ba.views,0) AS views,
+
+      /* Shares */
+      COALESCE(ba.shares,0) AS shares
+
+    FROM blogs b
+
+    LEFT JOIN (
+      SELECT 
+        blog_id,
+        COUNT(DISTINCT guest_user_id) AS likes
+      FROM user_blog_wishlist
+      GROUP BY blog_id
+    ) likesData
+      ON likesData.blog_id = b.id
+
+    LEFT JOIN blog_analyst ba
+      ON ba.blog_id = b.id
+
+    ORDER BY b.created_at DESC
+  `;
+
   db.query(sql, (err, result) => {
     if (err) {
-      console.error("Error fetching :", err);
+      console.error("Error fetching blogs:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
+
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      likes: Number(row.likes) || 0,
+      views: Number(row.views) || 0,
+      shares: Number(row.shares) || 0,
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
   });
 };
 
-// **Fetch All**
+// **Fetch Active Blogs**
 export const getAllActive = (req, res) => {
-  const sql = "SELECT * FROM blogs WHERE status = 'Active' ORDER BY id DESC";
+  const sql = `
+    SELECT 
+      b.*,
+
+      COALESCE(likesData.likes,0) AS likes,
+      COALESCE(ba.views,0) AS views,
+      COALESCE(ba.shares,0) AS shares
+
+    FROM blogs b
+
+    LEFT JOIN (
+      SELECT 
+        blog_id,
+        COUNT(DISTINCT guest_user_id) AS likes
+      FROM user_blog_wishlist
+      GROUP BY blog_id
+    ) likesData
+      ON likesData.blog_id = b.id
+
+    LEFT JOIN blog_analyst ba
+      ON ba.blog_id = b.id
+
+    WHERE b.status = 'Active'
+
+    ORDER BY b.created_at DESC
+  `;
+
   db.query(sql, (err, result) => {
     if (err) {
-      console.error("Error fetching:", err);
+      console.error("Error fetching blogs:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
+
     res.json(result);
   });
 };
 
-// **Fetch Single by ID**
+// **Fetch Single Blog by SEO Slug with Analytics**
 export const getById = (req, res) => {
-  const Id = parseInt(req.params.id);
-  const sql = "SELECT * FROM blogs WHERE id = ?";
+  const seoSlug = req.params.slug;
 
-  db.query(sql, [Id], (err, result) => {
+  const sql = `
+    SELECT 
+      b.*,
+
+      COALESCE(likesData.likes,0) AS likes,
+      COALESCE(ba.views,0) AS views,
+      COALESCE(ba.shares,0) AS shares
+
+    FROM blogs b
+
+    LEFT JOIN (
+      SELECT 
+        blog_id,
+        COUNT(DISTINCT guest_user_id) AS likes
+      FROM user_blog_wishlist
+      GROUP BY blog_id
+    ) likesData
+      ON likesData.blog_id = b.id
+
+    LEFT JOIN blog_analyst ba
+      ON ba.blog_id = b.id
+
+    WHERE b.seoSlug = ?
+    LIMIT 1
+  `;
+
+  db.query(sql, [seoSlug], (err, result) => {
     if (err) {
-      console.error("Error fetching :", err);
-      return res.status(500).json({ message: "Database error", error: err });
+      console.error("Error fetching blog:", err);
+      return res.status(500).json({ message: "Database error" });
     }
-    if (result.length === 0) {
+
+    if (!result.length) {
       return res.status(404).json({ message: "Blog not found" });
     }
-    res.json(result[0]);
+
+    const row = result[0];
+
+    res.json({
+      ...row,
+      likes: Number(row.likes) || 0,
+      views: Number(row.views) || 0,
+      shares: Number(row.shares) || 0,
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+    });
   });
 };
 
@@ -79,7 +187,7 @@ export const add = async (req, res) => {
 
       // Convert image to WebP
       const compressedImage = await convertSingleImageToWebp(
-        req.files.blogImage[0]
+        req.files.blogImage[0],
       );
 
       if (!compressedImage) return null;
@@ -145,7 +253,7 @@ export const edit = async (req, res) => {
     if (req.files?.blogImage?.[0]) {
       // Convert to WebP
       const compressedImage = await convertSingleImageToWebp(
-        req.files.blogImage[0]
+        req.files.blogImage[0],
       );
 
       if (compressedImage) {
@@ -163,13 +271,7 @@ export const edit = async (req, res) => {
         content = ?, 
         updated_at = ?
     `;
-    const updateValues = [
-      type,
-      tittle,
-      description,
-      content,
-      currentdate,
-    ];
+    const updateValues = [type, tittle, description, content, currentdate];
 
     if (blogImageUrl) {
       updateSql += `, image = ?`;
@@ -228,7 +330,7 @@ export const status = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Blog status change successfully" });
-      }
+      },
     );
   });
 };
@@ -261,7 +363,7 @@ export const seoDetails = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Seo Details Add successfully" });
-      }
+      },
     );
   });
 };

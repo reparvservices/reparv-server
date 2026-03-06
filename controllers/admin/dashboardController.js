@@ -53,7 +53,24 @@ export const getCount = (req, res) => {
         (SELECT COUNT(id) FROM projectpartner WHERE status = 'Active' AND paymentstatus = 'Success') AS totalProjectPartner,
         (SELECT COUNT(id) FROM guestUsers WHERE status = 'Active') AS totalGuestUser,
         (SELECT COUNT(ticketid) FROM tickets) AS totalTicket,
-        (SELECT COUNT(id) FROM blogs) AS totalBlog
+
+        (SELECT COUNT(id) FROM blogs) AS totalBlog,
+        (SELECT COUNT(id) FROM news) AS totalNews,
+
+        /* PROPERTY ANALYTICS */
+        (SELECT COUNT(*) FROM user_property_wishlist) AS propertyLikes,
+        (SELECT IFNULL(SUM(views),0) FROM property_analytics) AS propertyViews,
+        (SELECT IFNULL(SUM(share),0) FROM property_analytics) AS propertyShares,
+
+        /* BLOG ANALYTICS */
+        (SELECT COUNT(*) FROM user_blog_wishlist) AS blogLikes,
+        (SELECT IFNULL(SUM(views),0) FROM blog_analyst) AS blogViews,
+        (SELECT IFNULL(SUM(shares),0) FROM blog_analyst) AS blogShares,
+
+        /* NEWS ANALYTICS */
+        (SELECT COUNT(*) FROM user_news_wishlist) AS newsLikes,
+        (SELECT IFNULL(SUM(views),0) FROM news_analyst) AS newsViews,
+        (SELECT IFNULL(SUM(shares),0) FROM news_analyst) AS newsShares
   `;
 
   db.query(query, (err, results) => {

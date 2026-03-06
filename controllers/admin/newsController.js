@@ -13,50 +13,159 @@ function toSlug(text) {
     .replace(/-+/g, "-"); // Replace multiple hyphens with single
 }
 
-// **Fetch All **
+// **Fetch All News**
 export const getAll = (req, res) => {
-  const sql = "SELECT * FROM news ORDER BY created_at DESC";
+  const sql = `
+    SELECT 
+      n.*,
+
+      /* Likes */
+      COALESCE(l.likes, 0) AS likes,
+
+      /* Views */
+      COALESCE(na.views, 0) AS views,
+
+      /* Shares */
+      COALESCE(na.shares, 0) AS shares
+
+    FROM news n
+
+    /* Likes */
+    LEFT JOIN (
+      SELECT 
+        news_id,
+        COUNT(DISTINCT guest_user_id) AS likes
+      FROM user_news_wishlist
+      GROUP BY news_id
+    ) l
+      ON l.news_id = n.id
+
+    /* News Analytics */
+    LEFT JOIN news_analyst na
+      ON na.news_id = n.id
+
+    ORDER BY n.created_at DESC
+  `;
+
   db.query(sql, (err, result) => {
     if (err) {
-      console.error("Error fetching :", err);
+      console.error("Error fetching news:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
+
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      likes: Number(row.likes) || 0,
+      views: Number(row.views) || 0,
+      shares: Number(row.shares) || 0,
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
   });
 };
 
-// **Fetch All**
+// **Fetch Active News**
 export const getAllActive = (req, res) => {
-  const sql = "SELECT * FROM news WHERE status = 'Active' ORDER BY id DESC";
+  const sql = `
+    SELECT 
+      n.*,
+
+      COALESCE(l.likes, 0) AS likes,
+      COALESCE(na.views, 0) AS views,
+      COALESCE(na.shares, 0) AS shares
+
+    FROM news n
+
+    LEFT JOIN (
+      SELECT 
+        news_id,
+        COUNT(DISTINCT guest_user_id) AS likes
+      FROM user_news_wishlist
+      GROUP BY news_id
+    ) l
+      ON l.news_id = n.id
+
+    LEFT JOIN news_analyst na
+      ON na.news_id = n.id
+
+    WHERE n.status = 'Active'
+    ORDER BY n.id DESC
+  `;
+
   db.query(sql, (err, result) => {
     if (err) {
-      console.error("Error fetching:", err);
+      console.error("Error fetching news:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
+
     res.json(result);
   });
 };
 
-// **Fetch Single by ID**
+// **Fetch Single News by ID**
 export const getById = (req, res) => {
   const Id = parseInt(req.params.id);
-  const sql = "SELECT * FROM news WHERE id = ?";
+
+  const sql = `
+    SELECT 
+      n.*,
+
+      COALESCE(l.likes, 0) AS likes,
+      COALESCE(na.views, 0) AS views,
+      COALESCE(na.shares, 0) AS shares
+
+    FROM news n
+
+    LEFT JOIN (
+      SELECT 
+        news_id,
+        COUNT(DISTINCT guest_user_id) AS likes
+      FROM user_news_wishlist
+      GROUP BY news_id
+    ) l
+      ON l.news_id = n.id
+
+    LEFT JOIN news_analyst na
+      ON na.news_id = n.id
+
+    WHERE n.id = ?
+    LIMIT 1
+  `;
 
   db.query(sql, [Id], (err, result) => {
     if (err) {
-      console.error("Error fetching :", err);
+      console.error("Error fetching news:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
-    if (result.length === 0) {
-      return res.status(404).json({ message: "news not found" });
+
+    if (!result.length) {
+      return res.status(404).json({ message: "News not found" });
     }
-    res.json(result[0]);
+
+    const row = result[0];
+
+    res.json({
+      ...row,
+      likes: Number(row.likes) || 0,
+      views: Number(row.views) || 0,
+      shares: Number(row.shares) || 0,
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+    });
   });
 };
 
@@ -95,7 +204,7 @@ export const add = async (req, res) => {
 
     if (req.files?.newsImage?.[0]) {
       const compressedImage = await convertSingleImageToWebp(
-        req.files.newsImage[0]
+        req.files.newsImage[0],
       );
 
       if (compressedImage) {
@@ -188,7 +297,7 @@ export const edit = async (req, res) => {
 
     if (req.files?.newsImage?.[0]) {
       const compressedImage = await convertSingleImageToWebp(
-        req.files.newsImage[0]
+        req.files.newsImage[0],
       );
 
       if (compressedImage) {
@@ -276,7 +385,7 @@ export const status = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "News status change successfully" });
-      }
+      },
     );
   });
 };
@@ -309,7 +418,7 @@ export const seoDetails = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Seo Details Add successfully" });
-      }
+      },
     );
   });
 };
