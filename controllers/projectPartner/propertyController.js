@@ -33,6 +33,78 @@ const calculateEMI = (principal, rate = 9, years = 20) => {
 // **Fetch All Properties**
 export const getAll = (req, res) => {
   const partnerId = req.projectPartnerUser?.id;
+
+  if (!partnerId) {
+    return res.status(401).json({ message: "Unauthorized Access" });
+  }
+
+  const sql = `
+    SELECT 
+      properties.*,
+      builders.company_name,
+
+      /* Likes */
+      COUNT(DISTINCT w.guest_user_id) AS likes,
+
+      /* Views */
+      COALESCE(pa.views,0) AS views,
+
+      /* Shares */
+      COALESCE(pa.share,0) AS shares,
+
+      /* Calls */
+      COALESCE(pa.calls,0) AS calls,
+
+      /* WhatsApp */
+      COALESCE(pa.whatsapp_enquiry,0) AS whatsapp
+
+    FROM properties
+
+    LEFT JOIN builders 
+      ON properties.builderid = builders.builderid 
+
+    LEFT JOIN user_property_wishlist w
+      ON w.property_id = properties.propertyid
+
+    LEFT JOIN property_analytics pa
+      ON pa.property_id = properties.propertyid
+
+    WHERE properties.projectpartnerid = ?
+
+    GROUP BY properties.propertyid
+    ORDER BY properties.propertyid DESC
+  `;
+
+  db.query(sql, [partnerId], (err, result) => {
+    if (err) {
+      console.error("Error fetching properties:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    const formatted = result.map((row) => ({
+      ...row,
+      likes: Number(row.likes) || 0,
+      views: Number(row.views) || 0,
+      shares: Number(row.shares) || 0,
+      calls: Number(row.calls) || 0,
+      whatsapp: Number(row.whatsapp) || 0,
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+    }));
+
+    res.json(formatted);
+  });
+};
+
+// **Fetch All Properties**
+export const getAllOld = (req, res) => {
+  const partnerId = req.projectPartnerUser?.id;
   if (!partnerId) {
     return res.status(401).json({ message: "Unauthorized Access" });
   }
