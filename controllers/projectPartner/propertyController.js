@@ -1248,7 +1248,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
 
 //* ADD Seo Details */
 export const seoDetails = (req, res) => {
-  const { seoSlug, seoTittle, seoDescription, propertyDescription } = req.body;
+  const { seoSlug, pageTitle, seoTittle, seoDescription, propertyDescription } = req.body;
   if (!seoSlug || !seoTittle || !seoDescription || !propertyDescription) {
     return res.status(401).json({ message: "All Field Are Required" });
   }
@@ -1267,8 +1267,8 @@ export const seoDetails = (req, res) => {
       }
 
       db.query(
-        "UPDATE properties SET seoSlug = ?, seoTittle = ?, seoDescription = ?, propertyDescription = ? WHERE propertyid = ?",
-        [seoSlug, seoTittle, seoDescription, propertyDescription, Id],
+        "UPDATE properties SET seoSlug = ?, pageTitle = ?, seoTittle = ?, seoDescription = ?, propertyDescription = ? WHERE propertyid = ?",
+        [seoSlug, pageTitle, seoTittle, seoDescription, propertyDescription, Id],
         (err, result) => {
           if (err) {
             console.error("Error While Add Seo Details:", err);
