@@ -257,7 +257,7 @@ import customerPropertyRoute from "./routes/customerAppRoute/propertyRoute.js";
 import customerTrendRoute from "./routes/customerAppRoute/trendRoute.js";
 import customerEnquiryRoute from "./routes/customerAppRoute/enquiryRoute.js";
 import customerTicketRoute from "./routes/customerAppRoute/ticketRoute.js";
-
+import notificationRoutes from "./routes/customerAppRoute/notificationRoutes.js";
 //Builder App
 import builderapploginRoute from "./routes/builderAppRoute/builderapploginRoute.js";
 import builderProfileRoute from "./routes/builderAppRoute/builderProfileRoutes.js";
@@ -467,6 +467,7 @@ export const verifyToken = (req, res, next) => {
     "/projectpartner/property",
     "/projectpartner/property/generate-upload-url",
     "/meta",
+    "/customerapp/notifications",
   ];
 
   // Skip verification for public routes
@@ -786,6 +787,7 @@ app.use("/customerapp/property", customerPropertyRoute);
 app.use("/customerapp/customerTrendRoute", customerTrendRoute);
 app.use("/customerapp/enquiry", customerEnquiryRoute);
 app.use("/customerapp/ticket", customerTicketRoute);
+app.use("/customerapp/notifications", notificationRoutes);
 
 //Builder app
 app.use("/builderapp/user", builderapploginRoute);
