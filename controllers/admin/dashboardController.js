@@ -61,6 +61,8 @@ export const getCount = (req, res) => {
         (SELECT COUNT(*) FROM user_property_wishlist) AS propertyLikes,
         (SELECT IFNULL(SUM(views),0) FROM property_analytics) AS propertyViews,
         (SELECT IFNULL(SUM(share),0) FROM property_analytics) AS propertyShares,
+        (SELECT IFNULL(SUM(calls),0) FROM property_analytics) AS call_enquirers,
+        (SELECT IFNULL(SUM(whatsapp_enquiry),0) FROM property_analytics) AS whatsapp_enquirers,
 
         /* BLOG ANALYTICS */
         (SELECT COUNT(*) FROM user_blog_wishlist) AS blogLikes,

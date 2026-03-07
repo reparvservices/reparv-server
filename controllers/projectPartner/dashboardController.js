@@ -12,6 +12,156 @@ export const getCount = (req, res) => {
       ) AS totalDealAmount,
        
       (
+        SELECT IFNULL(SUM(pf.reparvcommission) / 2, 0)
+        FROM propertyfollowup pf
+        JOIN enquirers e ON pf.enquirerid = e.enquirersid
+        JOIN properties p ON e.propertyid = p.propertyid
+        WHERE pf.status = 'Token' AND p.projectpartnerid = ?
+      ) AS selfEarning,
+
+      (
+        SELECT COUNT(e.enquirersid)
+        FROM enquirers e
+        JOIN properties p ON e.propertyid = p.propertyid
+        WHERE e.status = 'Token' AND p.projectpartnerid = ?
+      ) AS totalCustomer,
+
+      (
+        SELECT COUNT(e.enquirersid)
+        FROM enquirers e
+        JOIN properties p ON e.propertyid = p.propertyid
+        WHERE (e.status != 'Token' AND p.projectpartnerid = ?) 
+        OR e.projectpartnerid = ?
+      ) AS totalEnquirer,
+
+      (
+        SELECT IFNULL(SUM(p.carpetArea), 0)
+        FROM enquirers e
+        JOIN properties p ON e.propertyid = p.propertyid
+        WHERE e.status = 'Token' AND p.projectpartnerid = ?
+      ) AS totalDealInSquareFeet,
+
+      (
+        SELECT COUNT(builderid) 
+        FROM builders  
+        WHERE builderadder = ?
+      ) AS totalBuilder,
+
+      (
+        SELECT COUNT(id) 
+        FROM employees 
+        WHERE projectpartnerid = ?
+      ) AS totalEmployee,
+
+      (
+        SELECT COUNT(propertyid) 
+        FROM properties 
+        WHERE projectpartnerid = ?
+      ) AS totalProperty,
+
+      (
+        SELECT COUNT(salespersonsid) 
+        FROM salespersons
+        WHERE projectpartnerid = ?
+      ) AS totalSalesPartner,
+
+      (
+        SELECT COUNT(id) 
+        FROM territorypartner 
+        WHERE projectpartnerid = ?
+      ) AS totalTerritoryPartner,
+
+      (
+        SELECT COUNT(ticketid) 
+        FROM tickets 
+        INNER JOIN projectpartner 
+        ON projectpartner.adharno = tickets.ticketadder 
+        WHERE tickets.ticketadder = ?
+      ) AS totalTicket,
+
+      /* PROPERTY ANALYTICS */
+      (
+        SELECT COUNT(*) 
+        FROM user_property_wishlist w
+        JOIN properties p ON p.propertyid = w.property_id
+        WHERE p.projectpartnerid = ?
+      ) AS propertyLikes,
+
+      (
+        SELECT IFNULL(SUM(pa.views),0)
+        FROM property_analytics pa
+        JOIN properties p ON p.propertyid = pa.property_id
+        WHERE p.projectpartnerid = ?
+      ) AS propertyViews,
+
+      (
+        SELECT IFNULL(SUM(pa.share),0)
+        FROM property_analytics pa
+        JOIN properties p ON p.propertyid = pa.property_id
+        WHERE p.projectpartnerid = ?
+      ) AS propertyShares,
+
+      (
+        SELECT IFNULL(SUM(pa.calls),0)
+        FROM property_analytics pa
+        JOIN properties p ON p.propertyid = pa.property_id
+        WHERE p.projectpartnerid = ?
+      ) AS call_enquirers,
+
+      (
+        SELECT IFNULL(SUM(pa.whatsapp_enquiry),0)
+        FROM property_analytics pa
+        JOIN properties p ON p.propertyid = pa.property_id
+        WHERE p.projectpartnerid = ?
+      ) AS whatsapp_enquirers
+  `;
+
+  db.query(
+    query,
+    [
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.adharId,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.adharId,
+
+      // Property analytics filters
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+      req.projectPartnerUser?.id,
+    ],
+    (err, results) => {
+      if (err) {
+        console.error("Error fetching dashboard stats:", err);
+        return res.status(500).json({ error: "Database error" });
+      }
+
+      return res.json(results[0]);
+    }
+  );
+};
+
+export const getCountOld = (req, res) => {
+  const query = `
+    SELECT
+      (
+        SELECT IFNULL(SUM(pf.dealamount), 0)
+        FROM propertyfollowup pf
+        JOIN enquirers e ON pf.enquirerid = e.enquirersid
+        JOIN properties p ON e.propertyid = p.propertyid
+        WHERE pf.status = 'Token' AND p.projectpartnerid = ?
+      ) AS totalDealAmount,
+       
+      (
        SELECT IFNULL(SUM(pf.reparvcommission) / 2, 0)
        FROM propertyfollowup pf
        JOIN enquirers e ON pf.enquirerid = e.enquirersid

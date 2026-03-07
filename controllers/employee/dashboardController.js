@@ -127,6 +127,20 @@ export const getCount = (req, res) => {
         ) AS propertyLikes,
 
         (
+          SELECT IFNULL(SUM(pa.calls),0)
+          FROM property_analytics pa
+          JOIN properties p ON pa.property_id = p.propertyid
+          WHERE p.projectpartnerid = ?
+        ) AS call_enquirers,
+
+        (
+          SELECT IFNULL(SUM(pa.whatsapp_enquiry),0)
+          FROM property_analytics pa
+          JOIN properties p ON pa.property_id = p.propertyid
+          WHERE p.projectpartnerid = ?
+        ) AS whatsapp_enquirers,
+
+        (
           SELECT IFNULL(SUM(pa.share),0)
           FROM property_analytics pa
           JOIN properties p ON pa.property_id = p.propertyid
