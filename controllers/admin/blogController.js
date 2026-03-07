@@ -109,9 +109,9 @@ export const getAllActive = (req, res) => {
   });
 };
 
-// **Fetch Single Blog by SEO Slug with Analytics**
+// **Fetch Single Blog by ID with Analytics**
 export const getById = (req, res) => {
-  const seoSlug = req.params.slug;
+  const blogId = req.params.id;
 
   const sql = `
     SELECT 
@@ -135,11 +135,11 @@ export const getById = (req, res) => {
     LEFT JOIN blog_analyst ba
       ON ba.blog_id = b.id
 
-    WHERE b.seoSlug = ?
+    WHERE b.id = ?
     LIMIT 1
   `;
 
-  db.query(sql, [seoSlug], (err, result) => {
+  db.query(sql, [blogId], (err, result) => {
     if (err) {
       console.error("Error fetching blog:", err);
       return res.status(500).json({ message: "Database error" });
