@@ -203,6 +203,8 @@ export const getCount = (req, res) => {
         /* Property Analytics */
         projectPartnerId,
         projectPartnerId,
+        projectPartnerId,
+        projectPartnerId,
         projectPartnerId
       ],
       (err, results) => {
