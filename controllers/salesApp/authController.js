@@ -1,11 +1,163 @@
+import moment from "moment";
 import db from "../../config/dbconnect.js";
 import { sendOtpSMS } from "../../utils/sendOtpSMS.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 // 🔥 Generate OTP
 const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000);
 };
 
+export const add = async (req, res) => {
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+  let {
+    fullName,
+    contactNumber,
+    email,
+    profilePhoto,
+    state,
+    city,
+    territory,
+    propertyType,
+    interestReason,
+    experience,
+    previousBrokerage,
+    shortBio,
+    partnerStatus,
+    commissionSigned,
+    leadSharing,
+    visibleInNetwork,
+    projectpartnerid,
+  } = req.body;
+
+  if (!fullName || !contactNumber || !email) {
+    return res.status(400).json({
+      message: "Full Name, Contact Number and Email are required!",
+    });
+  }
+
+  console.log(req.body, "ssss");
+
+  email = email?.toLowerCase();
+  let userimage = null;
+
+  if (req.files && req.files.profileImage) {
+    const file = req.files.profileImage[0];
+
+    try {
+      userimage = await uploadToS3(file);
+    } catch (uploadErr) {
+      return res.status(500).json({
+        message: "Image upload failed",
+        error: uploadErr,
+      });
+    }
+  }
+
+  console.log("Uploaded Image URL:", userimage);
+
+  try {
+    const checkSql = `SELECT * FROM salespersons WHERE contact = ? OR email = ?`;
+
+    db.query(checkSql, [contactNumber, email], (err, rows) => {
+      if (err) {
+        return res.status(500).json({
+          message: "Database error",
+          error: err,
+        });
+      }
+
+      if (rows.length > 0) {
+        const dup = rows[0];
+
+        if (dup.contact === contactNumber) {
+          return res.status(409).json({
+            message: "Contact number already exists",
+            field: "contactNumber",
+          });
+        }
+
+        if (dup.email === email) {
+          return res.status(409).json({
+            message: "Email already exists",
+            field: "email",
+          });
+        }
+      }
+
+      const insertSql = `
+        INSERT INTO salespersons 
+        (
+         projectpartnerid,
+          fullname,
+          contact,
+          email,
+          userimage,
+          city,
+          state,
+          address,
+          propertyType,
+          intrest,
+          experience,
+          previousBrokerage,
+          shortBio,
+          status,
+          agreement,
+          refrence,
+          is_active,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+      `;
+
+      db.query(
+        insertSql,
+        [
+          projectpartnerid,
+          fullName,
+          contactNumber,
+          email,
+          userimage,
+          city,
+          state,
+          territory,
+          propertyType,
+          interestReason,
+          experience,
+          previousBrokerage,
+          shortBio,
+          partnerStatus || "Active",
+          commissionSigned ? "Signed" : "Pending",
+          leadSharing ? "Yes" : "No",
+          visibleInNetwork ? "Active" : "Inactive",
+          currentdate,
+          currentdate,
+        ],
+        (insertErr, result) => {
+          if (insertErr) {
+            return res.status(500).json({
+              message: "Database insert error",
+              error: insertErr,
+            });
+          }
+
+          return res.status(201).json({
+            message: "Sales Partner added successfully",
+            partnerId: result.insertId,
+          });
+        },
+      );
+    });
+  } catch (error) {
+    console.error("Add Sales Partner Error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error: error,
+    });
+  }
+};
 // ===============================
 // SEND OTP
 // ===============================

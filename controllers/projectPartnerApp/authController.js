@@ -190,7 +190,7 @@ export const add = async (req, res) => {
     res.status(500).json({ message: "Server error", error: err });
   }
 };
-// 🔥 Generate OTP
+// Generate OTPcc
 const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000);
 };
