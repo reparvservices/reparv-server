@@ -1,5 +1,7 @@
+import moment from "moment";
 import db from "../../config/dbconnect.js";
 import { sendOtpSMS } from "../../utils/sendOtpSMS.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");

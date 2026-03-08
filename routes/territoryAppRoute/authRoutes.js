@@ -23,8 +23,7 @@ const upload = multer({
     cb(null, true);
   },
 });
-
-// ---------------- ROUTES ----------------
+// ------------- ROUTES ----------------
 
 // register sales partner
 router.post(
