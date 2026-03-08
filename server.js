@@ -465,6 +465,7 @@ export const verifyToken = (req, res, next) => {
     "/admin/blog",
     "/admin/subscribers",
     "/admin/partner",
+    "/projectpartner/builders/add",
     "/projectpartner/builders",
     "/projectPartner/property/",
     "/projectpartner/property",
