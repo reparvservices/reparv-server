@@ -23,6 +23,7 @@ const upload = multer({
     cb(null, true);
   },
 });
+
 // ------------- ROUTES ----------------
 
 // register sales partner
@@ -31,7 +32,6 @@ router.post(
   upload.fields([{ name: "profileImage", maxCount: 1 }]),
   add,
 );
-
 router.post("/send-otp", sendterritorypartnerOtp);
 router.post("/verify-otp", verifyterritorypartnerOtp);
 

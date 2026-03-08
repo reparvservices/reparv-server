@@ -2,6 +2,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment-timezone";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 const saltRounds = 10;
 
@@ -17,8 +18,14 @@ export const getAll = (req, res) => {
     }
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -56,134 +63,166 @@ export const getById = (req, res) => {
   });
 };
 
-export const add = (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+export const add = async (req, res) => {
+  try {
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-  const {
-    company_name,
-    contact_person,
-    contact,
-    email,
-    uid,
-    office_address,
-    registration_no,
-    dor,
-    projectpartnerid,
-    state,
-    city,
-    website,
-    notes,
-    about,
-    vision,
-    mission,
-    quality,
-    whyChoose,
-    expertise,
-    experience,
-  } = req.body;
+    const {
+      company_name,
+      contact_person,
+      contact,
+      email,
+      uid,
+      office_address,
+      registration_no,
+      dor,
+      projectpartnerid,
+      state,
+      city,
+      website,
+      notes,
+      about,
+      vision,
+      mission,
+      quality,
+      whyChoose,
+      expertise,
+      experience,
+    } = req.body;
 
-  console.log(req.body);
+    console.log(req.body);
 
-  // 🔒 Login Check
-  if (!projectpartnerid) {
-    return res
-      .status(401)
-      .json({ message: "Unauthorized! Please login again." });
-  }
+    // 🔒 Login Check
+    if (!projectpartnerid) {
+      return res
+        .status(401)
+        .json({ message: "Unauthorized! Please login again." });
+    }
 
-  // 🔒 Required Field Validation
-  if (!company_name || !contact_person || !contact) {
-    return res.status(400).json({ message: "Required fields are missing" });
-  }
+    // 🔒 Required Field Validation
+    if (!company_name || !contact_person || !contact) {
+      return res.status(400).json({ message: "Required fields are missing" });
+    }
 
-  // Ensure JSON arrays are strings
-  const whyChooseStr =
-    whyChoose && Array.isArray(whyChoose) ? JSON.stringify(whyChoose) : null;
-  const expertiseStr =
-    expertise && Array.isArray(expertise) ? JSON.stringify(expertise) : null;
+    // -----------------------------------------
+    // Upload Logo (Optional)
+    // -----------------------------------------
+    let userimage = null;
 
-  // Check duplicates
-  db.query(
-    "SELECT builderid FROM builders WHERE contact = ? OR email = ?",
-    [contact, email || ""],
-    (err, result) => {
-      if (err) {
-        console.error("Duplicate check error:", err);
-        return res.status(500).json({ message: "Database error", error: err });
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToS3(req.file);
+        userimage = uploadResult;
+      } catch (err) {
+        console.error("S3 Upload Error:", err);
+        return res.status(500).json({ message: "Image upload failed" });
       }
+    }
 
-      if (result.length > 0) {
-        return res.status(409).json({ message: "Builder already exists!" });
-      }
+    console.log(userimage);
 
-      // Insert builder safely
-      const insertSQL = `
-        INSERT INTO builders (
-          builderadder,
-          company_name,
-          contact_person,
-          contact,
-          email,
-          uid,
-          office_address,
-          registration_no,
-          dor,
-          website,
-          notes,
-          about,
-          vision,
-          mission,
-          quality,
-          why_choose,
-          expertise,
-          experience,
-          updated_at,
-          created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
+    // Convert arrays
+    const whyChooseStr =
+      whyChoose && Array.isArray(JSON.parse(whyChoose))
+        ? whyChoose
+        : JSON.stringify([]);
 
-      db.query(
-        insertSQL,
-        [
-          projectpartnerid,
-          company_name,
-          contact_person,
-          contact,
-          email || null,
-          uid || null,
-          office_address || null,
-          registration_no || null,
-          dor || null,
-          website || null,
-          notes || null,
-          about || null,
-          vision || null,
-          mission || null,
-          quality || null,
-          whyChooseStr,
-          expertiseStr,
-          experience || null,
-          currentdate,
-          currentdate,
-        ],
-        (err, result) => {
-          if (err) {
-            console.error("Insert Error:", err);
-            return res
-              .status(500)
-              .json({ message: "Database error", error: err });
-          }
+    const expertiseStr =
+      expertise && Array.isArray(JSON.parse(expertise))
+        ? expertise
+        : JSON.stringify([]);
 
-          return res.status(201).json({
-            success: true,
-            message: "Builder added successfully",
-            id: result.insertId,
-          });
-        },
-      );
-    },
-  );
+    // Duplicate check
+    db.query(
+      "SELECT builderid FROM builders WHERE contact = ? OR email = ?",
+      [contact, email || ""],
+      (err, result) => {
+        if (err) {
+          console.error("Duplicate check error:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        if (result.length > 0) {
+          return res.status(409).json({ message: "Builder already exists!" });
+        }
+
+        // Insert builder
+        const insertSQL = `
+          INSERT INTO builders (
+            builderadder,
+            company_name,
+            contact_person,
+            contact,
+            email,
+            uid,
+            office_address,
+            registration_no,
+            dor,
+            website,
+            notes,
+            about,
+            vision,
+            mission,
+            quality,
+            why_choose,
+            expertise,
+            experience,
+            userimage,
+            updated_at,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        db.query(
+          insertSQL,
+          [
+            projectpartnerid,
+            company_name,
+            contact_person,
+            contact,
+            email || null,
+            uid || null,
+            office_address || null,
+            registration_no || null,
+            dor || null,
+            website || null,
+            notes || null,
+            about || null,
+            vision || null,
+            mission || null,
+            quality || null,
+            whyChooseStr,
+            expertiseStr,
+            experience || null,
+            userimage,
+            currentdate,
+            currentdate,
+          ],
+          (err, result) => {
+            if (err) {
+              console.error("Insert Error:", err);
+              return res
+                .status(500)
+                .json({ message: "Database error", error: err });
+            }
+
+            return res.status(201).json({
+              success: true,
+              message: "Builder added successfully",
+              id: result.insertId,
+              userimage,
+            });
+          },
+        );
+      },
+    );
+  } catch (error) {
+    console.error("Controller Error:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
 };
 
 // **Edit Builder**

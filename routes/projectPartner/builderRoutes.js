@@ -1,5 +1,14 @@
 import express from "express";
-import {getAll, getAllActive, getById, add, update, status, assignLogin, deleteBuilder} from "../../controllers/projectPartner/builderController.js";
+import {
+  getAll,
+  getAllActive,
+  getById,
+  add,
+  update,
+  status,
+  assignLogin,
+  deleteBuilder,
+} from "../../controllers/projectPartner/builderController.js";
 
 const router = express.Router();
 
@@ -12,4 +21,4 @@ router.put("/status/:id", status);
 router.put("/assignlogin/:id", assignLogin);
 router.delete("/delete/:id", deleteBuilder);
 
-export default  router;
+export default router;
