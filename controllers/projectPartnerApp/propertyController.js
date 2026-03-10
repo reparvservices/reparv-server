@@ -523,6 +523,14 @@ export const addPropertyNew = async (req, res) => {
       propertyVideo,
     } = req.body;
 
+    console.log(req.body);
+    if (!projectpartnerid) {
+      return res.status(409).json({
+        success: false,
+        message: "Login First !",
+      });
+    }
+
     /* ---------------- CHECK DUPLICATE NAME ---------------- */
     db.query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",

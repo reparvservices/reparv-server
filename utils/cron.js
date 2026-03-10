@@ -541,8 +541,9 @@ Team Reparv
 cron.schedule("* * * * *", sendVisitReminders);
 cron.schedule("* * * * *", checkNewEnquiries);
 // Runs every day at midnight
-//Subscription Expiry Check & Reminder
+
 // Helper function to use callback-style db.query with async/await
+
 const queryAsync = (sql, params = []) => {
   return new Promise((resolve, reject) => {
     db.query(sql, params, (err, results) => {
@@ -551,80 +552,74 @@ const queryAsync = (sql, params = []) => {
     });
   });
 };
+cron.schedule("0 0 * * *", async () => {
+  try {
+    console.log("🕛 Running daily subscription status & reminder check...");
 
-// cron.schedule("0 0 * * *", async () => {
-//   try {
-//     console.log("🕛 Running daily subscription status & reminder check...");
+    // 1️⃣ Expire old subscriptions
+    await queryAsync(`
+      UPDATE subscriptions
+      SET status = 'Expired'
+      WHERE end_date < NOW()
+      AND status = 'Active'
+    `);
 
-//     //  Expire old subscriptions
-//     await queryAsync(`
-//       UPDATE subscriptions
-//       SET status = 'Expired'
-//       WHERE end_date < NOW()
-//       AND status = 'Active'
-//     `);
+    // 2️⃣ Find subscriptions expiring in exactly 7 days and not yet notified
+    const expiringSoon = await queryAsync(`
+      SELECT
+        s.id,
+        s.salespersonid,
+        s.plan,
+        s.end_date,
+        sp.onesignalid,
+        sp.fullname
+      FROM subscriptions s
+      JOIN salespersons sp
+        ON s.salespersonid = sp.salespersonsid
+      WHERE DATE(s.end_date) = DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+        AND s.status = 'Active'
+        AND s.notified_7days = 0
+    `);
 
-//     // 2️Find subscriptions expiring in exactly 7 days and not yet notified
-//     const expiringSoon = await queryAsync(`
-//       SELECT
-//         s.id,
-//         s.salespersonid,
-//         s.plan,
-//         s.end_date,
-//         sp.onesignalid,
-//         sp.fullname
-//       FROM subscriptions s
-//       JOIN salespersons sp
+    // 3️⃣ Send notifications
+    for (const sub of expiringSoon) {
+      if (sub.onesignalid) {
+        await sendSPNotification(
+          sub.onesignalid,
+          "⚠️ Subscription Expiry Reminder",
+          `Hello ${sub.fullname}, 👋
 
-//         ON s.salespersonid = sp.salespersonsid
-//       WHERE DATE(s.end_date) = DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-//         AND s.status = 'Active'
-//         AND s.notified_7days = 0
-//     `);
+We wanted to remind you that your Reparv Sales Partner subscription will expire in *7 days*.
 
-//     console.log(
-//       ⁠ 📅 Found ${expiringSoon.length} subscriptions expiring in 7 days. ⁠
-//     );
+🗓️ Expiry Date: ${new Date(sub.end_date).toLocaleDateString()}
+💼 Current Plan: ${sub.plan}
 
-//     // 3 Send notifications
-//     for (const sub of expiringSoon) {
-//       if (sub.onesignalid) {
-//         await sendSPNotification(
-//           sub.onesignalid,
-//           "⚠️ Subscription Expiry Reminder",
-//           `Hello ${sub.fullname}, 👋
+Please renew your subscription before it expires to continue:
+- Receiving new leads and enquiries 📈
+- Accessing premium tools and analytics 📊
+- Maintaining your active Sales Partner status
 
-// We wanted to remind you that your Reparv Sales Partner subscription will expire in *7 days*.
+Renew now to avoid any interruption in your services.
 
-// 🗓️ Expiry Date: ${new Date(sub.end_date).toLocaleDateString()}
-// 💼 Current Plan: ${sub.plan}
+Thank you,
+Team Reparv`,
+        );
 
-// Please renew your subscription before it expires to continue:
-// - Receiving new leads and enquiries 📈
-// - Accessing premium tools and analytics 📊
-// - Maintaining your active Sales Partner status
+        // 4️⃣ Mark as notified
+        await queryAsync(
+          `UPDATE subscriptions SET notified_7days = 1 WHERE id = ?`,
+          [sub.id],
+        );
 
-// Renew now to avoid any interruption in your services.
+        console.log(`✅ Sent 7-day expiry reminder to ${sub.fullname}`);
+      }
+    }
 
-// Thank you,
-// Team Reparv`
-//         );
-
-//         //  Mark as notified
-//         await queryAsync(
-//           ⁠ UPDATE subscriptions SET notified_7days = 1 WHERE id = ? ⁠,
-//           [sub.id]
-//         );
-
-//         console.log(⁠ Sent 7-day expiry reminder to ${sub.fullname} ⁠);
-//       }
-//     }
-
-//     console.log(" Expiry check and reminders completed successfully.");
-//   } catch (error) {
-//     console.error(" Error in subscription cron:", error);
-//   }
-// });
+    console.log("✅ Expiry check and reminders completed successfully.");
+  } catch (error) {
+    console.error("❌ Error in subscription cron:", error);
+  }
+});
 
 export const checkcalendernotes = () => {
   const sql = `
