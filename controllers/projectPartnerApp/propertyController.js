@@ -44,8 +44,14 @@ export const getAll = (req, res) => {
     }
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -496,4 +502,161 @@ export const update = async (req, res) => {
       }
     },
   );
+};
+
+export const addPropertyNew = async (req, res) => {
+  try {
+    const {
+      property_type,
+      property_name,
+      price,
+      ownername,
+      contact,
+      areas,
+      ofprice,
+      state,
+      city,
+      address,
+      latitude,
+      longitude,
+      projectpartnerid,
+      propertyVideo,
+    } = req.body;
+
+    /* ---------------- CHECK DUPLICATE NAME ---------------- */
+    db.query(
+      "SELECT propertyid FROM properties WHERE propertyName = ?",
+      [property_name],
+      async (err, result) => {
+        if (err) {
+          return res
+            .status(500)
+            .json({ success: false, message: "Database error" });
+        }
+
+        if (result.length > 0) {
+          return res.status(409).json({
+            success: false,
+            message: "Property name already exists",
+          });
+        }
+
+        /* ---------------- PARSE AREAS ---------------- */
+        let parsedAreas = [];
+        try {
+          if (typeof areas === "string") {
+            parsedAreas = JSON.parse(areas);
+          } else if (Array.isArray(areas)) {
+            parsedAreas = areas;
+          }
+        } catch (e) {
+          parsedAreas = [];
+        }
+
+        const builtUpArea =
+          parsedAreas.find((a) => a.label?.toLowerCase().includes("built-up"))
+            ?.value || null;
+
+        const carpetArea =
+          parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
+            ?.value || null;
+
+        /* ---------------- IMAGE UPLOAD ---------------- */
+        const uploadField = async (field) => {
+          if (!req.files || !req.files[field]) return [];
+
+          const converted = await convertImagesToWebp({
+            [field]: req.files[field],
+          });
+
+          const urls = [];
+          for (const file of converted[field]) {
+            const url = await uploadToS3(file);
+            urls.push(url);
+          }
+
+          return urls;
+        };
+
+        /* ---------------- PROCESS IMAGES ---------------- */
+        const frontView = await uploadField("frontView");
+        const sideView = await uploadField("sideView");
+        const kitchenView = await uploadField("kitchenView");
+        const hallView = await uploadField("hallView");
+        const bedroomView = await uploadField("bedroomView");
+        const bathroomView = await uploadField("bathroomView");
+        const balconyView = await uploadField("balconyView");
+        const nearestLandmark = await uploadField("nearestLandmark");
+        const developedAmenities = await uploadField("developedAmenities");
+        const extraImages = await uploadField("extraImages");
+        /* ---------------- INSERT QUERY ---------------- */
+        const seoSlug = toSlug(property_name);
+
+        const insertSQL = `
+  INSERT INTO properties (
+    projectpartnerid, propertyType, propertyCategory, propertyName,
+    totalSalesPrice, totalOfferPrice, contact, projectBy,
+    state, city, address,
+    latitude, longitude,
+    builtUpArea, carpetArea,
+    frontView, sideView, kitchenView, hallView,
+    bedroomView, bathroomView, balconyView,
+    nearestLandmark, developedAmenities,
+    extraImages,
+    propertyVideo,
+    seoSlug, created_at, updated_at
+  )
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+`;
+
+        const values = [
+          projectpartnerid,
+          property_type,
+          property_type,
+          property_name,
+          price,
+          ofprice,
+          contact,
+          ownername,
+          state,
+          city,
+          address,
+          latitude ? parseFloat(latitude) : null,
+          longitude ? parseFloat(longitude) : null,
+          builtUpArea,
+          carpetArea,
+          JSON.stringify(frontView),
+          JSON.stringify(sideView),
+          JSON.stringify(kitchenView),
+          JSON.stringify(hallView),
+          JSON.stringify(bedroomView),
+          JSON.stringify(bathroomView),
+          JSON.stringify(balconyView),
+          JSON.stringify(nearestLandmark),
+          JSON.stringify(developedAmenities),
+          JSON.stringify(extraImages), // ← NEW
+          propertyVideo,
+          seoSlug,
+        ];
+
+        db.query(insertSQL, values, (err, result) => {
+          if (err) {
+            console.error("INSERT ERROR:", err);
+            return res
+              .status(500)
+              .json({ success: false, message: "Insert failed" });
+          }
+
+          return res.status(201).json({
+            success: true,
+            message: "Property added successfully",
+            id: result.insertId,
+          });
+        });
+      },
+    );
+  } catch (error) {
+    console.error("SERVER ERROR:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
 };
