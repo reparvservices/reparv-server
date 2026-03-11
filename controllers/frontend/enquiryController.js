@@ -49,7 +49,7 @@ export const add = async (req, res) => {
     }
 
     const propertyCategory = results[0].propertyCategory;
-    const projectpartnerid = results[0].projectpartnerid || null; // if empty → null
+    const projectpartnerid = results[0].projectpartnerid;
 
     // 2 Insert enquiry
     const insertSQL = `
