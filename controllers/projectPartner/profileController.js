@@ -110,10 +110,9 @@ export const editProfile = async (req, res) => {
           userimage: finalImagePath,
         });
       });
-    }
+    },
   );
 };
-
 
 export const changePassword = async (req, res) => {
   const userId = req.projectPartnerUser?.id;
