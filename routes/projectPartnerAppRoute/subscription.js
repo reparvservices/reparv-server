@@ -52,10 +52,9 @@ router.get("/trial-status/:id", (req, res) => {
         trialActive,
         daysLeft,
       });
-    }
+    },
   );
 });
-
 
 router.post("/activate-trial/:id", (req, res) => {
   const { id } = req.params;
@@ -100,11 +99,10 @@ router.post("/activate-trial/:id", (req, res) => {
             trialStart,
             trialEnd,
           });
-        }
+        },
       );
-    }
+    },
   );
 });
-
 
 export default router;

@@ -253,6 +253,7 @@ import projectPartnerAppPropertyRoute from "./routes/projectPartnerAppRoute/prop
 import projectPartnerAppBuilderRoute from "./routes/projectPartnerAppRoute/builderRoutes.js";
 import projectPartnerAppAuth from "./routes/projectPartnerAppRoute/authRoutes.js";
 import projectPartnerEvent from "./routes/projectPartnerAppRoute/eventRoutes.js";
+import projectPartnerProfile from "./routes/projectPartnerAppRoute/profileRoute.js";
 
 //Customer App
 import customerEmi from "./routes/customerAppRoute/EmiRoute.js";
@@ -359,7 +360,7 @@ export const verifyToken = (req, res, next) => {
     "/admin/login",
     "/builder/login",
     "/employee/login",
-    "/promoter/login", 
+    "/promoter/login",
     "/sales/login",
     "/partner/login",
     "/project-partner/login",
@@ -477,6 +478,7 @@ export const verifyToken = (req, res, next) => {
     "/projectpartner/auth/",
     "/territoryapp/auth",
     "/projectpartner/event",
+    "/projectpartner/profile",
   ];
 
   // Skip verification for public routes
@@ -791,6 +793,7 @@ app.use("/projectpartner/property", projectPartnerAppPropertyRoute);
 app.use("/projectpartner/builders", projectPartnerAppBuilderRoute);
 app.use("/projectpartner/auth", projectPartnerAppAuth);
 app.use("/projectpartner/event", projectPartnerEvent);
+app.use("/projectpartner/profile", projectPartnerProfile);
 //Customer app
 app.use("/customerapp/loans", customerEmi);
 app.use("/customerapp/user", customerSignUp);
