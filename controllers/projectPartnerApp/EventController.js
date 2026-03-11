@@ -46,6 +46,7 @@ export const addNote = (req, res) => {
     reminder,
     location,
     assignedTo,
+    assignedRole, // ── added
     attachment,
     userId,
   } = req.body;
@@ -55,36 +56,39 @@ export const addNote = (req, res) => {
       .status(400)
       .json({ success: false, message: "projectPartnerId is required" });
   }
+
   console.log(req.body);
+
   const sql = `
     INSERT INTO schedule_notes (
       schedule_id, schedule_type, note,
       title, event_type, priority,
       event_date, start_time, end_time, is_all_day,
-      reminder, location, assigned_to, attachment,
+      reminder, location, assigned_to, assigned_role, attachment,
       project_partner_id, user_id,
       created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
   `;
 
   const values = [
-    projectPartnerId || null,
-    scheduleType || null,
-    note || null,
-    title || null,
-    eventType || null,
-    priority || null,
-    eventDate || null,
-    startTime || null,
-    endTime || null,
-    isAllDay ? 1 : 0,
-    reminder || null,
-    location || null,
-    assignedTo || null,
-    attachment || null,
-    projectPartnerId,
-    userId || null,
+    projectPartnerId || null, // schedule_id
+    scheduleType || null, // schedule_type
+    note || null, // note
+    title || null, // title
+    eventType || null, // event_type
+    priority || null, // priority
+    eventDate || null, // event_date
+    startTime || null, // start_time
+    endTime || null, // end_time
+    isAllDay ? 1 : 0, // is_all_day
+    reminder || null, // reminder
+    location || null, // location
+    assignedTo || null, // assigned_to
+    assignedRole || null, // assigned_role  ── added
+    attachment || null, // attachment
+    projectPartnerId, // project_partner_id
+    userId || null, // user_id
   ];
 
   db.query(sql, values, (err, result) => {
