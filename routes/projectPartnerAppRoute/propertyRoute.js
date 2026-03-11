@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import {
   addProperty,
+  addPropertyNew,
   getAll,
   update,
 } from "../../controllers/projectPartnerApp/propertyController.js";
@@ -51,6 +52,25 @@ router.post(
     { name: "propertyVideo", maxCount: 1 },
   ]),
   addProperty,
+);
+
+//new property add route
+// Add property (with images + lat/lng in body)
+router.post(
+  "/add",
+  upload.fields([
+    { name: "frontView", maxCount: 3 },
+    { name: "nearestLandmark", maxCount: 3 },
+    { name: "developedAmenities", maxCount: 3 },
+    { name: "sideView", maxCount: 3 },
+    { name: "hallView", maxCount: 3 },
+    { name: "kitchenView", maxCount: 3 },
+    { name: "bedroomView", maxCount: 3 },
+    { name: "bathroomView", maxCount: 3 },
+    { name: "balconyView", maxCount: 3 },
+    { name: "extraImages", maxCount: 10 }, // ← NEW
+  ]),
+  addPropertyNew,
 );
 router.put(
   "/edit/:id",
