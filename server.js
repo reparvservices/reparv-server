@@ -357,7 +357,7 @@ export const verifyToken = (req, res, next) => {
     "/admin/login",
     "/builder/login",
     "/employee/login",
-    "/promoter/login",
+    "/promoter/login", 
     "/sales/login",
     "/partner/login",
     "/project-partner/login",
