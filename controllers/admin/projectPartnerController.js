@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
 import { verifyRazorpayPayment } from "../paymentController.js";
 import { deleteFromS3, uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 const saltRounds = 10;
 
@@ -885,15 +886,11 @@ export const updatePaymentId = async (req, res) => {
     let screenshotUrl = null;
 
     if (req.file) {
-      const key = `payments/${Date.now()}-${req.file.originalname}`;
+      const compressedImage = await convertSingleImageToWebp(req.file);
 
-      const uploadResult = await uploadToS3(
-        req.file.buffer,
-        key,
-        req.file.mimetype,
-      );
-
-      screenshotUrl = uploadResult.Location;
+      if (compressedImage) {
+        screenshotUrl = await uploadToS3(compressedImage);
+      }
     }
 
     /* ---------- Get Partner ---------- */

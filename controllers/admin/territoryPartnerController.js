@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import sendProjectPartnerChangeEmail from "../../utils/sendProjectPartnerChangeEmail.js";
 import { uploadToS3 } from "../../utils/imageUpload.js";
+import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 const saltRounds = 10;
 export const getAll = (req, res) => {
@@ -126,29 +127,69 @@ export const getAllActive = (req, res) => {
   });
 };
 
-// **Fetch Single by ID**
-export const getById = (req, res) => {
-  const Id = parseInt(req.params.id);
-  if (isNaN(Id)) {
-    return res.status(400).json({ message: "Invalid Partner ID" });
-  }
-  const sql = `SELECT territorypartner.*,
-               projectpartner.fullname AS projectPartnerName, 
-               projectpartner.contact AS projectPartnerContact
-               FROM territorypartner
-               LEFT JOIN projectpartner ON territorypartner.projectpartnerid = projectpartner.id
-               WHERE territorypartner.id = ?`;
+// **Fetch Territory Partner by ID with Project Partner + Subscription History**
 
-  db.query(sql, [Id], (err, result) => {
-    if (err) {
-      console.error("Error fetching :", err);
-      return res.status(500).json({ message: "Database error", error: err });
+export const getById = async (req, res) => {
+  try {
+    const Id = parseInt(req.params.id);
+
+    if (isNaN(Id)) {
+      return res.status(400).json({ message: "Invalid Partner ID" });
     }
+
+    /* Fetch Territory Partner + Project Partner */
+
+    const [result] = await db.promise().query(
+      `SELECT 
+        territorypartner.*,
+        projectpartner.id AS projectpartnerid,
+        projectpartner.fullname AS projectPartnerName, 
+        projectpartner.contact AS projectPartnerContact
+      FROM territorypartner
+      LEFT JOIN projectpartner 
+        ON territorypartner.projectpartnerid = projectpartner.id
+      WHERE territorypartner.id = ?`,
+      [Id]
+    );
+
     if (result.length === 0) {
       return res.status(404).json({ message: "Territory Partner not found" });
     }
-    res.json(result[0]);
-  });
+
+    const territoryPartner = result[0];
+
+    /* Fetch Subscription History */
+
+    const [history] = await db.promise().query(
+      `SELECT 
+        id,
+        plan,
+        amount,
+        start_date,
+        end_date,
+        payment_type,
+        payment_id,
+        screenshot,
+        status
+      FROM subscriptions
+      WHERE territorypartnerid = ?
+      ORDER BY start_date DESC`,
+      [territoryPartner.id]
+    );
+
+    /* Attach history */
+
+    territoryPartner.subscriptionHistory = history;
+
+    res.json(territoryPartner);
+
+  } catch (error) {
+    console.error("Error fetching Territory Partner:", error);
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
 };
 
 // **Add New Territory Partner **
@@ -790,132 +831,254 @@ export const status = (req, res) => {
   );
 };
 
-// Update Payment ID and Send Email
+/* ---------- PLAN DURATION CONFIG ---------- */
+
+const PLAN_MONTHS = {
+  1: 1,
+  2: 2,
+  3: 3,
+  4: 4,
+  6: 6,
+  9: 9,
+  12: 12,
+  18: 18,
+  24: 24,
+};
+
 export const updatePaymentId = async (req, res) => {
   try {
     const partnerid = req.params.id;
+
+    const { amount, paymentid, paymentType, plan, mode, startDate, endDate } =
+      req.body;
+
     if (!partnerid) {
       return res.status(400).json({ message: "Invalid Partner ID" });
     }
 
-    const { amount, paymentid } = req.body;
-    if (!amount || !paymentid) {
-      return res
-        .status(400)
-        .json({ message: "Amount and Payment ID are required" });
+    if (!amount || !paymentType) {
+      return res.status(400).json({
+        message: "Amount and Payment Type are required",
+      });
     }
 
-    const isValid = await verifyRazorpayPayment(paymentid, amount);
-    if (!isValid) {
-      return res.status(400).json({ message: "Invalid Payment Id" });
+    const allowedTypes = ["razorpay", "upi", "cash", "cheque", "direct"];
+
+    if (!allowedTypes.includes(paymentType)) {
+      return res.status(400).json({
+        message: "Invalid payment type",
+      });
     }
 
-    // Get partner details
-    db.query(
-      "SELECT * FROM territorypartner WHERE id = ?",
-      [partnerid],
-      async (err, result) => {
-        if (err) {
-          console.error("Database error:", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-        }
+    /* ---------- Razorpay Validation ---------- */
 
-        if (result.length === 0) {
-          return res.status(404).json({ message: "Partner not found" });
-        }
-
-        const email = result[0].email;
-
-        const extractNameFromEmail = (email) => {
-          if (!email) return "";
-          const namePart = email.split("@")[0];
-          const lettersOnly = namePart.match(/[a-zA-Z]+/);
-          if (!lettersOnly) return "";
-          const name = lettersOnly[0].toLowerCase();
-          return name.charAt(0).toUpperCase() + name.slice(1);
-        };
-
-        const username = extractNameFromEmail(email);
-
-        const generatePassword = () => {
-          const chars =
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
-          let password = "";
-          for (let i = 0; i < 8; i++) {
-            password += chars.charAt(Math.floor(Math.random() * chars.length));
-          }
-          return password;
-        };
-
-        const password = generatePassword();
-        let hashedPassword;
-
-        try {
-          hashedPassword = await bcrypt.hash(password, 10);
-        } catch (hashErr) {
-          console.error("Error hashing password:", hashErr);
-          return res.status(500).json({ message: "Failed to hash password" });
-        }
-
-        const updateSql = `
-          UPDATE territorypartner
-          SET amount = ?, paymentid = ?, username = ?, password = ?, paymentstatus = "Success", loginstatus = "Active" 
-          WHERE id = ?
-        `;
-        const updateValues = [
-          amount,
-          paymentid,
-          username,
-          hashedPassword,
-          partnerid,
-        ];
-
-        db.query(updateSql, updateValues, async (updateErr, updateResult) => {
-          if (updateErr) {
-            console.error("Error updating Payment ID:", updateErr);
-            return res.status(500).json({
-              message: "Database error during update",
-              error: updateErr,
-            });
-          }
-
-          try {
-            await sendEmail(
-              email,
-              username,
-              password,
-              "Territory Partner",
-              "https://territory.reparv.in"
-            );
-            return res.status(200).json({
-              message: "Payment ID updated and email sent successfully.",
-              partner: {
-                partnerid,
-                username,
-                email,
-              },
-            });
-          } catch (emailError) {
-            console.error("Error sending email:", emailError);
-            return res.status(500).json({
-              message: "Payment ID updated but failed to send email.",
-              partner: {
-                partnerid,
-                username,
-                email,
-              },
-            });
-          }
+    if (paymentType === "razorpay") {
+      if (!paymentid) {
+        return res.status(400).json({
+          message: "Payment ID required for Razorpay",
         });
       }
+
+      const isValid = await verifyRazorpayPayment(paymentid, amount);
+
+      if (!isValid) {
+        return res.status(400).json({
+          message: "Invalid Razorpay Payment",
+        });
+      }
+    }
+
+    /* ---------- Upload Screenshot ---------- */
+
+    let screenshotUrl = null;
+
+    if (req.file) {
+      const compressedImage = await convertSingleImageToWebp(req.file);
+
+      if (compressedImage) {
+        screenshotUrl = await uploadToS3(compressedImage);
+      }
+    }
+
+    /* ---------- Get Territory Partner ---------- */
+
+    const [partnerResult] = await db
+      .promise()
+      .query("SELECT * FROM territorypartner WHERE id = ?", [partnerid]);
+
+    if (partnerResult.length === 0) {
+      return res.status(404).json({
+        message: "Territory Partner not found",
+      });
+    }
+
+    const partner = partnerResult[0];
+    const email = partner.email;
+
+    let username = partner.username;
+    let password = null;
+    let hashedPassword = partner.password;
+
+    let isNewPartner = false;
+
+    /* ---------- Create Login if not exists ---------- */
+
+    if (!partner.username || !partner.password) {
+      isNewPartner = true;
+
+      const extractNameFromEmail = (email) => {
+        const namePart = email.split("@")[0];
+        const lettersOnly = namePart.match(/[a-zA-Z]+/);
+
+        if (!lettersOnly) return "User";
+
+        const name = lettersOnly[0].toLowerCase();
+        return name.charAt(0).toUpperCase() + name.slice(1);
+      };
+
+      username = extractNameFromEmail(email);
+
+      const generatePassword = () => {
+        const chars =
+          "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
+
+        let password = "";
+
+        for (let i = 0; i < 8; i++) {
+          password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+
+        return password;
+      };
+
+      password = generatePassword();
+      hashedPassword = await bcrypt.hash(password, 10);
+    }
+
+    /* ---------- Calculate Subscription Dates ---------- */
+
+    let subStartDate;
+    let subEndDate;
+
+    if (mode === "manual") {
+      if (!startDate || !endDate) {
+        return res.status(400).json({
+          message: "Start and End date required for manual mode",
+        });
+      }
+
+      subStartDate = moment(startDate).tz("Asia/Kolkata").toDate();
+      subEndDate = moment(endDate).tz("Asia/Kolkata").toDate();
+    } else {
+      const months = PLAN_MONTHS[plan];
+
+      if (!months) {
+        return res.status(400).json({
+          message: "Invalid plan",
+        });
+      }
+
+      /* ---------- Get Last Subscription ---------- */
+
+      const [lastSub] = await db.promise().query(
+        `SELECT * FROM subscriptions
+         WHERE territorypartnerid = ?
+         ORDER BY end_date DESC
+         LIMIT 1`,
+        [partnerid],
+      );
+
+      if (lastSub.length > 0 && moment(lastSub[0].end_date).isAfter(moment())) {
+        subStartDate = moment(lastSub[0].end_date).tz("Asia/Kolkata").toDate();
+      } else {
+        subStartDate = moment().tz("Asia/Kolkata").toDate();
+      }
+
+      subEndDate = moment(subStartDate)
+        .add(months, "months")
+        .tz("Asia/Kolkata")
+        .toDate();
+    }
+
+    /* ---------- Expire Previous Active Subscription ---------- */
+
+    await db.promise().query(
+      `UPDATE subscriptions
+       SET status = 'Expired'
+       WHERE territorypartnerid = ?
+       AND status = 'Active'`,
+      [partnerid],
     );
-  } catch (err) {
-    console.error("Unexpected server error:", err);
-    return res
-      .status(500)
-      .json({ message: "Unexpected server error", error: err });
+
+    /* ---------- Insert New Subscription ---------- */
+
+    await db.promise().query(
+      `INSERT INTO subscriptions
+      (territorypartnerid, mode, plan, amount, start_date, end_date, payment_id, payment_type, screenshot, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        partnerid,
+        mode,
+        plan,
+        amount,
+        subStartDate,
+        subEndDate,
+        paymentid || null,
+        paymentType,
+        screenshotUrl,
+        "Active",
+      ],
+    );
+
+    /* ---------- Update Territory Partner ---------- */
+
+    await db.promise().query(
+      `UPDATE territorypartner
+       SET paymentstatus = ?, 
+           paymentid = ?, 
+           amount = ?, 
+           username = ?, 
+           password = ?, 
+           loginstatus = "Active"
+       WHERE id = ?`,
+      [
+        "Success",
+        paymentid || null,
+        amount,
+        username,
+        hashedPassword,
+        partnerid,
+      ],
+    );
+
+    /* ---------- Send Email ONLY if New Partner ---------- */
+
+    if (isNewPartner) {
+      await sendEmail(
+        email,
+        username,
+        password,
+        "Territory Partner",
+        "https://territory.reparv.in",
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Subscription updated successfully",
+      partner: {
+        id: partnerid,
+        email,
+        username,
+      },
+    });
+  } catch (error) {
+    console.error("Update Payment Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 
