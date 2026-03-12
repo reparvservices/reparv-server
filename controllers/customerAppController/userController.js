@@ -250,7 +250,7 @@ export const getProfile = (req, res) => {
 };
 
 export const update = async (req, res) => {
-  console.log(req.body);
+  // console.log(req.body);
   try {
     const { user_id, fullname, email, contact, state, city } = req.body;
 
