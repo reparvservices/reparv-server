@@ -944,14 +944,31 @@ const guestApp = admin.initializeApp(
 );
 
 // Send FCM notification to a single guest user token
-async function sendGuestNotification(guest, title, body) {
+async function sendGuestNotification(guest, title, body, data = {}) {
   if (!guest?.fcmToken) return;
 
   const message = {
     token: guest.fcmToken,
     notification: { title, body },
-    android: { priority: "high" },
-    apns: { headers: { "apns-priority": "10" } },
+
+    // ✅ data payload — FCM requires all values to be strings
+    // This is what React Native reads to navigate on tap
+    data: {
+      screen: String(data.screen || "PropertyDetails"),
+      propertyid: String(data.seoSlug || ""),
+      propertyName: String(data.propertyName || ""),
+      city: String(data.city || ""),
+    },
+
+    android: {
+      priority: "high",
+    },
+    apns: {
+      headers: { "apns-priority": "10" },
+      payload: {
+        aps: { "content-available": 1 },
+      },
+    },
   };
 
   try {
@@ -959,7 +976,6 @@ async function sendGuestNotification(guest, title, body) {
     console.log("📨 Guest notification sent:", response);
   } catch (err) {
     if (err.errorInfo?.code === "messaging/registration-token-not-registered") {
-      // Token is dead — remove it so we never try again
       await db
         .promise()
         .query(`UPDATE guestUsers SET fcmToken = NULL WHERE id = ?`, [
@@ -976,7 +992,6 @@ async function sendGuestNotification(guest, title, body) {
 
 async function notifyGuestsForNewProperties() {
   try {
-    // 1. Find all new properties not yet notified
     const [newProperties] = await db.promise().query(
       `SELECT propertyid, propertyName, location, city
          FROM properties
@@ -990,7 +1005,6 @@ async function notifyGuestsForNewProperties() {
 
     console.log(`[GuestCron] Found ${newProperties.length} new property(ies).`);
 
-    // 2. Fetch all guest users who have a valid fcmToken
     const [guestUsers] = await db.promise().query(
       `SELECT id, fullname, city, fcmToken
          FROM guestUsers
@@ -999,7 +1013,6 @@ async function notifyGuestsForNewProperties() {
 
     if (guestUsers.length === 0) {
       console.log("[GuestCron] No guest users with FCM tokens.");
-      // Still mark as notified so cron doesn't retry endlessly
       const ids = newProperties.map((p) => p.propertyid);
       await db
         .promise()
@@ -1009,9 +1022,7 @@ async function notifyGuestsForNewProperties() {
       return;
     }
 
-    // 3. For each new property — notify matching guests then mark notified
     for (const property of newProperties) {
-      // Filter guests by city match OR guests with no city (global interest)
       const targetGuests = guestUsers.filter(
         (g) =>
           !g.city ||
@@ -1029,26 +1040,21 @@ async function notifyGuestsForNewProperties() {
         );
 
         for (const guest of targetGuests) {
-          // Pass full guest object so bad tokens can be cleaned up inside
           await sendGuestNotification(
             guest,
             "🏠 New Property Available!",
-            `Hi ${guest.fullname || "there"} 👋,
-
-A new property has just been listed in ${property.city || "your area"}!
-
-🏡 Property: ${property.propertyName || "New Listing"}
-📍 Location: ${property.location || ""}, ${property.city || ""}
-
-Open the app to explore more details.
-
-Thank you,
-Team Reparv`,
+            `Hi ${guest.fullname || "there"} 👋, a new property "${property.propertyName || "New Listing"}" has been listed in ${property.city || "your area"}! Tap to view.`,
+            // ✅ deep-link data
+            {
+              screen: "PropertyDetails",
+              propertyid: property.propertyid,
+              propertyName: property.propertyName,
+              city: property.city,
+            },
           );
         }
       }
 
-      // 4. Mark this property as notified immediately after sending
       await db
         .promise()
         .query(`UPDATE properties SET notified = 1 WHERE propertyid = ?`, [

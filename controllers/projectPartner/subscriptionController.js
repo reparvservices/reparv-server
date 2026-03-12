@@ -1,5 +1,6 @@
 import Razorpay from "razorpay";
 import db from "../../config/dbconnect.js";
+import moment from "moment-timezone";
 
 // PLAN DURATION CONFIG
 const PLAN_MONTHS = {
@@ -32,7 +33,7 @@ export const createSubscription = async (req, res) => {
       const captureResponse = await razorpay.payments.capture(
         payment_id,
         Math.round(amount * 100),
-        "INR"
+        "INR",
       );
 
       if (captureResponse.status !== "captured") {
@@ -60,7 +61,7 @@ export const createSubscription = async (req, res) => {
       `INSERT INTO subscriptions 
        (projectpartnerid, plan, amount, start_date, end_date, payment_id, status)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [user_id, plan, amount, startDate, endDate, payment_id, "Active"]
+      [user_id, plan, amount, startDate, endDate, payment_id, "Active"],
     );
 
     //  Update project partner table
@@ -68,7 +69,7 @@ export const createSubscription = async (req, res) => {
       `UPDATE projectpartner 
        SET paymentstatus = ?, paymentid = ?, amount = ?
        WHERE id = ?`,
-      ["Success", payment_id, amount, user_id]
+      ["Success", payment_id, amount, user_id],
     );
 
     //  Trial handling
@@ -77,7 +78,7 @@ export const createSubscription = async (req, res) => {
         `UPDATE projectpartner 
          SET hasUsedTrial = 1 
          WHERE id = ?`,
-        [user_id]
+        [user_id],
       );
       console.log("Trial plan purchased → hasUsedTrial = 1 updated");
     }
@@ -95,7 +96,6 @@ export const createSubscription = async (req, res) => {
     });
   }
 };
-
 
 //  GET USER’S CURRENT SUBSCRIPTION
 export const getUserSubscription = (req, res) => {
@@ -131,7 +131,7 @@ export const getUserSubscription = (req, res) => {
           [sub.id],
           (err) => {
             if (err) console.error("Error updating subscription:", err);
-          }
+          },
         );
 
         db.query(
@@ -141,7 +141,7 @@ export const getUserSubscription = (req, res) => {
           ["Expired", null, 0, userId],
           (err) => {
             if (err) console.error("Error updating Territory:", err);
-          }
+          },
         );
 
         status = "Expired";
@@ -155,7 +155,7 @@ export const getUserSubscription = (req, res) => {
           ["Success", sub.payment_id, sub.amount, userId],
           (err) => {
             if (err) console.error("Error updating Territoryperson:", err);
-          }
+          },
         );
       }
 
@@ -164,11 +164,17 @@ export const getUserSubscription = (req, res) => {
         active: status === "Active",
         plan: sub.plan,
         amount: sub.amount,
-        start_date: sub.start_date,
-        end_date: sub.end_date,
+        start_date: moment
+          .utc(sub.start_date)
+          .tz("Asia/Kolkata")
+          .format("DD MMM YYYY | hh:mm A"),
+        end_date: moment
+          .utc(sub.end_date)
+          .tz("Asia/Kolkata")
+          .format("DD MMM YYYY | hh:mm A"),
         status,
       });
-    }
+    },
   );
 };
 
@@ -225,9 +231,9 @@ export const validateRedeemCode = (req, res) => {
             discount,
             message: "Code is valid and discount applied",
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -241,7 +247,6 @@ export const markRedeemUsed = (req, res) => {
     (err) => {
       if (err) return res.status(500).json({ success: false });
       res.json({ success: true });
-    }
+    },
   );
 };
-
