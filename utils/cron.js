@@ -920,3 +920,149 @@ cron.schedule("0 */2 * * *", async () => {
     console.error(" Cron failed:", err.message);
   }
 });
+
+// THIS IS FOR CUSTOMER REPARV APP
+// ─────────────────────────────────────────────────────────────
+// NEW CRON: Notify guestUsers when a new property is added
+// Runs every 5 minutes
+// Uses fcmToken column from guestUsers table
+// Uses notified column from properties table (add if not exists)
+// ─────────────────────────────────────────────────────────────
+
+// Firebase app for guest users
+const guestServiceAccount = JSON.parse(
+  process.env.FIREBASE_SERVICE_ACCOUNT_GUEST, // add this to your .env
+);
+const guestApp = admin.initializeApp(
+  {
+    credential: admin.credential.cert({
+      ...guestServiceAccount,
+      private_key: guestServiceAccount.private_key.replace(/\\n/g, "\n"),
+    }),
+  },
+  "guestApp",
+);
+
+// Send FCM notification to a single guest user token
+async function sendGuestNotification(guest, title, body) {
+  if (!guest?.fcmToken) return;
+
+  const message = {
+    token: guest.fcmToken,
+    notification: { title, body },
+    android: { priority: "high" },
+    apns: { headers: { "apns-priority": "10" } },
+  };
+
+  try {
+    const response = await guestApp.messaging().send(message);
+    console.log("📨 Guest notification sent:", response);
+  } catch (err) {
+    if (err.errorInfo?.code === "messaging/registration-token-not-registered") {
+      // Token is dead — remove it so we never try again
+      await db
+        .promise()
+        .query(`UPDATE guestUsers SET fcmToken = NULL WHERE id = ?`, [
+          guest.id,
+        ]);
+      console.log(
+        `🗑 Removed stale FCM token for guest id: ${guest.id} (${guest.fullname || "unknown"})`,
+      );
+    } else {
+      console.error("❌ Error sending guest notification:", err);
+    }
+  }
+}
+
+async function notifyGuestsForNewProperties() {
+  try {
+    // 1. Find all new properties not yet notified
+    const [newProperties] = await db.promise().query(
+      `SELECT propertyid, propertyName, location, city
+         FROM properties
+         WHERE notified = 0`,
+    );
+
+    if (newProperties.length === 0) {
+      console.log("[GuestCron] No new properties to notify.");
+      return;
+    }
+
+    console.log(`[GuestCron] Found ${newProperties.length} new property(ies).`);
+
+    // 2. Fetch all guest users who have a valid fcmToken
+    const [guestUsers] = await db.promise().query(
+      `SELECT id, fullname, city, fcmToken
+         FROM guestUsers
+         WHERE fcmToken IS NOT NULL AND fcmToken != ''`,
+    );
+
+    if (guestUsers.length === 0) {
+      console.log("[GuestCron] No guest users with FCM tokens.");
+      // Still mark as notified so cron doesn't retry endlessly
+      const ids = newProperties.map((p) => p.propertyid);
+      await db
+        .promise()
+        .query(`UPDATE properties SET notified = 1 WHERE propertyid IN (?)`, [
+          ids,
+        ]);
+      return;
+    }
+
+    // 3. For each new property — notify matching guests then mark notified
+    for (const property of newProperties) {
+      // Filter guests by city match OR guests with no city (global interest)
+      const targetGuests = guestUsers.filter(
+        (g) =>
+          !g.city ||
+          g.city.trim().toLowerCase() ===
+            (property.city || "").trim().toLowerCase(),
+      );
+
+      if (targetGuests.length === 0) {
+        console.log(
+          `[GuestCron] No matching guests for property ${property.propertyid} in "${property.city}"`,
+        );
+      } else {
+        console.log(
+          `[GuestCron] Notifying ${targetGuests.length} guest(s) for property ${property.propertyid}`,
+        );
+
+        for (const guest of targetGuests) {
+          // Pass full guest object so bad tokens can be cleaned up inside
+          await sendGuestNotification(
+            guest,
+            "🏠 New Property Available!",
+            `Hi ${guest.fullname || "there"} 👋,
+
+A new property has just been listed in ${property.city || "your area"}!
+
+🏡 Property: ${property.propertyName || "New Listing"}
+📍 Location: ${property.location || ""}, ${property.city || ""}
+
+Open the app to explore more details.
+
+Thank you,
+Team Reparv`,
+          );
+        }
+      }
+
+      // 4. Mark this property as notified immediately after sending
+      await db
+        .promise()
+        .query(`UPDATE properties SET notified = 1 WHERE propertyid = ?`, [
+          property.propertyid,
+        ]);
+
+      console.log(
+        `[GuestCron] Property ${property.propertyid} marked as notified.`,
+      );
+    }
+  } catch (err) {
+    console.error("[GuestCron] Error:", err.message);
+  }
+}
+// Runs every 5 minutes
+cron.schedule("* * * * *", notifyGuestsForNewProperties);
+// console.log("[GuestCron] New property → guest notification cron registered.");
