@@ -969,7 +969,7 @@ async function sendGuestNotification(guest, title, body, data = {}) {
   //   "https://reparv-assets.s3.ap-south-1.amazonaws.com/uploads/1772799052752-WhatsApp Image 2026-03-06 at 5.10.53 PM.webp",
   // );
   const imageUrl = encodeURI(image);
-  console.log(imageUrl);
+  console.log(imageUrl, data);
 
   const message = {
     token: guest.fcmToken,
@@ -996,10 +996,8 @@ async function sendGuestNotification(guest, title, body, data = {}) {
     },
 
     apns: {
-      headers: { "apns-priority": "10" },
-      payload: {
-        aps: { "mutable-content": 1 },
-      },
+      headers: { "apns-priority": "5" },
+      payload: { aps: { "content-available": 1 } },
       fcm_options: {
         image: imageUrl,
       },
