@@ -812,82 +812,82 @@ app.use("/builderapp/community", builderCommunityRoute);
 app.use("/builderapp/ticket", builderTicketRoute);
 app.use("/builderapp/post", builderpostRoute);
 
-app.post("/api/saveSheetData", async (req, res) => {
-  try {
-    const { rows } = req.body;
+// app.post("/api/saveSheetData", async (req, res) => {
+//   try {
+//     const { rows } = req.body;
 
-    if (!rows || rows.length < 2) {
-      return res.status(400).json({ error: "No sheet data received" });
-    }
+//     if (!rows || rows.length < 2) {
+//       return res.status(400).json({ error: "No sheet data received" });
+//     }
 
-    const dataRows = rows;
+//     const dataRows = rows;
 
-    // Promisify db.query
-    const queryAsync = (sql, values) =>
-      new Promise((resolve, reject) => {
-        db.query(sql, values, (err, result) => {
-          if (err) return reject(err);
-          resolve(result);
-        });
-      });
+//     // Promisify db.query
+//     const queryAsync = (sql, values) =>
+//       new Promise((resolve, reject) => {
+//         db.query(sql, values, (err, result) => {
+//           if (err) return reject(err);
+//           resolve(result);
+//         });
+//       });
 
-    for (let index = 0; index < dataRows.length; index++) {
-      const row = dataRows[index];
+//     for (let index = 0; index < dataRows.length; index++) {
+//       const row = dataRows[index];
 
-      const adsid = row[0] || "";
-      const campaign = row[7] || "";
-      const propertyId = campaign.split("|")[0].split("-")[1]?.trim() || null;
-      const customer = row[13] || "";
-      const rawPhone = row[14];
+//       const adsid = row[0] || "";
+//       const campaign = row[7] || "";
+//       const propertyId = campaign.split("|")[0].split("-")[1]?.trim() || null;
+//       const customer = row[13] || "";
+//       const rawPhone = row[14];
 
-      const contact = rawPhone
-        ? rawPhone.toString().replace(/\D/g, "").slice(-10)
-        : "";
+//       const contact = rawPhone
+//         ? rawPhone.toString().replace(/\D/g, "").slice(-10)
+//         : "";
 
-      const city = row[16] || "";
+//       const city = row[16] || "";
 
-      //  CHECK DUPLICATE adsid
-      const checkSql = `SELECT enquirersid FROM enquirers WHERE adsid = ? LIMIT 1`;
-      const existing = await queryAsync(checkSql, [adsid]);
+//       //  CHECK DUPLICATE adsid
+//       const checkSql = `SELECT enquirersid FROM enquirers WHERE adsid = ? LIMIT 1`;
+//       const existing = await queryAsync(checkSql, [adsid]);
 
-      if (existing.length > 0) {
-        console.log(`Skipped (duplicate adsid): ${adsid}`);
-        continue;
-      }
+//       if (existing.length > 0) {
+//         console.log(`Skipped (duplicate adsid): ${adsid}`);
+//         continue;
+//       }
 
-      //  INSERT
-      const insertSql = `
-        INSERT INTO enquirers
-        (adsid,propertyid, customer, contact, city,source)
-        VALUES (?, ?,?, ?, ?,?)
-      `;
+//       //  INSERT
+//       const insertSql = `
+//         INSERT INTO enquirers
+//         (adsid,propertyid, customer, contact, city,source)
+//         VALUES (?, ?,?, ?, ?,?)
+//       `;
 
-      try {
-        await queryAsync(insertSql, [
-          adsid,
-          propertyId,
-          customer,
-          contact,
-          city,
-          "Ads",
-        ]);
+//       try {
+//         await queryAsync(insertSql, [
+//           adsid,
+//           propertyId,
+//           customer,
+//           contact,
+//           city,
+//           "Ads",
+//         ]);
 
-        console.log("Inserted:", adsid, customer);
-      } catch (err) {
-        console.error("DB insert error:", err);
-      }
-    }
+//         console.log("Inserted:", adsid, customer);
+//       } catch (err) {
+//         console.error("DB insert error:", err);
+//       }
+//     }
 
-    //  SIMPLE RESPONSE — NO SHEET UPDATE DATA
-    res.json({
-      success: true,
-      message: "Data processed successfully",
-    });
-  } catch (e) {
-    console.error("API Error:", e);
-    res.status(500).json({ error: e.message });
-  }
-});
+//     //  SIMPLE RESPONSE — NO SHEET UPDATE DATA
+//     res.json({
+//       success: true,
+//       message: "Data processed successfully",
+//     });
+//   } catch (e) {
+//     console.error("API Error:", e);
+//     res.status(500).json({ error: e.message });
+//   }
+// });
 
 //  Start Server
 app.listen(PORT, () => {

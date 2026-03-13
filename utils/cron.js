@@ -910,16 +910,16 @@ async function syncAllPropertySheets() {
 }
 
 // Runs every 2 hours (at minute 0)
-cron.schedule("0 */2 * * *", async () => {
-  console.log(" Cron started: syncing all property sheets");
+// cron.schedule("0 */2 * * *", async () => {
+//   console.log(" Cron started: syncing all property sheets");
 
-  try {
-    await syncAllPropertySheets();
-    console.log(" Cron completed successfully");
-  } catch (err) {
-    console.error(" Cron failed:", err.message);
-  }
-});
+//   try {
+//     await syncAllPropertySheets();
+//     console.log(" Cron completed successfully");
+//   } catch (err) {
+//     console.error(" Cron failed:", err.message);
+//   }
+// });
 
 // THIS IS FOR CUSTOMER REPARV APP
 // ─────────────────────────────────────────────────────────────
