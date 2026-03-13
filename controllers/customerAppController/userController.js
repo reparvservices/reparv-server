@@ -250,8 +250,9 @@ export const getProfile = (req, res) => {
 };
 
 export const update = async (req, res) => {
+  // console.log(req.body);
   try {
-    const { user_id, fullname, email, contact } = req.body;
+    const { user_id, fullname, email, contact, state, city } = req.body;
 
     if (!user_id || !fullname) {
       return res.status(400).json({
@@ -291,13 +292,22 @@ export const update = async (req, res) => {
 
         const sql = `
           UPDATE guestUsers 
-          SET fullname = ?, email = ?, contact = ?, userimage = ?, updated_at = ?
+          SET fullname = ?, email = ?, contact = ?, userimage = ?, state = ?, city = ?, updated_at = ?
           WHERE id = ?
         `;
 
         db.query(
           sql,
-          [fullname, email, contact, imageUrl, timestamp, user_id],
+          [
+            fullname,
+            email,
+            contact,
+            imageUrl,
+            state ?? null,
+            city ?? null,
+            timestamp,
+            user_id,
+          ],
           () => {
             return res.status(200).json({
               success: true,
