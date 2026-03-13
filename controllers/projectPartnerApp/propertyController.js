@@ -517,6 +517,7 @@ export const addPropertyNew = async (req, res) => {
       state,
       city,
       address,
+      pincode,
       latitude,
       longitude,
       projectpartnerid,
@@ -604,7 +605,7 @@ export const addPropertyNew = async (req, res) => {
   INSERT INTO properties (
     projectpartnerid, propertyType, propertyCategory, propertyName,
     totalSalesPrice, totalOfferPrice, contact, projectBy,
-    state, city, address,
+    state, city, address,pincode,
     latitude, longitude,
     builtUpArea, carpetArea,
     frontView, sideView, kitchenView, hallView,
@@ -614,7 +615,7 @@ export const addPropertyNew = async (req, res) => {
     propertyVideo,
     seoSlug, created_at, updated_at
   )
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
 `;
 
         const values = [
@@ -629,6 +630,7 @@ export const addPropertyNew = async (req, res) => {
           state,
           city,
           address,
+          pincode,
           latitude ? parseFloat(latitude) : null,
           longitude ? parseFloat(longitude) : null,
           builtUpArea,
