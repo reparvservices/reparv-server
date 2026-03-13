@@ -942,58 +942,81 @@ const guestApp = admin.initializeApp(
   },
   "guestApp",
 );
+const getImageUrl = (path) => {
+  if (!path) return null;
 
+  // Already a full URL (S3, Google, etc.)
+  if (path.startsWith("http")) {
+    return path;
+  }
+
+  // Local server image
+  return `https://api.reparv.in/${path}`;
+};
+const parseFrontView = (frontView) => {
+  try {
+    return JSON.parse(frontView || "[]");
+  } catch {
+    return [];
+  }
+};
 // Send FCM notification to a single guest user token
 async function sendGuestNotification(guest, title, body, data = {}) {
   if (!guest?.fcmToken) return;
+  const image = data.image;
+
+  // const imageUrl = encodeURI(
+  //   "https://reparv-assets.s3.ap-south-1.amazonaws.com/uploads/1772799052752-WhatsApp Image 2026-03-06 at 5.10.53 PM.webp",
+  // );
+  const imageUrl = encodeURI(image);
+  console.log(imageUrl);
 
   const message = {
     token: guest.fcmToken,
-    notification: { title, body },
 
-    // ✅ data payload — FCM requires all values to be strings
-    // This is what React Native reads to navigate on tap
+    notification: {
+      title,
+      body,
+      image: imageUrl,
+    },
+
     data: {
-      screen: String(data.screen || "PropertyDetails"),
-      propertyid: String(data.seoSlug || ""),
+      screen: "PropertyDetails",
+      propertyid: String(data.propertyid || ""),
       propertyName: String(data.propertyName || ""),
       city: String(data.city || ""),
+      image: imageUrl,
     },
 
     android: {
       priority: "high",
+      notification: {
+        imageUrl: imageUrl,
+      },
     },
+
     apns: {
       headers: { "apns-priority": "10" },
       payload: {
-        aps: { "content-available": 1 },
+        aps: { "mutable-content": 1 },
+      },
+      fcm_options: {
+        image: imageUrl,
       },
     },
   };
-
   try {
     const response = await guestApp.messaging().send(message);
     console.log("📨 Guest notification sent:", response);
   } catch (err) {
-    if (err.errorInfo?.code === "messaging/registration-token-not-registered") {
-      await db
-        .promise()
-        .query(`UPDATE guestUsers SET fcmToken = NULL WHERE id = ?`, [
-          guest.id,
-        ]);
-      console.log(
-        `🗑 Removed stale FCM token for guest id: ${guest.id} (${guest.fullname || "unknown"})`,
-      );
-    } else {
-      console.error("❌ Error sending guest notification:", err);
-    }
+    console.error("❌ Error sending guest notification:", err);
   }
 }
 
 async function notifyGuestsForNewProperties() {
   try {
     const [newProperties] = await db.promise().query(
-      `SELECT propertyid, propertyName, location, city
+      `SELECT propertyid, propertyName, location, city,seoSlug, frontView
          FROM properties
          WHERE notified = 0`,
     );
@@ -1040,16 +1063,19 @@ async function notifyGuestsForNewProperties() {
         );
 
         for (const guest of targetGuests) {
+          console.log(property?.frontView[0]);
+
           await sendGuestNotification(
             guest,
-            "🏠 New Property Available!",
-            `Hi ${guest.fullname || "there"} 👋, a new property "${property.propertyName || "New Listing"}" has been listed in ${property.city || "your area"}! Tap to view.`,
+            "🏡 New Property in " + property.city,
+            `${property.propertyName} just listed in ${property.city}! Explore price, photos & details now.`,
             // ✅ deep-link data
             {
               screen: "PropertyDetails",
-              propertyid: property.propertyid,
+              propertyid: property.seoSlug,
               propertyName: property.propertyName,
               city: property.city,
+              image: getImageUrl(parseFrontView(property?.frontView)[0]),
             },
           );
         }
