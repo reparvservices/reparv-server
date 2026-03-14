@@ -1014,9 +1014,11 @@ async function sendGuestNotification(guest, title, body, data = {}) {
 async function notifyGuestsForNewProperties() {
   try {
     const [newProperties] = await db.promise().query(
-      `SELECT propertyid, propertyName, location, city,seoSlug, frontView
-         FROM properties
-         WHERE notified = 0`,
+      `SELECT propertyid, propertyName, location, city, seoSlug, frontView
+     FROM properties
+     WHERE notified = 0
+       AND status = 'Active'
+       AND approve = 'Approved'`,
     );
 
     if (newProperties.length === 0) {
@@ -1093,6 +1095,7 @@ async function notifyGuestsForNewProperties() {
     console.error("[GuestCron] Error:", err.message);
   }
 }
+
 // Runs every 5 minutes
 cron.schedule("* * * * *", notifyGuestsForNewProperties);
 // console.log("[GuestCron] New property → guest notification cron registered.");

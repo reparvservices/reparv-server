@@ -442,6 +442,10 @@ export const verifyToken = (req, res, next) => {
     "/territoryapp/enquiry/add/",
     "/projectpartner/employee/",
     "/salesapp/schedule-notes",
+    "projectpartner/enquiries/",
+    "/projectpartner/enquiries/remarklist/",
+    "/projectpartner/enquiries/assignEnquiry/",
+    "/projectpartner/enquiries/create",
     "/projectpartner/enquiries/add",
     "/projectpartner/enquiries/enquiry/",
     "/projectpartner/enquiries/get",
@@ -783,7 +787,7 @@ app.use("/onboardingapp/subscription", onboardingSubscription);
 app.use("/projectpartnerRoute/user", projectPartnerAppRoute);
 app.use("/projectpartner/post", projectPartnerPostRoute);
 app.use("/projectpartner/subscription", projectSubscription);
-app.use("/projectpartner/enquiries", projectEnquiriesRoute);
+app.use("/projectpartner/enquiries/", projectEnquiriesRoute);
 app.use("/projectpartner/partner", projectpartnerSalesAndTerritoryRoute);
 app.use("/projectpartner/employee", projectPartnerEmployee);
 app.use("/projectpartner/ticket", projectPartnerTickets);

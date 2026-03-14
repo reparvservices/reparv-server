@@ -65,8 +65,14 @@ export const getAll = (req, res) => {
 
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -453,7 +459,7 @@ export const token = async (req, res) => {
       db.query(
         "SELECT * FROM enquirers WHERE enquirersid = ?",
         [Id],
-        (err, result) => (err ? reject(err) : resolve(result))
+        (err, result) => (err ? reject(err) : resolve(result)),
       );
     });
 
@@ -469,7 +475,7 @@ export const token = async (req, res) => {
       db.query(
         "SELECT commissionType, commissionAmount, commissionPercentage FROM properties WHERE propertyid = ?",
         [propertyId],
-        (err, result) => (err ? reject(err) : resolve(result))
+        (err, result) => (err ? reject(err) : resolve(result)),
       );
     });
 
@@ -527,7 +533,7 @@ export const token = async (req, res) => {
           currentdate,
           currentdate,
         ],
-        (err, result) => (err ? reject(err) : resolve(result))
+        (err, result) => (err ? reject(err) : resolve(result)),
       );
     });
 
@@ -548,10 +554,10 @@ export const token = async (req, res) => {
   }
 };
 
-
 export const followUpOld = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const { followUpRemark, enquiryStatus } = req.body;
+  const { followUpRemark, enquiryStatus, visitDate } = req.body;
+  console.log(req.body);
 
   if (!followUpRemark || !enquiryStatus) {
     return res.status(400).json({ message: "Please add remark!" });
@@ -576,12 +582,19 @@ export const followUpOld = (req, res) => {
       }
 
       const insertSQL = `
-      INSERT INTO propertyfollowup (enquirerid, remark, status, updated_at, created_at)
-      VALUES (?, ?, ?, ?, ?)`;
+      INSERT INTO propertyfollowup (enquirerid, remark, status,visitdate, updated_at, created_at)
+      VALUES (?, ?, ?, ?, ?,?)`;
 
       db.query(
         insertSQL,
-        [Id, followUpRemark, enquiryStatus, currentdate, currentdate],
+        [
+          Id,
+          followUpRemark,
+          enquiryStatus,
+          visitDate ?? null,
+          currentdate,
+          currentdate,
+        ],
         (err, insertResult) => {
           if (err) {
             console.error("Error inserting visit:", err);
@@ -604,7 +617,7 @@ export const followUp = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const { visitDate, followUpRemark, enquiryStatus } = req.body;
 
-  //console.log(visitDate, "ss");
+  console.log(visitDate, "ss");
 
   if (!followUpRemark || !enquiryStatus) {
     return res.status(400).json({ message: "Please add remark and status!" });

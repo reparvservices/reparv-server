@@ -76,10 +76,16 @@ export const getAll = (req, res) => {
       const formatted = result.map((row) => ({
         ...row,
         created_at: row.created_at
-          ? moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
+          ? moment
+              .utc(row.created_at)
+              .tz("Asia/Kolkata")
+              .format("DD MMM YYYY | hh:mm A")
           : null,
         updated_at: row.updated_at
-          ? moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
+          ? moment
+              .utc(row.updated_at)
+              .tz("Asia/Kolkata")
+              .format("DD MMM YYYY | hh:mm A")
           : null,
       }));
 
@@ -145,15 +151,30 @@ export const getPartnersEnquiry = (req, res) => {
 
     const formatted = results.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
   });
 };
+
 export const assignEnquiry = async (req, res) => {
-  const { salespersonid, salesperson, salespersoncontact } = req.body;
+  const {
+    salespersonid,
+    salesperson,
+    salespersoncontact,
+    notes,
+    followUpDate,
+  } = req.body;
+  console.log(req.body);
+
   const Id = parseInt(req.params.id);
   const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
 
@@ -181,8 +202,8 @@ export const assignEnquiry = async (req, res) => {
       }
 
       db.query(
-        "UPDATE enquirers SET salespersonid = ?, assign = ?, updated_at = ? WHERE enquirersid = ?",
-        [salespersonid, salesInfo, currentDate, Id],
+        "UPDATE enquirers SET salespersonid = ?, assign = ?,notes = ?,  updated_at = ? WHERE enquirersid = ?",
+        [salespersonid, salesInfo, notes, currentDate, Id],
         async (err, result) => {
           if (err) {
             console.error("Error assigning salesperson:", err);
@@ -201,10 +222,10 @@ export const assignEnquiry = async (req, res) => {
 
         Please check the details and take quick action.
 
-        📱 Open the *REPARV Sales Partner App* or  
+        📱 Open the *REPARV Sales Partner App* or
         🖥️ Visit: https://sales.reparv.in/
 
-        Thank you,  
+        Thank you,
         Team REPARV`;
 
           const encodedMsg = encodeURIComponent(msg);
@@ -226,9 +247,9 @@ export const assignEnquiry = async (req, res) => {
               contact: salespersoncontact,
             },
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 // Assign Enquiry To Territory Partners
@@ -268,12 +289,13 @@ export const assignEnquiryToTerritoryPartner = async (req, res) => {
           res.status(200).json({
             message: "Enquiry assigned successfully to Territory Partner",
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
+//old join
 export const addEnquiry = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const Id = req.body.projectpartnerid;
@@ -436,8 +458,14 @@ export const getAllCreatedEnquiry = (req, res) => {
 
     const formatted = results.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json({ data: formatted });
@@ -478,17 +506,15 @@ export const status = (req, res) => {
               .status(500)
               .json({ message: "Database error", error: err });
           }
-          res
-            .status(200)
-            .json({
-              message:
-                status === "Active"
-                  ? "Enquiry Assign successfully"
-                  : "Change Assign Status  successfully",
-            });
-        }
+          res.status(200).json({
+            message:
+              status === "Active"
+                ? "Enquiry Assign successfully"
+                : "Change Assign Status  successfully",
+          });
+        },
       );
-    }
+    },
   );
 };
 
@@ -538,7 +564,7 @@ export const assignToReparv = (req, res) => {
           .status(200)
           .json({ message: "Enquiry assigned to Reparv successfully" });
       });
-    }
+    },
   );
 };
 
@@ -626,11 +652,191 @@ export const getAllDigitalEnquiry = (req, res) => {
 
       const formatted = results.map((row) => ({
         ...row,
-        created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-        updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+        created_at: moment
+          .utc(row.created_at)
+          .tz("Asia/Kolkata")
+          .format("DD MMM YYYY | hh:mm A"),
+        updated_at: moment
+          .utc(row.updated_at)
+          .tz("Asia/Kolkata")
+          .format("DD MMM YYYY | hh:mm A"),
       }));
 
       res.json({ data: formatted });
-    }
+    },
   );
+};
+
+//get remark
+export const getRemarkList = (req, res) => {
+  const enquiryId = req.params.id;
+  const sql =
+    "SELECT * FROM propertyfollowup WHERE enquirerid = ? ORDER BY propertyfollowup.created_at";
+  db.query(sql, [enquiryId], (err, result) => {
+    if (err) {
+      console.error("Error fetching :", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    const formatted = result.map((row) => ({
+      ...row,
+      visitdate: row.visitdate,
+    }));
+
+    res.json(formatted);
+  });
+};
+
+//Create Enquiry New
+export const createEnquiry = async (req, res) => {
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+  const {
+    fullName,
+    contactNumber,
+    leadSource,
+    preferredContactMethod,
+    minBudget,
+    maxBudget,
+    propertyCategory,
+    preferredBHK,
+    state,
+    city,
+    preferredLocation,
+    nearbyLandmark,
+    message,
+    leadPriority,
+    followUpDate,
+    selectedProperty,
+    projectpartnerid,
+  } = req.body;
+
+  console.log(req.body);
+
+  /* ── validate ── */
+  if (!projectpartnerid) {
+    return res.status(400).json({ message: "Invalid project partner ID" });
+  }
+
+  if (
+    !fullName ||
+    !contactNumber ||
+    !minBudget ||
+    !maxBudget ||
+    !propertyCategory ||
+    !state ||
+    !city ||
+    !preferredLocation ||
+    !message
+  ) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  /* ── pack extra fields into notes ── */
+  const notes =
+    [
+      preferredContactMethod && `Preferred Contact: ${preferredContactMethod}`,
+      preferredBHK && `BHK: ${preferredBHK}`,
+      nearbyLandmark && `Landmark: ${nearbyLandmark}`,
+      leadPriority && `Priority: ${leadPriority}`,
+      followUpDate && `Follow-up: ${followUpDate}`,
+    ]
+      .filter(Boolean)
+      .join(" | ") || null;
+
+  const finalPropertyId = selectedProperty?.propertyid || null;
+
+  let insertSQL;
+  let insertData;
+
+  /* ── Case 1: with property ── */
+  if (finalPropertyId) {
+    insertSQL = `
+      INSERT INTO enquirers (
+        projectpartner,
+        customer,
+        contact,
+        minbudget,
+        maxbudget,
+        category,
+        state,
+        city,
+        location,
+        propertyid,
+        message,
+        source,
+        notes,
+        updated_at,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    insertData = [
+      projectpartnerid,
+      fullName,
+      contactNumber,
+      minBudget,
+      maxBudget,
+      propertyCategory,
+      state,
+      city,
+      preferredLocation,
+      finalPropertyId,
+      message,
+      leadSource || "Direct",
+      notes,
+      currentdate,
+      currentdate,
+    ];
+  } else {
+    /* ── Case 2: without property ── */
+    insertSQL = `
+      INSERT INTO enquirers (
+        projectbroker,
+        projectpartner,
+        customer,
+        contact,
+        minbudget,
+        maxbudget,
+        category,
+        state,
+        city,
+        location,
+        message,
+        source,
+        notes,
+        updated_at,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    insertData = [
+      projectpartnerid, // projectbroker
+      projectpartnerid, // projectpartner
+      fullName,
+      contactNumber,
+      minBudget,
+      maxBudget,
+      propertyCategory,
+      state,
+      city,
+      preferredLocation,
+      message,
+      leadSource || "Direct",
+      notes,
+      currentdate,
+      currentdate,
+    ];
+  }
+
+  db.query(insertSQL, insertData, (err, result) => {
+    if (err) {
+      console.error("Error inserting enquiry:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    res.status(201).json({
+      message: "Enquiry added successfully",
+      enquiryId: result.insertId,
+    });
+  });
 };
