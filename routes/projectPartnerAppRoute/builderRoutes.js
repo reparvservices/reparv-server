@@ -2,6 +2,7 @@ import express from "express";
 import {
   add,
   assignLogin,
+  checkDuplicate,
   deleteBuilder,
   getAll,
   getAllActive,
@@ -33,7 +34,7 @@ router.post("/add", upload.single("logo"), add);
 router.get("/:id", getAll);
 router.get("/active/:id", getAllActive);
 router.get("/:id", getById);
-
+router.post("/check-duplicate", checkDuplicate);
 router.put("/edit/:id", update);
 router.put("/status/:id", status);
 router.put("/assignlogin/:id", assignLogin);

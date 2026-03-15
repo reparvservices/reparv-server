@@ -489,3 +489,72 @@ export const assignLogin = async (req, res) => {
     res.status(500).json({ message: "Unexpected server error", error });
   }
 };
+// ─────────────────────────────────────────────
+// CHECK IF BUILDER CONTACT / EMAIL ALREADY EXISTS
+// GET /api/builders/check-duplicate?contact=9876543210&email=abc@gmail.com
+// ─────────────────────────────────────────────
+export const checkDuplicate = async (req, res) => {
+  console.log("check-duplicate query =>", req.query);
+  try {
+    const { contact, email } = req.query;
+
+    if (!contact && !email) {
+      return res
+        .status(400)
+        .json({ message: "Provide contact or email to check" });
+    }
+
+    const params = [];
+    const conditions = [];
+
+    if (contact) {
+      conditions.push("contact = ?");
+      params.push(contact);
+    }
+
+    if (email) {
+      conditions.push("email = ?");
+      params.push(email);
+    }
+
+    // ✅ SELECT contact and email — not just builderid
+    const query =
+      "SELECT builderid, contact, email FROM builders WHERE " +
+      conditions.join(" OR ");
+
+    db.query(query, params, (err, result) => {
+      if (err) {
+        console.error("Duplicate check error:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+
+      console.log("result =>", result);
+
+      if (result.length === 0) {
+        return res.status(200).json({ exists: false });
+      }
+
+      // ✅ r.contact now exists because we SELECT it above
+      if (contact && result.some((r) => r.contact === contact)) {
+        return res.status(200).json({
+          exists: true,
+          field: "contact",
+          message: "This contact number is already registered",
+        });
+      }
+
+      if (email && result.some((r) => r.email === email)) {
+        return res.status(200).json({
+          exists: true,
+          field: "email",
+          message: "This email is already registered",
+        });
+      }
+
+      return res.status(200).json({ exists: false });
+    });
+  } catch (error) {
+    console.error("Check duplicate error:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
