@@ -1,12 +1,13 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment-timezone";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 export const getAll = (req, res) => {
   const ticketGenerator = req.params.generator;
   const projectpartnerid = req.params.id;
   const adharId = req.params.adharId;
-  console.log(adharId,'ddd');
-  
+  console.log(adharId, "ddd");
+
   if (!ticketGenerator) {
     return res.status(401).json({ message: "Select Generator Not Selected" });
   }
@@ -101,8 +102,14 @@ ORDER BY tickets.created_at DESC;
 
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -183,13 +190,12 @@ export const getEmployees = (req, res) => {
 };
 
 // **Add New **
+
 export const add = (req, res) => {
   const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
   console.log(req.body);
 
   const adharId = req.params?.adharId;
-   console.log(adharId);
-
   if (!adharId) {
     return res
       .status(401)
@@ -204,65 +210,85 @@ export const add = (req, res) => {
       { length: 3 },
       () => letters[Math.floor(Math.random() * letters.length)],
     ).join("");
-
     const randomDigits = Array.from(
       { length: 3 },
       () => digits[Math.floor(Math.random() * digits.length)],
     ).join("");
-
-    return randomLetters + randomDigits; // Letters first, then numbers
+    return randomLetters + randomDigits;
   };
 
-  const { adminid, departmentid, employeeid, issue, details } = req.body;
+  const { adminid, departmentid, employeeid, issue, details, priority } =
+    req.body;
 
   if (!issue || !details) {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  const tryInsert = () => {
-    const ticketno = generateCode();
+  // ── Upload screenshot to S3 if file attached ──────
+  const handleUpload = async () => {
+    if (!req.file) return null;
 
-    const sql = `INSERT INTO tickets (ticketadder, adminid, departmentid, employeeid, ticketno, issue, details, updated_at, created_at) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-    db.query(
-      sql,
-      [
-        adharId,
-        adminid,
-        departmentid,
-        employeeid,
-        ticketno,
-        issue,
-        details,
-        currentDate,
-        currentDate,
-      ],
-      (err, result) => {
-        if (err) {
-          if (err.code === "ER_DUP_ENTRY") {
-            // Duplicate ticket number — try again
-            console.warn("Duplicate ticket number, retrying...");
-            return tryInsert();
-          }
-          // Other DB error
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-        }
-
-        // Insert successful
-        return res.status(201).json({
-          message: "Ticket added successfully",
-          Id: result.insertId,
-          ticketno,
-        });
-      },
-    );
+    try {
+      const url = await uploadToS3(req.file); // uploadToS3 returns a Promise<url>
+      return url;
+    } catch (err) {
+      throw err;
+    }
   };
-  tryInsert();
-};
 
+  handleUpload()
+    .then((screenshotUrl) => {
+      const tryInsert = () => {
+        const ticketno = generateCode();
+
+        const sql = `INSERT INTO tickets 
+          (ticketadder, adminid, departmentid, employeeid, ticketno, issue, details, priority, screenshot, updated_at, created_at) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+        db.query(
+          sql,
+          [
+            adharId,
+            adminid || null,
+            departmentid || null,
+            employeeid || null,
+            ticketno,
+            issue,
+            details,
+            priority || null,
+            screenshotUrl || null, // ← S3 URL or null
+            currentDate,
+            currentDate,
+          ],
+          (err, result) => {
+            if (err) {
+              if (err.code === "ER_DUP_ENTRY") {
+                console.warn("Duplicate ticket number, retrying...");
+                return tryInsert();
+              }
+              return res
+                .status(500)
+                .json({ message: "Database error", error: err });
+            }
+
+            return res.status(201).json({
+              message: "Ticket added successfully",
+              Id: result.insertId,
+              ticketno,
+            });
+          },
+        );
+      };
+
+      tryInsert();
+    })
+    .catch((uploadErr) => {
+      console.error("S3 upload error:", uploadErr);
+      return res
+        .status(500)
+        .json({ message: "Screenshot upload failed", error: uploadErr });
+    });
+};
 /* Change status */
 export const changeStatus = (req, res) => {
   const { status } = req.body;
@@ -304,7 +330,10 @@ export const changeStatus = (req, res) => {
 
 // **Edit **
 export const update = (req, res) => {
-  const Id = parseInt(req.params.id);
+  const Id = req.params.id;
+  console.log(req.body, "nnn", Id, req.params.id);
+  console.log(req.params.id, "ddd");
+
   const { adminid, departmentid, employeeid, issue, details } = req.body;
 
   if (!issue || !details) {
