@@ -693,9 +693,9 @@ export const addPropertyNew = async (req, res) => {
 };
 
 export const updateProperty = async (req, res) => {
+  const { propertyid } = req.params;
   try {
     const {
-      propertyid,
       property_type,
       property_name,
       price,
@@ -788,146 +788,124 @@ export const updateProperty = async (req, res) => {
           });
         }
 
-        /* ---------- DUPLICATE NAME CHECK (exclude self) ---------- */
+        /* ---------- AREA PARSE ---------- */
 
-        db.query(
-          "SELECT propertyid FROM properties WHERE propertyName = ? AND propertyid != ?",
-          [property_name, propertyid],
-          (err, dupResult) => {
-            if (err) {
-              return res.status(500).json({
-                success: false,
-                message: "Database error",
-              });
-            }
+        let parsedAreas = [];
 
-            if (dupResult.length > 0) {
-              return res.status(409).json({
-                success: false,
-                message: "Property name already exists",
-              });
-            }
+        try {
+          parsedAreas =
+            typeof areas === "string" ? JSON.parse(areas) : areas || [];
+        } catch {
+          parsedAreas = [];
+        }
 
-            /* ---------- AREA PARSE ---------- */
+        const builtUpArea =
+          parsedAreas.find((a) => a.label?.toLowerCase().includes("built"))
+            ?.value || null;
 
-            let parsedAreas = [];
+        const carpetArea =
+          parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
+            ?.value || null;
 
-            try {
-              parsedAreas =
-                typeof areas === "string" ? JSON.parse(areas) : areas || [];
-            } catch {
-              parsedAreas = [];
-            }
+        /* ---------- SEO SLUG ---------- */
 
-            const builtUpArea =
-              parsedAreas.find((a) => a.label?.toLowerCase().includes("built"))
-                ?.value || null;
+        // Only regenerate slug if name changed
+        const seoSlug =
+          existing.propertyName !== property_name
+            ? toSlug(property_name)
+            : undefined;
 
-            const carpetArea =
-              parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
-                ?.value || null;
+        /* ---------- BUILD UPDATE QUERY ---------- */
 
-            /* ---------- SEO SLUG ---------- */
+        const updateSQL = `
+          UPDATE properties SET
+            propertyType        = ?,
+            propertyCategory    = ?,
+            propertyName        = ?,
+            totalSalesPrice     = ?,
+            totalOfferPrice     = ?,
+            contact             = ?,
+            projectBy           = ?,
+            state               = ?,
+            city                = ?,
+            address             = ?,
+            pincode             = ?,
+            latitude            = ?,
+            longitude           = ?,
+            builtUpArea         = ?,
+            carpetArea          = ?,
+            frontView           = ?,
+            sideView            = ?,
+            kitchenView         = ?,
+            hallView            = ?,
+            bedroomView         = ?,
+            bathroomView        = ?,
+            balconyView         = ?,
+            nearestLandmark     = ?,
+            developedAmenities  = ?,
+            extraImages         = ?,
+            propertyVideo       = ?
+            ${seoSlug ? ", seoSlug = ?" : ""}
+            , updated_at        = NOW()
+          WHERE propertyid = ?
+            AND projectpartnerid = ?
+        `;
 
-            // Only regenerate slug if name changed
-            const seoSlug =
-              existing.propertyName !== property_name
-                ? toSlug(property_name)
-                : undefined;
+        const values = [
+          property_type,
+          property_type,
+          property_name,
+          price,
+          ofprice,
+          contact,
+          ownername,
+          state,
+          city,
+          address,
+          pincode,
+          latitude,
+          longitude,
+          builtUpArea,
+          carpetArea,
+          JSON.stringify(frontView || []),
+          JSON.stringify(sideView || []),
+          JSON.stringify(kitchenView || []),
+          JSON.stringify(hallView || []),
+          JSON.stringify(bedroomView || []),
+          JSON.stringify(bathroomView || []),
+          JSON.stringify(balconyView || []),
+          JSON.stringify(nearestLandmark || []),
+          JSON.stringify(developedAmenities || []),
+          JSON.stringify(extraImages || []),
+          propertyVideo,
+          ...(seoSlug ? [seoSlug] : []),
+          propertyid,
+          projectpartnerid,
+        ];
 
-            /* ---------- BUILD UPDATE QUERY ---------- */
-
-            const updateSQL = `
-              UPDATE properties SET
-                propertyType        = ?,
-                propertyCategory    = ?,
-                propertyName        = ?,
-                totalSalesPrice     = ?,
-                totalOfferPrice     = ?,
-                contact             = ?,
-                projectBy           = ?,
-                state               = ?,
-                city                = ?,
-                address             = ?,
-                pincode             = ?,
-                latitude            = ?,
-                longitude           = ?,
-                builtUpArea         = ?,
-                carpetArea          = ?,
-                frontView           = ?,
-                sideView            = ?,
-                kitchenView         = ?,
-                hallView            = ?,
-                bedroomView         = ?,
-                bathroomView        = ?,
-                balconyView         = ?,
-                nearestLandmark     = ?,
-                developedAmenities  = ?,
-                extraImages         = ?,
-                propertyVideo       = ?
-                ${seoSlug ? ", seoSlug = ?" : ""}
-                , updated_at        = NOW()
-              WHERE propertyid = ?
-                AND projectpartnerid = ?
-            `;
-
-            const values = [
-              property_type,
-              property_type,
-              property_name,
-              price,
-              ofprice,
-              contact,
-              ownername,
-              state,
-              city,
-              address,
-              pincode,
-              latitude,
-              longitude,
-              builtUpArea,
-              carpetArea,
-              JSON.stringify(frontView || []),
-              JSON.stringify(sideView || []),
-              JSON.stringify(kitchenView || []),
-              JSON.stringify(hallView || []),
-              JSON.stringify(bedroomView || []),
-              JSON.stringify(bathroomView || []),
-              JSON.stringify(balconyView || []),
-              JSON.stringify(nearestLandmark || []),
-              JSON.stringify(developedAmenities || []),
-              JSON.stringify(extraImages || []),
-              propertyVideo,
-              ...(seoSlug ? [seoSlug] : []),
-              propertyid,
-              projectpartnerid,
-            ];
-
-            db.query(updateSQL, values, (err, result) => {
-              if (err) {
-                console.error("Update error:", err);
-                return res.status(500).json({
-                  success: false,
-                  message: "Update failed",
-                });
-              }
-
-              if (result.affectedRows === 0) {
-                return res.status(404).json({
-                  success: false,
-                  message: "Property not found or no changes made",
-                });
-              }
-
-              res.status(200).json({
-                success: true,
-                message: "Property updated successfully",
-                id: propertyid,
-                ...(seoSlug ? { seoSlug } : {}),
-              });
+        db.query(updateSQL, values, (err, result) => {
+          if (err) {
+            console.error("Update error:", err);
+            return res.status(500).json({
+              success: false,
+              message: "Update failed",
             });
-          },
-        );
+          }
+
+          if (result.affectedRows === 0) {
+            return res.status(404).json({
+              success: false,
+              message: "Property not found or no changes made",
+            });
+          }
+
+          res.status(200).json({
+            success: true,
+            message: "Property updated successfully",
+            id: propertyid,
+            ...(seoSlug ? { seoSlug } : {}),
+          });
+        });
       },
     );
   } catch (error) {
