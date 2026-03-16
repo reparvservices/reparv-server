@@ -5,6 +5,7 @@ import {
   addPropertyNew,
   getAll,
   update,
+  updateProperty,
 } from "../../controllers/projectPartnerApp/propertyController.js";
 import { generateUploadUrl } from "../../controllers/projectPartnerApp/uploadController.js";
 
@@ -71,7 +72,7 @@ router.post(
   ]),
   addProperty,
 );
-
+router.put("/update/:propertyid", updateProperty);
 // New add route — supports extraImages + lat/lng in body
 router.post("/add", addPropertyNew);
 

@@ -23,7 +23,7 @@ export const uploadToS3 = async (file) => {
   return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
 };
 
-/* 🗑 Delete from S3 using URL */
+/*Delete from S3 using URL */
 export const deleteFromS3 = async (fileUrl) => {
   if (!fileUrl) return;
 

@@ -691,3 +691,251 @@ export const addPropertyNew = async (req, res) => {
     });
   }
 };
+
+export const updateProperty = async (req, res) => {
+  try {
+    const {
+      propertyid,
+      property_type,
+      property_name,
+      price,
+      ownername,
+      contact,
+      areas,
+      ofprice,
+      state,
+      city,
+      address,
+      pincode,
+      latitude,
+      longitude,
+      projectpartnerid,
+      propertyVideo,
+
+      frontView,
+      sideView,
+      kitchenView,
+      hallView,
+      bedroomView,
+      bathroomView,
+      balconyView,
+      nearestLandmark,
+      developedAmenities,
+      extraImages,
+    } = req.body;
+
+    console.log(req.body);
+
+    /* ---------- AUTH CHECK ---------- */
+
+    if (!projectpartnerid) {
+      return res.status(401).json({
+        success: false,
+        message: "Login required",
+      });
+    }
+
+    /* ---------- REQUIRED FIELD CHECK ---------- */
+
+    if (!propertyid) {
+      return res.status(400).json({
+        success: false,
+        message: "Property ID is required",
+      });
+    }
+
+    const missing = [];
+
+    if (!property_name) missing.push("Property Name");
+    if (!property_type) missing.push("Property Type");
+    if (!price) missing.push("Price");
+    if (!state) missing.push("State");
+    if (!city) missing.push("City");
+
+    if (missing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing fields: ${missing.join(", ")}`,
+      });
+    }
+
+    /* ---------- OWNERSHIP CHECK ---------- */
+
+    db.query(
+      "SELECT propertyid, projectpartnerid, propertyName FROM properties WHERE propertyid = ?",
+      [propertyid],
+      (err, result) => {
+        if (err) {
+          return res.status(500).json({
+            success: false,
+            message: "Database error",
+          });
+        }
+
+        if (result.length === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "Property not found",
+          });
+        }
+
+        const existing = result[0];
+
+        if (String(existing.projectpartnerid) !== String(projectpartnerid)) {
+          return res.status(403).json({
+            success: false,
+            message: "Unauthorized to update this property",
+          });
+        }
+
+        /* ---------- DUPLICATE NAME CHECK (exclude self) ---------- */
+
+        db.query(
+          "SELECT propertyid FROM properties WHERE propertyName = ? AND propertyid != ?",
+          [property_name, propertyid],
+          (err, dupResult) => {
+            if (err) {
+              return res.status(500).json({
+                success: false,
+                message: "Database error",
+              });
+            }
+
+            if (dupResult.length > 0) {
+              return res.status(409).json({
+                success: false,
+                message: "Property name already exists",
+              });
+            }
+
+            /* ---------- AREA PARSE ---------- */
+
+            let parsedAreas = [];
+
+            try {
+              parsedAreas =
+                typeof areas === "string" ? JSON.parse(areas) : areas || [];
+            } catch {
+              parsedAreas = [];
+            }
+
+            const builtUpArea =
+              parsedAreas.find((a) => a.label?.toLowerCase().includes("built"))
+                ?.value || null;
+
+            const carpetArea =
+              parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
+                ?.value || null;
+
+            /* ---------- SEO SLUG ---------- */
+
+            // Only regenerate slug if name changed
+            const seoSlug =
+              existing.propertyName !== property_name
+                ? toSlug(property_name)
+                : undefined;
+
+            /* ---------- BUILD UPDATE QUERY ---------- */
+
+            const updateSQL = `
+              UPDATE properties SET
+                propertyType        = ?,
+                propertyCategory    = ?,
+                propertyName        = ?,
+                totalSalesPrice     = ?,
+                totalOfferPrice     = ?,
+                contact             = ?,
+                projectBy           = ?,
+                state               = ?,
+                city                = ?,
+                address             = ?,
+                pincode             = ?,
+                latitude            = ?,
+                longitude           = ?,
+                builtUpArea         = ?,
+                carpetArea          = ?,
+                frontView           = ?,
+                sideView            = ?,
+                kitchenView         = ?,
+                hallView            = ?,
+                bedroomView         = ?,
+                bathroomView        = ?,
+                balconyView         = ?,
+                nearestLandmark     = ?,
+                developedAmenities  = ?,
+                extraImages         = ?,
+                propertyVideo       = ?
+                ${seoSlug ? ", seoSlug = ?" : ""}
+                , updated_at        = NOW()
+              WHERE propertyid = ?
+                AND projectpartnerid = ?
+            `;
+
+            const values = [
+              property_type,
+              property_type,
+              property_name,
+              price,
+              ofprice,
+              contact,
+              ownername,
+              state,
+              city,
+              address,
+              pincode,
+              latitude,
+              longitude,
+              builtUpArea,
+              carpetArea,
+              JSON.stringify(frontView || []),
+              JSON.stringify(sideView || []),
+              JSON.stringify(kitchenView || []),
+              JSON.stringify(hallView || []),
+              JSON.stringify(bedroomView || []),
+              JSON.stringify(bathroomView || []),
+              JSON.stringify(balconyView || []),
+              JSON.stringify(nearestLandmark || []),
+              JSON.stringify(developedAmenities || []),
+              JSON.stringify(extraImages || []),
+              propertyVideo,
+              ...(seoSlug ? [seoSlug] : []),
+              propertyid,
+              projectpartnerid,
+            ];
+
+            db.query(updateSQL, values, (err, result) => {
+              if (err) {
+                console.error("Update error:", err);
+                return res.status(500).json({
+                  success: false,
+                  message: "Update failed",
+                });
+              }
+
+              if (result.affectedRows === 0) {
+                return res.status(404).json({
+                  success: false,
+                  message: "Property not found or no changes made",
+                });
+              }
+
+              res.status(200).json({
+                success: true,
+                message: "Property updated successfully",
+                id: propertyid,
+                ...(seoSlug ? { seoSlug } : {}),
+              });
+            });
+          },
+        );
+      },
+    );
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
