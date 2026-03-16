@@ -503,6 +503,7 @@ export const update = async (req, res) => {
     },
   );
 };
+
 export const addPropertyNew = async (req, res) => {
   try {
     const {
@@ -521,19 +522,29 @@ export const addPropertyNew = async (req, res) => {
       longitude,
       projectpartnerid,
       propertyVideo,
-    } = req.body;
 
-    /* ---------- AUTH CHECK ---------- */
+      frontView,
+      sideView,
+      kitchenView,
+      hallView,
+      bedroomView,
+      bathroomView,
+      balconyView,
+      nearestLandmark,
+      developedAmenities,
+      extraImages,
+    } = req.body;
+    console.log(req.body);
+
     if (!projectpartnerid) {
       return res.status(401).json({
         success: false,
-        message:
-          "You must be logged in to add a property. Please login and try again.",
+        message: "Login required",
       });
     }
 
-    /* ---------- REQUIRED FIELDS ---------- */
     const missing = [];
+
     if (!property_name) missing.push("Property Name");
     if (!property_type) missing.push("Property Type");
     if (!price) missing.push("Price");
@@ -543,106 +554,69 @@ export const addPropertyNew = async (req, res) => {
     if (missing.length > 0) {
       return res.status(400).json({
         success: false,
-        message: `The following required fields are missing: ${missing.join(", ")}.`,
+        message: `Missing fields: ${missing.join(", ")}`,
       });
     }
 
-    /* ---------- DUPLICATE NAME CHECK ---------- */
+    /* ---------- DUPLICATE CHECK ---------- */
+
     db.query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",
       [property_name],
-      async (err, result) => {
+      (err, result) => {
         if (err) {
-          console.error("DB ERROR (duplicate check):", err);
           return res.status(500).json({
             success: false,
-            message:
-              "A database error occurred while checking the property name. Please try again.",
+            message: "Database error",
           });
         }
 
         if (result.length > 0) {
           return res.status(409).json({
             success: false,
-            message: `A property named "${property_name}" already exists. Please use a different name.`,
+            message: "Property name already exists",
           });
         }
 
-        /* ---------- PARSE AREAS ---------- */
+        /* ---------- AREA PARSE ---------- */
+
         let parsedAreas = [];
+
         try {
           parsedAreas =
-            typeof areas === "string"
-              ? JSON.parse(areas)
-              : Array.isArray(areas)
-                ? areas
-                : [];
-        } catch (e) {
+            typeof areas === "string" ? JSON.parse(areas) : areas || [];
+        } catch {
           parsedAreas = [];
         }
 
         const builtUpArea =
-          parsedAreas.find((a) => a.label?.toLowerCase().includes("built-up"))
+          parsedAreas.find((a) => a.label?.toLowerCase().includes("built"))
             ?.value || null;
+
         const carpetArea =
           parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
             ?.value || null;
 
-        /* ---------- UPLOAD HELPER ---------- */
-        const uploadField = async (field) => {
-          if (!req.files?.[field]) return [];
+        const seoSlug = toSlug(property_name);
 
-          let converted;
-          try {
-            converted = await convertImagesToWebp({
-              [field]: req.files[field],
-            });
-          } catch (e) {
-            throw new Error(
-              `Failed to process images for "${field}": ${e.message}`,
-            );
-          }
-
-          // Upload all files in this field in parallel
-          const urls = await Promise.all(
-            converted[field].map(async (file) => {
-              try {
-                return await uploadToS3(file);
-              } catch (e) {
-                throw new Error(
-                  `Failed to upload "${field}" image to storage: ${e.message}`,
-                );
-              }
-            }),
-          );
-
-          return urls;
-        };
-
-        /* ---------- PARALLEL UPLOAD ALL FIELDS ---------- */
-        let uploadResults;
-        try {
-          uploadResults = await Promise.all([
-            uploadField("frontView"),
-            uploadField("sideView"),
-            uploadField("kitchenView"),
-            uploadField("hallView"),
-            uploadField("bedroomView"),
-            uploadField("bathroomView"),
-            uploadField("balconyView"),
-            uploadField("nearestLandmark"),
-            uploadField("developedAmenities"),
-            uploadField("extraImages"),
-          ]);
-        } catch (uploadErr) {
-          console.error("UPLOAD ERROR:", uploadErr);
-          return res.status(500).json({
-            success: false,
-            message: `Image upload failed. ${uploadErr.message} Please check your internet connection and try again.`,
-          });
-        }
-
-        const [
+        const insertSQL = `
+        INSERT INTO properties (
+          projectpartnerid,
+          propertyType,
+          propertyCategory,
+          propertyName,
+          totalSalesPrice,
+          totalOfferPrice,
+          contact,
+          projectBy,
+          state,
+          city,
+          address,
+          pincode,
+          latitude,
+          longitude,
+          builtUpArea,
+          carpetArea,
           frontView,
           sideView,
           kitchenView,
@@ -653,25 +627,12 @@ export const addPropertyNew = async (req, res) => {
           nearestLandmark,
           developedAmenities,
           extraImages,
-        ] = uploadResults;
-
-        /* ---------- INSERT ---------- */
-        const seoSlug = toSlug(property_name);
-
-        const insertSQL = `
-          INSERT INTO properties (
-            projectpartnerid, propertyType, propertyCategory, propertyName,
-            totalSalesPrice, totalOfferPrice, contact, projectBy,
-            state, city, address, pincode,
-            latitude, longitude,
-            builtUpArea, carpetArea,
-            frontView, sideView, kitchenView, hallView,
-            bedroomView, bathroomView, balconyView,
-            nearestLandmark, developedAmenities,
-            extraImages, propertyVideo,
-            seoSlug, created_at, updated_at
-          )
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+          propertyVideo,
+          seoSlug,
+          created_at,
+          updated_at
+        )
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
         `;
 
         const values = [
@@ -687,49 +648,46 @@ export const addPropertyNew = async (req, res) => {
           city,
           address,
           pincode,
-          latitude ? parseFloat(latitude) : null,
-          longitude ? parseFloat(longitude) : null,
+          latitude,
+          longitude,
           builtUpArea,
           carpetArea,
-          JSON.stringify(frontView),
-          JSON.stringify(sideView),
-          JSON.stringify(kitchenView),
-          JSON.stringify(hallView),
-          JSON.stringify(bedroomView),
-          JSON.stringify(bathroomView),
-          JSON.stringify(balconyView),
-          JSON.stringify(nearestLandmark),
-          JSON.stringify(developedAmenities),
-          JSON.stringify(extraImages),
+          JSON.stringify(frontView || []),
+          JSON.stringify(sideView || []),
+          JSON.stringify(kitchenView || []),
+          JSON.stringify(hallView || []),
+          JSON.stringify(bedroomView || []),
+          JSON.stringify(bathroomView || []),
+          JSON.stringify(balconyView || []),
+          JSON.stringify(nearestLandmark || []),
+          JSON.stringify(developedAmenities || []),
+          JSON.stringify(extraImages || []),
           propertyVideo,
           seoSlug,
         ];
 
         db.query(insertSQL, values, (err, result) => {
           if (err) {
-            console.error("INSERT ERROR:", err);
             return res.status(500).json({
               success: false,
-              message:
-                "Property details could not be saved to the database. Please try again or contact support.",
+              message: "Insert failed",
             });
           }
 
-          return res.status(201).json({
+          res.status(201).json({
             success: true,
-            message: `Property "${property_name}" has been listed successfully!`,
+            message: "Property created successfully",
             id: result.insertId,
-            slug: seoSlug,
           });
         });
       },
     );
   } catch (error) {
-    console.error("SERVER ERROR:", error);
-    return res.status(500).json({
+    console.error(error);
+
+    res.status(500).json({
       success: false,
-      message:
-        "An unexpected server error occurred. Please try again. If the problem persists, contact support.",
+      message: "Server error",
     });
   }
 };

@@ -101,8 +101,14 @@ export const getAll = (req, res) => {
 
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
       followUp: row.followUp || null,
       followUpDate: row.followUpDate
         ? moment(row.followUpDate).format("DD MMM YYYY | hh:mm A")
@@ -148,7 +154,7 @@ export const getById = async (req, res) => {
       LEFT JOIN projectpartner 
         ON salespersons.projectpartnerid = projectpartner.id 
       WHERE salespersons.salespersonsid = ?`,
-      [Id]
+      [Id],
     );
 
     if (result.length === 0) {
@@ -173,7 +179,7 @@ export const getById = async (req, res) => {
       FROM subscriptions
       WHERE salespersonid = ?
       ORDER BY start_date DESC`,
-      [salesperson.salespersonsid]
+      [salesperson.salespersonsid],
     );
 
     /* Attach history */
@@ -181,7 +187,6 @@ export const getById = async (req, res) => {
     salesperson.subscriptionHistory = history;
 
     res.json(salesperson);
-
   } catch (error) {
     console.error("Error fetching salesperson:", error);
 
@@ -291,9 +296,9 @@ export const getById = async (req, res) => {
 
 //       // Insert new salespersons
 //       const insertSql = `
-//         INSERT INTO salespersons 
-//         (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, rerano, adharno, panno, 
-//          bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
+//         INSERT INTO salespersons
+//         (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, rerano, adharno, panno,
+//          bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at)
 //         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
 //       `;
 
@@ -336,8 +341,8 @@ export const getById = async (req, res) => {
 
 //           // Insert default follow-up entry
 //           const followupSql = `
-//             INSERT INTO partnerFollowup 
-//             (partnerId, role, followUp, followUpText, created_at, updated_at) 
+//             INSERT INTO partnerFollowup
+//             (partnerId, role, followUp, followUpText, created_at, updated_at)
 //             VALUES (?, ?, ?, ?, ?, ?)
 //           `;
 
@@ -426,7 +431,7 @@ export const add = async (req, res) => {
         if (err) return callback(err, null);
         if (results.length > 0) return generateUniqueReferralCode(callback);
         return callback(null, code);
-      }
+      },
     );
   };
 
@@ -437,13 +442,19 @@ export const add = async (req, res) => {
     let reraImageUrl = null;
 
     if (req.files?.["adharImage"]?.[0]) {
-      adharImageUrl = await uploadToS3(req.files["adharImage"][0], "documents/adhar");
+      adharImageUrl = await uploadToS3(
+        req.files["adharImage"][0],
+        "documents/adhar",
+      );
     }
     if (req.files?.["panImage"]?.[0]) {
       panImageUrl = await uploadToS3(req.files["panImage"][0], "documents/pan");
     }
     if (req.files?.["reraImage"]?.[0]) {
-      reraImageUrl = await uploadToS3(req.files["reraImage"][0], "documents/rera");
+      reraImageUrl = await uploadToS3(
+        req.files["reraImage"][0],
+        "documents/rera",
+      );
     }
 
     // 2️⃣ Check duplicates
@@ -459,17 +470,19 @@ export const add = async (req, res) => {
       if (rows.length > 0) {
         const dup = rows[0];
         let duplicateField = "";
-        if (dup.contact === contact) duplicateField = "Contact number already exists";
+        if (dup.contact === contact)
+          duplicateField = "Contact number already exists";
         else if (dup.email === email) duplicateField = "Email already exists";
-        else if (dup.username === username) duplicateField = "Username already exists";
+        else if (dup.username === username)
+          duplicateField = "Username already exists";
 
         return res.status(409).json({
           message: duplicateField,
           field: duplicateField.includes("Contact")
             ? "contact"
             : duplicateField.includes("Email")
-            ? "email"
-            : "username",
+              ? "email"
+              : "username",
         });
       }
 
@@ -541,8 +554,9 @@ export const add = async (req, res) => {
               "UPDATE salespersons SET status = 'Active' WHERE salespersonsid = ?",
               [newId],
               (updateErr) => {
-                if (updateErr) console.error("Error updating status:", updateErr);
-              }
+                if (updateErr)
+                  console.error("Error updating status:", updateErr);
+              },
             );
 
             // Insert follow-up
@@ -568,7 +582,7 @@ export const add = async (req, res) => {
                     username,
                     password,
                     "Sales Partner",
-                    "https://sales.reparv.in"
+                    "https://sales.reparv.in",
                   );
                 }
 
@@ -578,9 +592,9 @@ export const add = async (req, res) => {
                     : "Sales Person added successfully",
                   Id: newId,
                 });
-              }
+              },
             );
-          }
+          },
         );
       });
     });
@@ -591,44 +605,53 @@ export const add = async (req, res) => {
 };
 
 export const edit = async (req, res) => {
-  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const {
-    fullname,
-    contact,
-    email,
-    intrest,
-    address,
-    state,
-    city,
-    pincode,
-    experience,
-    rerano,
-    adharno,
-    panno,
-    bankname,
-    accountholdername,
-    accountnumber,
-    ifsc,
-  } = req.body;
-
-  const salespersonsid = parseInt(req.params.id);
-  if (isNaN(salespersonsid)) {
-    return res.status(400).json({ message: "Invalid Partner ID" });
-  }
-
-  if (!fullname || !contact || !email) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
   try {
-    // 1️⃣ Fetch old images from DB
-    const [rows] = await new Promise((resolve, reject) =>
+    console.log(req.body);
+
+    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+    const {
+      fullname,
+      contact,
+      email,
+      intrest,
+      address,
+      state,
+      city,
+      pincode,
+      experience,
+      rerano,
+      adharno,
+      panno,
+      bankname,
+      accountholdername,
+      accountnumber,
+      ifsc,
+    } = req.body;
+
+    const salespersonsid = parseInt(req.params.id);
+
+    if (isNaN(salespersonsid)) {
+      return res.status(400).json({ message: "Invalid Partner ID" });
+    }
+
+    if (!fullname || !contact || !email) {
+      return res
+        .status(400)
+        .json({ message: "Fullname, Contact and Email are required" });
+    }
+
+    // 1️⃣ Fetch existing images
+    const rows = await new Promise((resolve, reject) => {
       db.query(
         "SELECT adharimage, panimage, reraimage FROM salespersons WHERE salespersonsid = ?",
         [salespersonsid],
-        (err, results) => (err ? reject(err) : resolve(results))
-      )
-    );
+        (err, results) => {
+          if (err) reject(err);
+          else resolve(results);
+        },
+      );
+    });
 
     if (!rows || rows.length === 0) {
       return res.status(404).json({ message: "Sales person not found" });
@@ -636,42 +659,56 @@ export const edit = async (req, res) => {
 
     const oldData = rows[0];
 
-    // 2️⃣ Upload new files to S3 if provided
-    const adharFile = req.files?.["adharImage"]?.[0];
-    const panFile = req.files?.["panImage"]?.[0];
-    const reraFile = req.files?.["reraImage"]?.[0];
+    // Safe JSON parsing
+    let newAdharUrls = oldData?.adharimage
+      ? JSON.parse(oldData.adharimage)
+      : [];
+    let newPanUrls = oldData?.panimage ? JSON.parse(oldData.panimage) : [];
+    let newReraUrls = oldData?.reraimage ? JSON.parse(oldData.reraimage) : [];
 
-    let newAdharUrls = oldData.adharimage ? JSON.parse(oldData.adharimage) : [];
-    let newPanUrls = oldData.panimage ? JSON.parse(oldData.panimage) : [];
-    let newReraUrls = oldData.reraimage ? JSON.parse(oldData.reraimage) : [];
+    // 2️⃣ Get uploaded files
+    const adharFile = req.files?.adharImage?.[0];
+    const panFile = req.files?.panImage?.[0];
+    const reraFile = req.files?.reraImage?.[0];
 
-    // Upload & replace old files if new ones exist
+    // 3️⃣ Upload new files & delete old ones
     if (adharFile) {
       const url = await uploadToS3(adharFile, "documents/adhar");
-      // Delete old files from S3
-      for (const oldUrl of newAdharUrls) await deleteFromS3(oldUrl);
+
+      for (const oldUrl of newAdharUrls) {
+        await deleteFromS3(oldUrl);
+      }
+
       newAdharUrls = [url];
     }
 
     if (panFile) {
       const url = await uploadToS3(panFile, "documents/pan");
-      for (const oldUrl of newPanUrls) await deleteFromS3(oldUrl);
+
+      for (const oldUrl of newPanUrls) {
+        await deleteFromS3(oldUrl);
+      }
+
       newPanUrls = [url];
     }
 
     if (reraFile) {
       const url = await uploadToS3(reraFile, "documents/rera");
-      for (const oldUrl of newReraUrls) await deleteFromS3(oldUrl);
+
+      for (const oldUrl of newReraUrls) {
+        await deleteFromS3(oldUrl);
+      }
+
       newReraUrls = [url];
     }
 
-    // 3️⃣ Build update query
+    // 4️⃣ Build update query
     let updateSql = `
       UPDATE salespersons
-      SET fullname = ?, contact = ?, email = ?, intrest = ?, address = ?, state = ?, city = ?, 
-          pincode = ?, experience = ?, rerano = ?, adharno = ?, panno = ?, bankname = ?, 
-          accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?
-    `;
+      SET fullname=?, contact=?, email=?, intrest=?, address=?, state=?, city=?, 
+          pincode=?, experience=?, rerano=?, adharno=?, panno=?, bankname=?, 
+          accountholdername=?, accountnumber=?, ifsc=?, updated_at=?`;
+
     const updateValues = [
       fullname,
       contact,
@@ -692,31 +729,43 @@ export const edit = async (req, res) => {
       currentdate,
     ];
 
-    if (newAdharUrls.length > 0) {
-      updateSql += `, adharimage = ?`;
+    if (adharFile) {
+      updateSql += `, adharimage=?`;
       updateValues.push(JSON.stringify(newAdharUrls));
     }
-    if (newPanUrls.length > 0) {
-      updateSql += `, panimage = ?`;
+
+    if (panFile) {
+      updateSql += `, panimage=?`;
       updateValues.push(JSON.stringify(newPanUrls));
     }
-    if (newReraUrls.length > 0) {
-      updateSql += `, reraimage = ?`;
+
+    if (reraFile) {
+      updateSql += `, reraimage=?`;
       updateValues.push(JSON.stringify(newReraUrls));
     }
 
-    updateSql += ` WHERE salespersonsid = ?`;
+    updateSql += ` WHERE salespersonsid=?`;
     updateValues.push(salespersonsid);
 
-    // 4️⃣ Execute update
-    await new Promise((resolve, reject) =>
-      db.query(updateSql, updateValues, (err) => (err ? reject(err) : resolve()))
-    );
+    // 5️⃣ Execute update
+    await new Promise((resolve, reject) => {
+      db.query(updateSql, updateValues, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
+    });
 
-    res.status(200).json({ message: "Sales person updated successfully" });
+    return res.status(200).json({
+      success: true,
+      message: "Sales person updated successfully",
+    });
   } catch (err) {
     console.error("Error updating Sales Person:", err);
-    res.status(500).json({ message: "Server error", error: err });
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: err.message,
+    });
   }
 };
 
@@ -753,9 +802,9 @@ export const del = (req, res) => {
           res
             .status(200)
             .json({ message: "Sales person deleted successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -796,9 +845,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Sales person status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -875,7 +924,9 @@ export const updatePaymentId = async (req, res) => {
 
     const [partnerResult] = await db
       .promise()
-      .query("SELECT * FROM salespersons WHERE salespersonsid = ?", [partnerid]);
+      .query("SELECT * FROM salespersons WHERE salespersonsid = ?", [
+        partnerid,
+      ]);
 
     if (partnerResult.length === 0) {
       return res.status(404).json({
@@ -1032,7 +1083,7 @@ export const updatePaymentId = async (req, res) => {
         username,
         password,
         "Sales Partner",
-        "https://sales.reparv.in"
+        "https://sales.reparv.in",
       );
     }
 
@@ -1045,7 +1096,6 @@ export const updatePaymentId = async (req, res) => {
         username,
       },
     });
-
   } catch (error) {
     console.error("Update Payment Error:", error);
 
@@ -1071,8 +1121,14 @@ export const fetchFollowUpList = (req, res) => {
     }
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -1140,11 +1196,11 @@ export const addFollowUp = async (req, res) => {
               return res
                 .status(200)
                 .json({ message: "Partner follow-up added successfully." });
-            }
+            },
           );
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1198,15 +1254,15 @@ export const assignLogin = async (req, res) => {
               username,
               password,
               "Sales Partner",
-              "https://sales.reparv.in"
+              "https://sales.reparv.in",
             );
 
             res
               .status(200)
               .json({ message: "Sales Person login assigned successfully" });
-          }
+          },
         );
-      }
+      },
     );
   } catch (error) {
     console.error("Error assigning login:", error);
@@ -1271,7 +1327,9 @@ export const assignProjectPartner = async (req, res) => {
       (salesErr, salesResult) => {
         if (salesErr) {
           console.error("Database error:", salesErr);
-          return res.status(500).json({ message: "Database error", error: salesErr });
+          return res
+            .status(500)
+            .json({ message: "Database error", error: salesErr });
         }
 
         if (salesResult.length === 0) {
@@ -1287,11 +1345,15 @@ export const assignProjectPartner = async (req, res) => {
           async (ppErr, ppResult) => {
             if (ppErr) {
               console.error("Database error:", ppErr);
-              return res.status(500).json({ message: "Database error", error: ppErr });
+              return res
+                .status(500)
+                .json({ message: "Database error", error: ppErr });
             }
 
             if (ppResult.length === 0) {
-              return res.status(404).json({ message: "Project Partner not found" });
+              return res
+                .status(404)
+                .json({ message: "Project Partner not found" });
             }
 
             const projectPartner = ppResult[0];
@@ -1303,17 +1365,19 @@ export const assignProjectPartner = async (req, res) => {
               async (updateErr) => {
                 if (updateErr) {
                   console.error("Error updating salespersons:", updateErr);
-                  return res.status(500).json({ message: "Database error", error: updateErr });
+                  return res
+                    .status(500)
+                    .json({ message: "Database error", error: updateErr });
                 }
 
                 // 4. Send Email to Sales Person
                 try {
                   await sendProjectPartnerChangeEmail(
-                    salesPerson.email,                            
-                    projectPartner.fullname,                   
-                    projectPartner.contact,                   
-                    "Sales Partner",                    
-                    "https://sales.reparv.in"                
+                    salesPerson.email,
+                    projectPartner.fullname,
+                    projectPartner.contact,
+                    "Sales Partner",
+                    "https://sales.reparv.in",
                   );
                 } catch (err) {
                   console.error("Email sending failed:", err);
@@ -1322,17 +1386,14 @@ export const assignProjectPartner = async (req, res) => {
                 return res.status(200).json({
                   message: "Project Partner assigned & email sent successfully",
                 });
-              }
+              },
             );
-          }
+          },
         );
-      }
+      },
     );
   } catch (error) {
     console.error("Error assigning project partner:", error);
     res.status(500).json({ message: "Internal server error", error });
   }
 };
-
-
-

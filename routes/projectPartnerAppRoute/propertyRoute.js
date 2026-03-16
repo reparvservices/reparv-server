@@ -73,22 +73,7 @@ router.post(
 );
 
 // New add route — supports extraImages + lat/lng in body
-router.post(
-  "/add",
-  upload.fields([
-    { name: "frontView", maxCount: 3 },
-    { name: "sideView", maxCount: 3 },
-    { name: "kitchenView", maxCount: 3 },
-    { name: "hallView", maxCount: 3 },
-    { name: "bedroomView", maxCount: 3 },
-    { name: "bathroomView", maxCount: 3 },
-    { name: "balconyView", maxCount: 3 },
-    { name: "nearestLandmark", maxCount: 3 },
-    { name: "developedAmenities", maxCount: 3 },
-    { name: "extraImages", maxCount: 10 },
-  ]),
-  addPropertyNew,
-);
+router.post("/add", addPropertyNew);
 
 // Edit route
 router.put(

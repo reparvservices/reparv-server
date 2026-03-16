@@ -1,5 +1,6 @@
 import db from "../../config/dbconnect.js";
 import moment from "moment-timezone";
+import { uploadToS3 } from "../../utils/imageUpload.js";
 
 // **Fetch All **
 export const getAll = (req, res) => {
@@ -34,8 +35,14 @@ export const getAll = (req, res) => {
     }
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -74,8 +81,14 @@ export const getById = (req, res) => {
     }
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted[0]);
@@ -103,8 +116,14 @@ export const getPaymentList = (req, res) => {
     }
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -138,7 +157,7 @@ export const addPayment = async (req, res) => {
         (err, result) => {
           if (err) return reject(err);
           resolve(result);
-        }
+        },
       );
     });
 
@@ -149,7 +168,7 @@ export const addPayment = async (req, res) => {
     // Upload payment image to S3 (if provided)
     let paymentImage = null;
     if (req.file) {
-      paymentImage = await uploadToS3(req.file, "payments"); 
+      paymentImage = await uploadToS3(req.file);
       // "payments" can be your S3 folder
     }
 
@@ -159,11 +178,18 @@ export const addPayment = async (req, res) => {
         `INSERT INTO customerPayment 
           (enquirerId, paymentType, paymentAmount, paymentImage, created_at, updated_at) 
           VALUES (?, ?, ?, ?, ?, ?)`,
-        [enquirerId, paymentType, paymentAmount, paymentImage, currentdate, currentdate],
+        [
+          enquirerId,
+          paymentType,
+          paymentAmount,
+          paymentImage,
+          currentdate,
+          currentdate,
+        ],
         (err, result) => {
           if (err) return reject(err);
           resolve(result);
-        }
+        },
       );
     });
 
@@ -172,7 +198,6 @@ export const addPayment = async (req, res) => {
       insertedId: insertResult.insertId,
       paymentImage,
     });
-
   } catch (error) {
     console.error("Error in addPayment:", error);
     return res.status(500).json({ message: "Server error", error });

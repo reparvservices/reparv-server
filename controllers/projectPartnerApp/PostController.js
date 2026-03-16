@@ -72,7 +72,6 @@ ORDER BY
 };
 
 // **Add New **
-
 export const add = async (req, res) => {
   const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
   console.log("add");
