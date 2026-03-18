@@ -1,7 +1,10 @@
 import express from "express";
 import multer from "multer";
 
-import { loginUser } from "../../controllers/salesApp/ProfileController.js";
+import {
+  loginUser,
+  updateProfileHeader,
+} from "../../controllers/salesApp/ProfileController.js";
 import {
   add,
   sendsalespersonsOtp,
@@ -34,6 +37,15 @@ router.post(
   "/register",
   upload.fields([{ name: "profileImage", maxCount: 1 }]),
   add,
+);
+
+router.put(
+  "/edit",
+  upload.fields([
+    { name: "userimage", maxCount: 1 },
+    { name: "coverImage", maxCount: 1 },
+  ]),
+  updateProfileHeader,
 );
 
 // login
