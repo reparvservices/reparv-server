@@ -1,4 +1,5 @@
 import db from "../../config/dbconnect.js";
+import moment from "moment-timezone";
 
 export const getCount = (req, res) => {
   const query = `
@@ -146,7 +147,7 @@ export const getCount = (req, res) => {
       }
 
       return res.json(results[0]);
-    }
+    },
   );
 };
 
@@ -252,7 +253,7 @@ export const getCountOld = (req, res) => {
       }
 
       return res.json(results[0]);
-    }
+    },
   );
 };
 
@@ -307,5 +308,153 @@ export const getProperties = (req, res) => {
     });
 
     res.status(200).json(formatted);
+  });
+};
+
+export const getRecentEnquiries = (req, res) => {
+  const userId = req.projectPartnerUser?.id;
+
+  if (!userId) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized Access, Please Login Again!" });
+  }
+
+  const sql = `
+    SELECT 
+      enquirers.*, 
+      properties.frontView, 
+      properties.seoSlug,
+      properties.commissionAmount,
+
+      -- Territory Info
+      territorypartner.fullname AS territoryName,
+      territorypartner.contact AS territoryContact,
+
+      -- Project Partner Info
+      projectpartner.fullname AS projectPartnerName,
+      projectpartner.contact AS projectPartnerContact,
+
+      -- Lister Role
+      CASE 
+        WHEN enquirers.salespartner IS NOT NULL THEN 'Sales Partner'
+        WHEN enquirers.territorypartner IS NOT NULL THEN 'Territory Partner'
+        WHEN enquirers.projectpartner IS NOT NULL THEN 'Project Partner'
+        ELSE 'Unknown'
+      END AS listerRole,
+
+      -- Lister Name
+      COALESCE(
+        salespersons.fullname,
+        territoryLister.fullname,
+        projectLister.fullname
+      ) AS listerName,
+
+      -- Lister Contact
+      COALESCE(
+        salespersons.contact,
+        territoryLister.contact,
+        projectLister.contact
+      ) AS listerContact
+
+    FROM enquirers
+
+    LEFT JOIN properties 
+      ON enquirers.propertyid = properties.propertyid
+
+    LEFT JOIN territorypartner 
+      ON territorypartner.id = enquirers.territorypartnerid
+
+    LEFT JOIN projectpartner 
+      ON projectpartner.id = enquirers.projectpartnerid
+
+    -- Lister joins
+    LEFT JOIN salespersons 
+      ON enquirers.salespartner = salespersons.salespersonsid
+
+    LEFT JOIN territorypartner AS territoryLister 
+      ON enquirers.territorypartner = territoryLister.id
+
+    LEFT JOIN projectpartner AS projectLister 
+      ON enquirers.projectpartner = projectLister.id
+
+    WHERE enquirers.status != 'Token'
+      AND (
+        properties.projectpartnerid = ?
+        OR enquirers.projectpartnerid = ?
+        OR enquirers.projectbroker = ?
+      )
+
+    ORDER BY enquirers.enquirersid DESC
+    LIMIT 5
+  `;
+
+  const params = [userId, userId, userId];
+
+  db.query(sql, params, (err, result) => {
+    if (err) {
+      console.error("Error fetching recent enquiries:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    const formatted = result.map((row) => ({
+      ...row,
+      created_at: row.created_at
+        ? moment
+            .utc(row.created_at)
+            .tz("Asia/Kolkata")
+            .format("DD MMM YYYY | hh:mm A")
+        : null,
+    }));
+
+    res.json(formatted);
+  });
+};
+
+// **Fetch All **
+export const getBookedProperties = (req, res) => {
+  const userId = req.projectPartnerUser?.id;
+  if (!userId) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized Access, Please Login Again!" });
+  }
+  const sql = `
+    SELECT 
+      enquirers.*, 
+      properties.frontView,
+      properties.seoSlug,
+      properties.commissionType,
+      properties.commissionAmount,
+      properties.commissionPercentage,
+      territorypartner.fullname AS territoryName, 
+      territorypartner.contact AS territoryContact,
+      propertyfollowup.*
+    FROM enquirers 
+    LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+    LEFT JOIN territorypartner ON enquirers.territorypartnerid = territorypartner.id
+    LEFT JOIN propertyfollowup ON propertyfollowup.enquirerid = enquirers.enquirersid
+    WHERE enquirers.status = 'Token' AND propertyfollowup.status = 'Token' AND properties.projectpartnerid = ?
+    ORDER BY propertyfollowup.created_at DESC
+  `;
+
+  db.query(sql, [userId], (err, result) => {
+    if (err) {
+      console.error("Error fetching :", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    const formatted = result.map((row) => ({
+      ...row,
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+    }));
+
+    res.json(formatted);
   });
 };
