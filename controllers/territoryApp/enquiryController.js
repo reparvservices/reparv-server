@@ -137,7 +137,7 @@ export const addEnquiry = async (req, res) => {
 
 export const oldaddEnquiry = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const territoryId =req.territoryUser?.id;
+  const territoryId = req.territoryUser?.id;
   if (!territoryId) {
     return res.status(400).json({ message: "Invalid Terrritory Id" });
   }
@@ -158,7 +158,6 @@ export const oldaddEnquiry = async (req, res) => {
   } = req.body;
 
   console.log(req.body);
-  
 
   // Validate required fields
   if (
@@ -226,7 +225,7 @@ export const oldaddEnquiry = async (req, res) => {
         message: "Enquiry added successfully",
         Id: result.insertId,
       });
-    }
+    },
   );
 };
 // Update Normal Enquiry Wit Property ID
@@ -321,13 +320,11 @@ export const updateEnquiry = async (req, res) => {
             message: "Enquiry updated successfully",
             affectedRows: result.affectedRows,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
-
-
 
 export const assignToReparv = (req, res) => {
   const userId = req.params.id;
@@ -339,48 +336,53 @@ export const assignToReparv = (req, res) => {
   const Id = parseInt(req.params.enquiryid);
   if (isNaN(Id)) {
     return res.status(400).json({ message: "Invalid Enquiry ID" });
-  }console.log(Id);
-
+  }
+  console.log(Id);
 
   // First, check if the enquiry exists
-  db.query("SELECT * FROM enquirers WHERE enquirersid = ?", [Id], (err, result) => {
-    if (err) {
-      console.error("Database error:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
+  db.query(
+    "SELECT * FROM enquirers WHERE enquirersid = ?",
+    [Id],
+    (err, result) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
 
-    if (result.length === 0) {
-      return res.status(404).json({ message: "Enquiry not found" });
-    }
+      if (result.length === 0) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
 
-    // Then, update the enquiry
-    const updateSql = `
+      // Then, update the enquiry
+      const updateSql = `
       UPDATE enquirers 
       SET salespersonid=null, territorybroker = ? 
       WHERE enquirersid = ?
     `;
 
-    db.query(updateSql, [userId, Id], (err, updateResult) => {
-      if (err) {
-        console.error("Error Assigning Enquiry to Reparv:", err);
-        return res.status(500).json({ message: "Database error", error: err });
-      }
+      db.query(updateSql, [userId, Id], (err, updateResult) => {
+        if (err) {
+          console.error("Error Assigning Enquiry to Reparv:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
 
-      res.status(200).json({ message: "Enquiry assigned to Reparv successfully" });
-    });
-  });
+        res
+          .status(200)
+          .json({ message: "Enquiry assigned to Reparv successfully" });
+      });
+    },
+  );
 };
-
 
 export const getAllDigitalEnquiry = (req, res) => {
   const projectpartnerid = req.params.id;
-if (!projectpartnerid) {
-    return res
-      .status(400)
-      .json({ message: "Partner ID is required" });
+  if (!projectpartnerid) {
+    return res.status(400).json({ message: "Partner ID is required" });
   }
 
-   const sql = `
+  const sql = `
     SELECT enquirers.*,
            properties.frontView, 
            properties.seoSlug, 
@@ -395,7 +397,6 @@ if (!projectpartnerid) {
     WHERE enquirers.territorybroker = ?
     ORDER BY enquirers.enquirersid DESC`;
 
-
   db.query(sql, [projectpartnerid], (err, results) => {
     if (err) {
       console.error("Database Query Error:", err);
@@ -406,11 +407,63 @@ if (!projectpartnerid) {
 
     const formatted = results.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
-    res.json( {data: formatted});
+    res.json({ data: formatted });
   });
 };
 
+export const getAll = (req, res) => {
+  const territoryPartnerId = req.params.id;
+  console.log(territoryPartnerId, "ss");
+
+  if (!territoryPartnerId) {
+    return res.status(400).json({ message: "Partner ID is required" });
+  }
+
+  const sql = `
+    SELECT enquirers.*, 
+           properties.frontView, 
+           properties.seoSlug, 
+           properties.commissionAmount,
+           territorypartner.fullname AS territoryName,
+           territorypartner.contact AS territoryContact
+    FROM enquirers
+    LEFT JOIN properties 
+      ON enquirers.propertyid = properties.propertyid
+    LEFT JOIN territorypartner 
+      ON territorypartner.id = enquirers.territorypartnerid
+    WHERE enquirers.territorypartnerid = ?
+    ORDER BY enquirers.enquirersid DESC`;
+
+  db.query(sql, [territoryPartnerId], (err, results) => {
+    if (err) {
+      console.error("Database Query Error:", err);
+      return res
+        .status(500)
+        .json({ message: "Database query error", error: err });
+    }
+
+    const formatted = results.map((row) => ({
+      ...row,
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+    }));
+
+    res.json(formatted);
+  });
+};

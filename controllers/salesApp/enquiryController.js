@@ -48,9 +48,9 @@ export const assignEnquiry = async (req, res) => {
           res.status(200).json({
             message: "Enquiry assigned successfully to Territory Partner",
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -58,9 +58,7 @@ export const getAll = (req, res) => {
   const territoryPartnerId = req.params.id;
 
   if (!territoryPartnerId) {
-    return res
-      .status(400)
-      .json({ message: "Territory Partner ID is required" });
+    return res.status(400).json({ message: "Sales Partner ID is required" });
   }
 
   const sql = `
@@ -88,8 +86,14 @@ export const getAll = (req, res) => {
 
     const formatted = results.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -323,9 +327,9 @@ export const updateEnquiry = async (req, res) => {
             message: "Enquiry updated successfully",
             affectedRows: result.affectedRows,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -375,7 +379,7 @@ export const assignToReparv = (req, res) => {
           .status(200)
           .json({ message: "Enquiry assigned to Reparv successfully" });
       });
-    }
+    },
   );
 };
 
@@ -410,11 +414,16 @@ export const getAllDigitalEnquiry = (req, res) => {
 
     const formatted = results.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json({ data: formatted });
   });
 };
-

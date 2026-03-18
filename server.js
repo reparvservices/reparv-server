@@ -440,6 +440,7 @@ export const verifyToken = (req, res, next) => {
     "/projectpartnerRoute/user/:city",
     "/projectpartnerRoute/user",
     "/territoryapp/enquiry/add/",
+    "/territoryapp/enquiry/getAll",
     "/projectpartner/employee/",
     "/salesapp/schedule-notes",
     "projectpartner/enquiries/",
