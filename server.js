@@ -301,6 +301,7 @@ const allowedOrigins = [
   "http://localhost:5174",
   "http://localhost:5175",
   "http://localhost:5176",
+  "https://test.reparv.in",
   "https://admin.reparv.in",
   "https://reparv.in",
   "https://www.reparv.in",
