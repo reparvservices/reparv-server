@@ -487,6 +487,7 @@ export const verifyToken = (req, res, next) => {
     "/projectpartner/event",
     "/projectpartner/profile",
     "/sales/customers/payment/add",
+    "/territoryapp/client",
   ];
 
   // Skip verification for public routes
