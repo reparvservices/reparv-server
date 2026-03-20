@@ -811,11 +811,34 @@ export const getStories = (req, res) => {
   }
 
   query(
-    `SELECT s.*,
+    `SELECT
+       s.*,
+
        NOT EXISTS(
          SELECT 1 FROM feed_story_views v
          WHERE v.story_id = s.id AND v.viewer_id = ? AND v.viewer_role = ?
-       ) AS is_unseen
+       ) AS is_unseen,
+
+       CASE
+         WHEN s.author_role = 'project_partner'
+           THEN (SELECT fullname FROM projectpartner   WHERE id             = s.author_id)
+         WHEN s.author_role = 'sales_partner'
+           THEN (SELECT fullname FROM salespersons     WHERE salespersonsid = s.author_id)
+         WHEN s.author_role = 'territory_partner'
+           THEN (SELECT fullname FROM territorypartner WHERE id             = s.author_id)
+         ELSE NULL
+       END AS author_name,
+
+       CASE
+         WHEN s.author_role = 'project_partner'
+           THEN (SELECT userimage FROM projectpartner   WHERE id             = s.author_id)
+         WHEN s.author_role = 'sales_partner'
+           THEN (SELECT userimage FROM salespersons     WHERE salespersonsid = s.author_id)
+         WHEN s.author_role = 'territory_partner'
+           THEN (SELECT userimage FROM territorypartner WHERE id             = s.author_id)
+         ELSE NULL
+       END AS author_image
+
      FROM feed_stories s
      WHERE s.is_deleted = 0 AND s.expires_at > NOW()
      ORDER BY s.author_id, s.created_at ASC`,
@@ -831,6 +854,8 @@ export const getStories = (req, res) => {
           grouped[key] = {
             author_id: story.author_id,
             author_role: story.author_role,
+            author_name: story.author_name || null, // ← from JOIN
+            author_image: story.author_image || null, // ← from JOIN
             has_unseen: false,
             stories: [],
           };
