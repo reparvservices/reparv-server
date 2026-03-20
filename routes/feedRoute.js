@@ -23,6 +23,7 @@ import {
   toggleFollow,
   getNotifications,
   getUnreadCount,
+  getFollowCounts,
 } from "../controllers/feedController.js";
 
 const router = Router();
@@ -56,5 +57,7 @@ router.post("/follow", toggleFollow);
 // ── Notifications ─────────────────────────────────────────────
 router.get("/notifications", getNotifications);
 router.get("/notifications/unread-count", getUnreadCount);
+
+router.get("/follow/counts", getFollowCounts); // ← add this line
 
 export default router;

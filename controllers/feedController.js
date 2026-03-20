@@ -1260,3 +1260,53 @@ export const getUnreadCount = (req, res) => {
     },
   );
 };
+
+// ─────────────────────────────────────────────────────────────
+//  Add to feedController.js
+//
+//  GET /api/feed/follow/counts?user_id=1411&user_role=Sales%20Person
+//  Returns: { followers: N, following: N }
+// ─────────────────────────────────────────────────────────────
+
+export const getFollowCounts = (req, res) => {
+  let actor;
+  try {
+    actor = getActor(req);
+  } catch (e) {
+    return res
+      .status(e.status || 400)
+      .json({ success: false, message: e.message });
+  }
+
+  // Run both counts in parallel
+  const countFollowers = new Promise((resolve, reject) => {
+    query(
+      `SELECT COUNT(*) AS cnt FROM feed_follows
+       WHERE following_id = ? AND following_role = ?`,
+      [actor.id, actor.role],
+      (err, rows) => (err ? reject(err) : resolve(rows[0].cnt)),
+    );
+  });
+
+  const countFollowing = new Promise((resolve, reject) => {
+    query(
+      `SELECT COUNT(*) AS cnt FROM feed_follows
+       WHERE follower_id = ? AND follower_role = ?`,
+      [actor.id, actor.role],
+      (err, rows) => (err ? reject(err) : resolve(rows[0].cnt)),
+    );
+  });
+
+  Promise.all([countFollowers, countFollowing])
+    .then(([followers, following]) => {
+      res.json({ success: true, followers, following });
+    })
+    .catch((err) => {
+      res.status(500).json({ success: false, message: err.message });
+    });
+};
+
+// ─────────────────────────────────────────────────────────────
+//  Add to feedRoutes.js  (before router.post("/follow", ...))
+//  ⚠️  Must be BEFORE "/follow" so Express doesn't match "counts" as a postId
+// ─────────────────────────────────────────────────────────────
