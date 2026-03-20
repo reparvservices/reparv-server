@@ -277,6 +277,9 @@ import builderpostRoute from "./routes/builderAppRoute/BuilderpostRoutes.js";
 import "./controllers/metacontroller/metalead.controller.js";
 import metaLeadRoutes from "./routes/metaleadRoutes/metalead.routes.js";
 
+//feed route
+import Feed from "./routes/feedRoute.js";
+
 import db from "./config/dbconnect.js";
 
 const app = express();
@@ -488,6 +491,7 @@ export const verifyToken = (req, res, next) => {
     "/projectpartner/profile",
     "/sales/customers/payment/add",
     "/territoryapp/client",
+    "/api/feed/",
   ];
 
   // Skip verification for public routes
@@ -580,6 +584,9 @@ app.use("/api/s3", s3Routes);
 
 // S3 Route Call
 app.use("/api/user", otpRoutes);
+
+//feed route api
+app.use("/api/feed/", Feed);
 
 app.use(verifyToken);
 app.use("/admin/profile", profileRoutes);
