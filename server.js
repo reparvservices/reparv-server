@@ -280,6 +280,7 @@ import metaLeadRoutes from "./routes/metaleadRoutes/metalead.routes.js";
 //feed route
 import Feed from "./routes/feedRoute.js";
 import FollowRoute from "./routes/followRoute.js";
+import ForgetPasswordRoute from "./routes/Forgotpasswordroutes.js";
 
 import db from "./config/dbconnect.js";
 
@@ -494,6 +495,7 @@ export const verifyToken = (req, res, next) => {
     "/territoryapp/client",
     "/api/feed/",
     "/api/follow/",
+    "/api/auth/forgot-password/",
   ];
 
   // Skip verification for public routes
@@ -587,9 +589,10 @@ app.use("/api/s3", s3Routes);
 // S3 Route Call
 app.use("/api/user", otpRoutes);
 
-//feed route api
+//feed route api and forget password for project partner ,sales ,territory
 app.use("/api/feed/", Feed);
 app.use("/api/follow/", FollowRoute);
+app.use("/api/auth/forgot-password/", ForgetPasswordRoute);
 
 app.use(verifyToken);
 app.use("/admin/profile", profileRoutes);
