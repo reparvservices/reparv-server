@@ -967,7 +967,7 @@ export const getStoryViewers = (req, res) => {
           .json({ success: false, message: "Not your story." });
       }
 
-      query(
+      +query(
         `SELECT
            fsv.viewer_id,
            fsv.viewer_role,
@@ -1133,6 +1133,88 @@ export const deleteStory = (req, res) => {
   );
 };
 
+// GET /api/feed/stories/:id/replies?user_id=1411&user_role=Sales%20Person
+// Only the story owner can fetch replies on their own story.
+export const getStoryReplies = (req, res) => {
+  let actor;
+  try {
+    actor = getActor(req);
+  } catch (e) {
+    return res
+      .status(e.status || 400)
+      .json({ success: false, message: e.message });
+  }
+
+  const storyId = parseInt(req.params.id);
+
+  // Step 1: verify story belongs to actor
+  query(
+    "SELECT author_id, author_role FROM feed_stories WHERE id = ? AND is_deleted = 0",
+    [storyId],
+    (err, rows) => {
+      if (err)
+        return res.status(500).json({ success: false, message: err.message });
+
+      const story = rows[0];
+      if (
+        !story ||
+        story.author_id !== actor.id ||
+        story.author_role !== actor.role
+      ) {
+        return res
+          .status(403)
+          .json({ success: false, message: "Not your story." });
+      }
+
+      // Step 2: fetch replies with sender name + image via CASE subqueries
+      // Same role → table mapping used everywhere in the codebase:
+      //   project_partner   → projectpartner    (id,            fullname,  userimage)
+      //   sales_partner     → salespersons      (salespersonsid, fullname,  userimage)
+      //   territory_partner → territorypartner  (id,            fullname,  userimage)
+      query(
+        `SELECT
+           fsr.id,
+           fsr.sender_id,
+           fsr.sender_role,
+           fsr.message,
+           fsr.created_at,
+
+           CASE fsr.sender_role
+             WHEN 'project_partner'
+               THEN (SELECT fullname  FROM projectpartner   WHERE id             = fsr.sender_id)
+             WHEN 'sales_partner'
+               THEN (SELECT fullname  FROM salespersons     WHERE salespersonsid = fsr.sender_id)
+             WHEN 'territory_partner'
+               THEN (SELECT fullname  FROM territorypartner WHERE id             = fsr.sender_id)
+             ELSE NULL
+           END AS full_name,
+
+           CASE fsr.sender_role
+             WHEN 'project_partner'
+               THEN (SELECT userimage FROM projectpartner   WHERE id             = fsr.sender_id)
+             WHEN 'sales_partner'
+               THEN (SELECT userimage FROM salespersons     WHERE salespersonsid = fsr.sender_id)
+             WHEN 'territory_partner'
+               THEN (SELECT userimage FROM territorypartner WHERE id             = fsr.sender_id)
+             ELSE NULL
+           END AS image
+
+         FROM feed_story_replies fsr
+         WHERE fsr.story_id = ?
+         ORDER BY fsr.created_at DESC`,
+        [storyId],
+        (err2, replies) => {
+          if (err2)
+            return res
+              .status(500)
+              .json({ success: false, message: err2.message });
+
+          return res.json({ success: true, replies });
+        },
+      );
+    },
+  );
+};
 // ═════════════════════════════════════════════════════════════
 //  FOLLOW / UNFOLLOW
 // ═════════════════════════════════════════════════════════════
@@ -1203,6 +1285,7 @@ export const toggleFollow = (req, res) => {
 // ═════════════════════════════════════════════════════════════
 
 // GET /api/feed/notifications?user_id=1411&user_role=Sales%20Person&page=1
+// GET /api/feed/notifications?user_id=1411&user_role=Sales%20Person&page=1
 export const getNotifications = (req, res) => {
   let actor;
   try {
@@ -1217,15 +1300,52 @@ export const getNotifications = (req, res) => {
   const limit = 20;
   const offset = (page - 1) * limit;
 
+  // Fetch notifications with actor name + image resolved via CASE subqueries.
+  // actor_role / actor_id = the person WHO triggered the notification
+  // (e.g. who liked, commented, replied — NOT the recipient)
+  // Roles → tables:
+  //   project_partner   → projectpartner    (id,            fullname,  userimage)
+  //   sales_partner     → salespersons      (salespersonsid, fullname,  userimage)
+  //   territory_partner → territorypartner  (id,            fullname,  userimage)
   query(
-    `SELECT * FROM feed_notifications WHERE recipient_id=? AND recipient_role=? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    `SELECT
+       n.*,
+
+       CASE n.actor_role
+         WHEN 'project_partner'
+           THEN (SELECT fullname  FROM projectpartner   WHERE id             = n.actor_id)
+         WHEN 'sales_partner'
+           THEN (SELECT fullname  FROM salespersons     WHERE salespersonsid = n.actor_id)
+         WHEN 'territory_partner'
+           THEN (SELECT fullname  FROM territorypartner WHERE id             = n.actor_id)
+         ELSE NULL
+       END AS actor_name,
+
+       CASE n.actor_role
+         WHEN 'project_partner'
+           THEN (SELECT userimage FROM projectpartner   WHERE id             = n.actor_id)
+         WHEN 'sales_partner'
+           THEN (SELECT userimage FROM salespersons     WHERE salespersonsid = n.actor_id)
+         WHEN 'territory_partner'
+           THEN (SELECT userimage FROM territorypartner WHERE id             = n.actor_id)
+         ELSE NULL
+       END AS actor_image
+
+     FROM feed_notifications n
+     WHERE n.recipient_id   = ?
+       AND n.recipient_role = ?
+     ORDER BY n.created_at DESC
+     LIMIT ? OFFSET ?`,
     [actor.id, actor.role, limit, offset],
     (err, rows) => {
       if (err)
         return res.status(500).json({ success: false, message: err.message });
 
+      // Mark all unread as read in the background (fire-and-forget)
       query(
-        `UPDATE feed_notifications SET is_read=1 WHERE recipient_id=? AND recipient_role=? AND is_read=0`,
+        `UPDATE feed_notifications
+         SET is_read = 1
+         WHERE recipient_id = ? AND recipient_role = ? AND is_read = 0`,
         [actor.id, actor.role],
         () => {},
       );

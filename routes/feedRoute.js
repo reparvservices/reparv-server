@@ -24,6 +24,7 @@ import {
   getNotifications,
   getUnreadCount,
   getFollowCounts,
+  getStoryReplies,
 } from "../controllers/feedController.js";
 
 const router = Router();
@@ -50,6 +51,7 @@ router.delete("/stories/:id", deleteStory);
 router.post("/stories/:id/view", viewStory);
 router.get("/stories/:id/views", getStoryViewers);
 router.post("/stories/:id/reply", replyToStory);
+router.get("/stories/:id/replies", getStoryReplies);
 
 // ── Follow ────────────────────────────────────────────────────
 router.post("/follow", toggleFollow);

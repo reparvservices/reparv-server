@@ -279,6 +279,7 @@ import metaLeadRoutes from "./routes/metaleadRoutes/metalead.routes.js";
 
 //feed route
 import Feed from "./routes/feedRoute.js";
+import FollowRoute from "./routes/followRoute.js";
 
 import db from "./config/dbconnect.js";
 
@@ -492,6 +493,7 @@ export const verifyToken = (req, res, next) => {
     "/sales/customers/payment/add",
     "/territoryapp/client",
     "/api/feed/",
+    "/api/follow/",
   ];
 
   // Skip verification for public routes
@@ -587,6 +589,7 @@ app.use("/api/user", otpRoutes);
 
 //feed route api
 app.use("/api/feed/", Feed);
+app.use("/api/follow/", FollowRoute);
 
 app.use(verifyToken);
 app.use("/admin/profile", profileRoutes);
