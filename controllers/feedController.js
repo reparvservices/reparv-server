@@ -1,19 +1,21 @@
-// ============================================================
-//  feedController.js  –  ES Module  |  Callback-based SQL
-//
-//  ALL ROUTES ARE PUBLIC — no JWT, no middleware, no headers.
-//
-//  Frontend sends user identity in the request BODY:
-//    GET  requests → query params:  ?user_id=1411&user_role=Sales%20Person
-//    POST requests → JSON body:     { user_id: 1411, user_role: "Sales Person", ...rest }
-// ============================================================
-
 import db from "../config/dbconnect.js";
 
 // ─────────────────────────────────────────────────────────────
 // ROLE NORMALISATION
 // JWT confirmed role: "Sales Person" | "Territory Person" | "Project Person"
 // ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+
+const ROLE_TAG_DEFAULTS = {
+  sales_partner: { tag_color: "#E9407A", tag_bg: "#FFD6E7" },
+  territory_partner: { tag_color: "#0078DB", tag_bg: "#DBEAFE" },
+  project_partner: { tag_color: "#7C3AED", tag_bg: "#EDE9FE" },
+};
+
+const query = (sql, params, cb) => db.query(sql, params, cb);
 
 const normaliseRole = (role) => {
   const map = {
@@ -44,13 +46,6 @@ const normaliseRole = (role) => {
   return map[role] || map[role?.toLowerCase?.()] || null;
 };
 
-// ─────────────────────────────────────────────────────────────
-// getActor
-// Reads user_id and user_role from:
-//   - req.body         (POST / DELETE with body)
-//   - req.query        (GET requests)
-// Both are sent by the frontend explicitly — no auth needed.
-// ─────────────────────────────────────────────────────────────
 const getActor = (req) => {
   // Body takes priority (POST), fall back to query (GET)
   const rawId = req.body?.user_id ?? req.query?.user_id;
@@ -85,18 +80,6 @@ const getActor = (req) => {
   return { id, role };
 };
 
-// ─────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────
-
-const ROLE_TAG_DEFAULTS = {
-  sales_partner: { tag_color: "#E9407A", tag_bg: "#FFD6E7" },
-  territory_partner: { tag_color: "#0078DB", tag_bg: "#DBEAFE" },
-  project_partner: { tag_color: "#7C3AED", tag_bg: "#EDE9FE" },
-};
-
-const query = (sql, params, cb) => db.query(sql, params, cb);
-
 const notify = (conn, payload) => {
   conn.query(
     `INSERT INTO feed_notifications
@@ -122,12 +105,6 @@ const notify = (conn, payload) => {
 // ═════════════════════════════════════════════════════════════
 //  FEED POSTS
 // ═════════════════════════════════════════════════════════════
-// ─────────────────────────────────────────────────────────────
-//  Add to feedController.js
-//
-//  GET /api/feed/posts/my?user_id=1411&user_role=Sales%20Person&page=1&limit=10
-//  Returns only posts authored by the requesting user.
-// ─────────────────────────────────────────────────────────────
 
 export const getUserPosts = (req, res) => {
   let actor;
@@ -345,15 +322,6 @@ export const createPost = (req, res) => {
   );
 };
 
-// ─────────────────────────────────────────────────────────────
-//  Add to feedController.js
-//
-//  PUT /api/feed/posts/:id
-//  Body: { user_id, user_role, content?, media_urls? }
-//
-//  - Ownership check (must be author)
-//  - Updates content and/or media_urls
-//  - No file upload — frontend sends pre-uploaded S3 URL
 // ─────────────────────────────────────────────────────────────
 
 export const updatePost = (req, res) => {
@@ -633,8 +601,6 @@ export const toggleLike = (req, res) => {
 //  COMMENTS
 // ─────────────────────────────────────────────────────────────
 
-// GET /api/feed/posts/:id/comments?page=1  (no user needed)
-// GET /api/feed/posts/:id/comments?page=1
 export const getComments = (req, res) => {
   const postId = parseInt(req.params.id);
   const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -969,6 +935,7 @@ export const viewStory = (req, res) => {
 };
 
 // GET /api/feed/stories/:id/views?user_id=1411&user_role=Sales%20Person
+// GET /api/feed/stories/:id/views?user_id=1411&user_role=Sales%20Person
 export const getStoryViewers = (req, res) => {
   let actor;
   try {
@@ -981,8 +948,9 @@ export const getStoryViewers = (req, res) => {
 
   const storyId = parseInt(req.params.id);
 
+  // Step 1: verify the story belongs to the actor
   query(
-    "SELECT author_id, author_role FROM feed_stories WHERE id=?",
+    "SELECT author_id, author_role FROM feed_stories WHERE id = ?",
     [storyId],
     (err, rows) => {
       if (err)
@@ -1000,13 +968,41 @@ export const getStoryViewers = (req, res) => {
       }
 
       query(
-        "SELECT viewer_id, viewer_role, viewed_at FROM feed_story_views WHERE story_id=? ORDER BY viewed_at DESC",
+        `SELECT
+           fsv.viewer_id,
+           fsv.viewer_role,
+           fsv.viewed_at,
+
+           CASE fsv.viewer_role
+             WHEN 'project_partner'
+               THEN (SELECT username  FROM projectpartner   WHERE id             = fsv.viewer_id)
+             WHEN 'sales_partner'
+               THEN (SELECT username  FROM salespersons     WHERE salespersonsid = fsv.viewer_id)
+             WHEN 'territory_partner'
+               THEN (SELECT username  FROM territorypartner WHERE id             = fsv.viewer_id)
+             ELSE NULL
+           END AS full_name,
+
+           CASE fsv.viewer_role
+             WHEN 'project_partner'
+               THEN (SELECT userimage FROM projectpartner   WHERE id             = fsv.viewer_id)
+             WHEN 'sales_partner'
+               THEN (SELECT userimage FROM salespersons     WHERE salespersonsid = fsv.viewer_id)
+             WHEN 'territory_partner'
+               THEN (SELECT userimage FROM territorypartner WHERE id             = fsv.viewer_id)
+             ELSE NULL
+           END AS image
+
+         FROM feed_story_views fsv
+         WHERE fsv.story_id = ?
+         ORDER BY fsv.viewed_at DESC`,
         [storyId],
         (err2, viewers) => {
           if (err2)
             return res
               .status(500)
               .json({ success: false, message: err2.message });
+
           return res.json({ success: true, viewers });
         },
       );
