@@ -25,6 +25,7 @@ import {
   getUnreadCount,
   getFollowCounts,
   getStoryReplies,
+  getPostById,
 } from "../controllers/feedController.js";
 import {
   getMySavedPosts,
@@ -42,6 +43,7 @@ router.get("/posts", getFeedPosts); // all feed posts
 router.post("/posts", createPost);
 router.put("/posts/:id", updatePost); // ← new
 router.delete("/posts/:id", deletePost);
+router.get("/posts/:id", getPostById);
 
 // ── Likes ─────────────────────────────────────────────────────
 router.post("/posts/:id/like", toggleLike);
@@ -54,7 +56,7 @@ router.post("/posts/:id/comments", addComment);
 
 router.post("/posts/:id/save", toggleSavePost);
 router.get("/posts/:id/save", getSaveStatus);
-router.get("/saved", getMySavedPosts); // ⚠️ before any /:id wildcard
+router.get("/saved", getMySavedPosts); // before any /:id wildcard
 router.delete("/saved/:id", removeSavedPost);
 
 // ── Stories ───────────────────────────────────────────────────

@@ -352,7 +352,76 @@ export const createPost = (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────
+export const getPostById = (req, res) => {
+  let actor;
+  try {
+    actor = getActor(req);
+  } catch (e) {
+    return res
+      .status(e.status || 400)
+      .json({ success: false, message: e.message });
+  }
 
+  const postId = parseInt(req.params.id);
+  if (!postId || isNaN(postId)) {
+    return res.status(400).json({ success: false, message: "Invalid post ID" });
+  }
+
+  query(
+    `SELECT
+       p.*,
+ 
+       EXISTS(
+         SELECT 1 FROM feed_post_likes l
+         WHERE l.post_id   = p.id
+           AND l.user_id   = ?
+           AND l.user_role = ?
+       ) AS has_liked,
+ 
+       EXISTS(
+         SELECT 1 FROM feed_saved_posts sp
+         WHERE sp.post_id   = p.id
+           AND sp.user_id   = ?
+           AND sp.user_role = ?
+       ) AS is_saved,
+ 
+       CASE
+         WHEN p.author_role = 'project_partner'
+           THEN (SELECT fullname FROM projectpartner   WHERE id             = p.author_id)
+         WHEN p.author_role = 'sales_partner'
+           THEN (SELECT fullname FROM salespersons     WHERE salespersonsid = p.author_id)
+         WHEN p.author_role = 'territory_partner'
+           THEN (SELECT fullname FROM territorypartner WHERE id             = p.author_id)
+         ELSE NULL
+       END AS author_name,
+ 
+       CASE
+         WHEN p.author_role = 'project_partner'
+           THEN (SELECT userimage FROM projectpartner   WHERE id             = p.author_id)
+         WHEN p.author_role = 'sales_partner'
+           THEN (SELECT userimage FROM salespersons     WHERE salespersonsid = p.author_id)
+         WHEN p.author_role = 'territory_partner'
+           THEN (SELECT userimage FROM territorypartner WHERE id             = p.author_id)
+         ELSE NULL
+       END AS author_image
+ 
+     FROM feed_posts p
+     WHERE p.id = ? AND p.is_deleted = 0`,
+    [actor.id, actor.role, actor.id, actor.role, postId],
+    (err, rows) => {
+      if (err) {
+        console.error("[getPostById] DB error:", err.message);
+        return res.status(500).json({ success: false, message: err.message });
+      }
+      if (!rows.length) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Post not found" });
+      }
+      return res.json({ success: true, post: rows[0] });
+    },
+  );
+};
 export const updatePost = (req, res) => {
   let actor;
   try {
