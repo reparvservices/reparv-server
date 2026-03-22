@@ -74,44 +74,23 @@ ORDER BY
 // **Add New **
 export const add = async (req, res) => {
   const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
-  console.log("add");
 
-  const { userId, postContent, like, projectpartnerid } = req.body;
+  const { userId, postContent, like, projectpartnerid, image } = req.body;
+  console.log(req.body);
 
   if (!userId) {
     return res.status(400).json({ message: "User ID is required" });
   }
 
-  if (!req.file && !postContent) {
+  if (!image && !postContent?.trim()) {
     return res
       .status(400)
       .json({ message: "Either image or post content is required" });
   }
 
-  let imageUrl = null;
-
-  // Image upload (compressed + S3)
-  if (req.file) {
-    try {
-      let uploadFile = req.file;
-
-      // Compress only image files
-      if (req.file.mimetype?.startsWith("image/")) {
-        const compressedImage = await convertSingleImageToWebp(req.file);
-        if (compressedImage) {
-          uploadFile = compressedImage;
-        }
-      }
-
-      imageUrl = await uploadToS3(uploadFile);
-    } catch (err) {
-      console.error("Image upload failed:", err);
-      return res.status(500).json({
-        message: "Image upload failed",
-        error: err,
-      });
-    }
-  }
+  // image is already an S3 URL uploaded directly by the client
+  const imageUrl = image || null;
+  console.log(imageUrl);
 
   const sql = `
     INSERT INTO projectpartnerposts
@@ -123,8 +102,8 @@ export const add = async (req, res) => {
     sql,
     [
       userId,
-      imageUrl, // S3 URL instead of local path
-      postContent || null,
+      imageUrl,
+      postContent?.trim() || null,
       like || 0,
       projectpartnerid || null,
       currentDate,
@@ -134,8 +113,7 @@ export const add = async (req, res) => {
         if (err.code === "ER_DUP_ENTRY") {
           return res.status(409).json({ message: "Duplicate post" });
         }
-
-        console.error("Database error:", err);
+        console.error("[add] Database error:", err);
         return res.status(500).json({ message: "Database error", error: err });
       }
 
@@ -144,7 +122,7 @@ export const add = async (req, res) => {
         postId: result.insertId,
         image: imageUrl,
       });
-    }
+    },
   );
 };
 
@@ -183,64 +161,45 @@ export const addLike = async (req, res) => {
           }
 
           return res.status(200).json({ message: "Post liked successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
 export const updatePost = async (req, res) => {
   const postId = req.params.id;
-  const { postContent } = req.body;
+  const { postContent, image } = req.body;
 
   if (!postId) {
     return res.status(400).json({ message: "Post ID is required" });
   }
 
-  let imageUrl = null;
+  // image is an S3 URL already uploaded by the client — no server-side upload needed
+  const imageUrl = image || null;
 
-  // Handle image upload (compress + S3)
-  if (req.file) {
-    try {
-      let uploadFile = req.file;
-
-      if (req.file.mimetype?.startsWith("image/")) {
-        const compressedImage = await convertSingleImageToWebp(req.file);
-        if (compressedImage) {
-          uploadFile = compressedImage;
-        }
-      }
-
-      imageUrl = await uploadToS3(uploadFile);
-    } catch (err) {
-      console.error("Image upload failed:", err);
-      return res.status(500).json({
-        message: "Image upload failed",
-        error: err,
-      });
-    }
+  if (!imageUrl && !postContent?.trim()) {
+    return res.status(400).json({ message: "Nothing to update" });
   }
 
   let sql;
   let values;
 
-  if (imageUrl && postContent) {
+  if (imageUrl && postContent?.trim()) {
     sql =
       "UPDATE projectpartnerposts SET image = ?, postContent = ? WHERE postId = ?";
-    values = [imageUrl, postContent, postId];
+    values = [imageUrl, postContent.trim(), postId];
   } else if (imageUrl) {
     sql = "UPDATE projectpartnerposts SET image = ? WHERE postId = ?";
     values = [imageUrl, postId];
-  } else if (postContent) {
-    sql = "UPDATE projectpartnerposts SET postContent = ? WHERE postId = ?";
-    values = [postContent, postId];
   } else {
-    return res.status(400).json({ message: "Nothing to update" });
+    sql = "UPDATE projectpartnerposts SET postContent = ? WHERE postId = ?";
+    values = [postContent.trim(), postId];
   }
 
   db.query(sql, values, (err, result) => {
     if (err) {
-      console.error("Error updating post:", err);
+      console.error("[updatePost] DB error:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
 
@@ -248,7 +207,7 @@ export const updatePost = async (req, res) => {
       return res.status(404).json({ message: "Post not found" });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "Post updated successfully",
       updatedRows: result.affectedRows,
       image: imageUrl || undefined,

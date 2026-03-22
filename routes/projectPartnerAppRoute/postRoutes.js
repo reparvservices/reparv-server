@@ -33,9 +33,9 @@ const upload = multer({
 });
 router.get("/", getAll);
 router.get("/getUserPosts", getAllByUser);
-router.post("/add", upload.single("image"), add);
+router.post("/add", add);
 router.put("/addlike", addLike);
-router.put("/updated/:id", upload.single("image"), updatePost);
+router.put("/updated/:id", updatePost);
 // DELETE POST API
 router.delete("/deletepost/:id", (req, res) => {
   const postId = req.params.id;

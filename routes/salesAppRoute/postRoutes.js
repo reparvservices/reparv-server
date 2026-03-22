@@ -27,28 +27,27 @@ const upload = multer({
 
 router.get("/", getAll);
 router.get("/getUserPosts", getAllByUser);
-router.post("/add", upload.single("image"), add);
+router.post("/add", add);
 router.put("/addlike", addLike);
-router.put('/updated/:id', upload.single('image'),updatePost)
+router.put("/updated/:id", updatePost);
 // DELETE POST API
-router.delete('/deletepost/:id', (req, res) => {
+router.delete("/deletepost/:id", (req, res) => {
   const postId = req.params.id;
 
-  const sql = 'DELETE FROM salespersonposts WHERE postId = ?';
+  const sql = "DELETE FROM salespersonposts WHERE postId = ?";
 
   db.query(sql, [postId], (err, result) => {
     if (err) {
-      console.error('Error deleting post:', err);
-      return res.status(500).json({ error: 'Failed to delete post' });
+      console.error("Error deleting post:", err);
+      return res.status(500).json({ error: "Failed to delete post" });
     }
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Post not found' });
+      return res.status(404).json({ message: "Post not found" });
     }
 
-    res.status(200).json({ message: 'Post deleted successfully' });
+    res.status(200).json({ message: "Post deleted successfully" });
   });
 });
-
 
 export default router;
