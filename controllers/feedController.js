@@ -176,6 +176,11 @@ export const getUserPosts = (req, res) => {
 };
 
 // GET /api/feed/posts?user_id&user_role&page&limit
+// ─────────────────────────────────────────────────────────────
+// REPLACE your existing getFeedPosts() in feedController.js
+// with this version — adds is_saved to every post row.
+// ─────────────────────────────────────────────────────────────
+
 export const getFeedPosts = (req, res) => {
   let actor;
   try {
@@ -199,30 +204,38 @@ export const getFeedPosts = (req, res) => {
        -- has current user liked this post
        EXISTS(
          SELECT 1 FROM feed_post_likes l
-         WHERE l.post_id = p.id
+         WHERE l.post_id   = p.id
            AND l.user_id   = ?
            AND l.user_role = ?
        ) AS has_liked,
 
-       -- author name: pick the right table based on author_role
+       -- ✅ has current user saved this post
+       EXISTS(
+         SELECT 1 FROM feed_saved_posts sp
+         WHERE sp.post_id   = p.id
+           AND sp.user_id   = ?
+           AND sp.user_role = ?
+       ) AS is_saved,
+
+       -- author name
        CASE
          WHEN p.author_role = 'project_partner'
-           THEN (SELECT fullname FROM projectpartner  WHERE id               = p.author_id)
+           THEN (SELECT fullname FROM projectpartner   WHERE id             = p.author_id)
          WHEN p.author_role = 'sales_partner'
-           THEN (SELECT fullname FROM salespersons    WHERE salespersonsid   = p.author_id)
+           THEN (SELECT fullname FROM salespersons     WHERE salespersonsid = p.author_id)
          WHEN p.author_role = 'territory_partner'
-           THEN (SELECT fullname FROM territorypartner WHERE id              = p.author_id)
+           THEN (SELECT fullname FROM territorypartner WHERE id             = p.author_id)
          ELSE NULL
        END AS author_name,
 
-       -- author profile image: same pattern
+       -- author image
        CASE
          WHEN p.author_role = 'project_partner'
-           THEN (SELECT userimage FROM projectpartner   WHERE id               = p.author_id)
+           THEN (SELECT userimage FROM projectpartner   WHERE id             = p.author_id)
          WHEN p.author_role = 'sales_partner'
-           THEN (SELECT userimage FROM salespersons     WHERE salespersonsid   = p.author_id)
+           THEN (SELECT userimage FROM salespersons     WHERE salespersonsid = p.author_id)
          WHEN p.author_role = 'territory_partner'
-           THEN (SELECT userimage FROM territorypartner WHERE id               = p.author_id)
+           THEN (SELECT userimage FROM territorypartner WHERE id             = p.author_id)
          ELSE NULL
        END AS author_image
 
@@ -231,7 +244,23 @@ export const getFeedPosts = (req, res) => {
        AND (p.visibility = 'all' OR p.visibility = ? OR p.author_role = ?)
      ORDER BY p.created_at DESC
      LIMIT ? OFFSET ?`,
-    [actor.id, actor.role, actor.role, actor.role, limit, offset],
+
+    // ─── params order ────────────────────────────────────────
+    // has_liked  → actor.id, actor.role
+    // is_saved   → actor.id, actor.role   ← two new params
+    // visibility → actor.role, actor.role
+    // pagination → limit, offset
+    [
+      actor.id,
+      actor.role, // has_liked
+      actor.id,
+      actor.role, // is_saved  ✅ NEW
+      actor.role,
+      actor.role, // visibility
+      limit,
+      offset, // pagination
+    ],
+
     (err, posts) => {
       if (err) {
         console.error("[getFeedPosts] DB error:", err.message);

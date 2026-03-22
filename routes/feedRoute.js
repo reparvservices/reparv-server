@@ -26,6 +26,12 @@ import {
   getFollowCounts,
   getStoryReplies,
 } from "../controllers/feedController.js";
+import {
+  getMySavedPosts,
+  getSaveStatus,
+  removeSavedPost,
+  toggleSavePost,
+} from "../controllers/savedController.js";
 
 const router = Router();
 
@@ -43,6 +49,13 @@ router.post("/posts/:id/like", toggleLike);
 // ── Comments ──────────────────────────────────────────────────
 router.get("/posts/:id/comments", getComments);
 router.post("/posts/:id/comments", addComment);
+
+//--------Saved-------------------
+
+router.post("/posts/:id/save", toggleSavePost);
+router.get("/posts/:id/save", getSaveStatus);
+router.get("/saved", getMySavedPosts); // ⚠️ before any /:id wildcard
+router.delete("/saved/:id", removeSavedPost);
 
 // ── Stories ───────────────────────────────────────────────────
 router.get("/stories", getStories);
