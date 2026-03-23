@@ -674,11 +674,50 @@ export const addPropertyNew = async (req, res) => {
             });
           }
 
-          res.status(201).json({
-            success: true,
-            message: "Property created successfully",
-            id: result.insertId,
-          });
+          const newPropertyId = result.insertId;
+
+          /* ---------- GENERATE propertyCityId ---------- */
+          db.query(
+            "SELECT cityNACL FROM cities WHERE city = ? LIMIT 1",
+            [city],
+            (err2, cityResult) => {
+              if (err2)
+                return res.status(500).json({
+                  success: false,
+                  message: "City lookup failed",
+                  error: err2,
+                });
+
+              if (cityResult.length === 0)
+                return res.status(404).json({
+                  success: false,
+                  message: "City not found in database",
+                });
+
+              const cityNACL = cityResult[0].cityNACL;
+              const propertyCityId = `${cityNACL}-${newPropertyId}`;
+
+              db.query(
+                "UPDATE properties SET propertyCityId = ? WHERE propertyid = ?",
+                [propertyCityId, newPropertyId],
+                (err3) => {
+                  if (err3)
+                    return res.status(500).json({
+                      success: false,
+                      message: "Failed to update propertyCityId",
+                      error: err3,
+                    });
+
+                  return res.status(201).json({
+                    success: true,
+                    message: "Property created successfully",
+                    id: newPropertyId,
+                    propertyCityId,
+                  });
+                },
+              );
+            },
+          );
         });
       },
     );
