@@ -930,18 +930,31 @@ async function syncAllPropertySheets() {
 // ─────────────────────────────────────────────────────────────
 
 // Firebase app for guest users
-const guestServiceAccount = JSON.parse(
-  process.env.FIREBASE_SERVICE_ACCOUNT_GUEST, // add this to your .env
-);
-const guestApp = admin.initializeApp(
-  {
-    credential: admin.credential.cert({
-      ...guestServiceAccount,
-      private_key: guestServiceAccount.private_key.replace(/\\n/g, "\n"),
-    }),
-  },
-  "guestApp",
-);
+const guestServiceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT_GUEST;
+let guestApp = null;
+if (!guestServiceAccountRaw) {
+  console.warn(
+    "[GuestCron] FIREBASE_SERVICE_ACCOUNT_GUEST is missing. Guest push notifications are disabled.",
+  );
+} else {
+  try {
+    const guestServiceAccount = JSON.parse(guestServiceAccountRaw);
+    guestApp = admin.initializeApp(
+      {
+        credential: admin.credential.cert({
+          ...guestServiceAccount,
+          private_key: guestServiceAccount.private_key.replace(/\\n/g, "\n"),
+        }),
+      },
+      "guestApp",
+    );
+  } catch (err) {
+    console.error(
+      "[GuestCron] Invalid FIREBASE_SERVICE_ACCOUNT_GUEST JSON. Guest push notifications are disabled.",
+      err.message,
+    );
+  }
+}
 const getImageUrl = (path) => {
   if (!path) return null;
 
@@ -962,6 +975,7 @@ const parseFrontView = (frontView) => {
 };
 // Send FCM notification to a single guest user token
 async function sendGuestNotification(guest, title, body, data = {}) {
+  if (!guestApp) return;
   if (!guest?.fcmToken) return;
   const image = data.image;
 

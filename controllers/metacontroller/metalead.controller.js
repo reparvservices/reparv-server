@@ -194,8 +194,8 @@ const processLead = async (leadId, formId = null) => {
 
   // Only save if we have data (direct or fallback)
   if (leadData) {
-    await saveEnquiry(leadData);
-    await saveLead(leadData);
+    const metaLeadId = await saveLead(leadData);
+    await saveEnquiry(leadData, metaLeadId);
   } else {
     console.warn(
       `No data fetched for lead ${leadId} – check permissions or lead type`,
@@ -211,18 +211,19 @@ const saveLead = async (lead) => {
     INSERT INTO meta_leads
       (lead_id, full_name, phone_number, email, city,
        property_id, enquire_for,
-      form_id, campaign_id, campaign_name,
-      adset_id, adset_name, ad_id, ad_name,
-      is_organic, platform, created_time, raw_payload)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       form_id, campaign_id, campaign_name,
+       adset_id, adset_name, ad_id, ad_name,
+       is_organic, platform, created_time, raw_payload)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
+      id = LAST_INSERT_ID(id),
       full_name = VALUES(full_name),
       phone_number = VALUES(phone_number),
       email = VALUES(email),
       updated_at = CURRENT_TIMESTAMP
   `;
 
-  await db.execute(query, [
+  const [result] = await db.execute(query, [
     lead.lead_id ?? null,
     lead.full_name ?? null,
     lead.phone_number ?? null,
@@ -242,9 +243,11 @@ const saveLead = async (lead) => {
     lead.created_time ?? null,
     lead.raw_payload ?? null,
   ]);
+
+  return result.insertId;
 };
 
-const saveEnquiry = async (lead) => {
+const saveEnquiry = async (lead, metaLeadId) => {
   try {
     let projectPartnerId = null;
 
@@ -267,10 +270,11 @@ const saveEnquiry = async (lead) => {
     await db.execute(
       `
       INSERT INTO enquirers
-      (adsid, propertyid, projectpartnerid, source, customer, contact, location, city)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (adsid, propertyid, projectpartnerid, source, customer, contact, location, city, meta_lead_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         projectpartnerid = VALUES(projectpartnerid),
+        meta_lead_id = VALUES(meta_lead_id),
         updated_at = CURRENT_TIMESTAMP
       `,
       [
@@ -282,6 +286,7 @@ const saveEnquiry = async (lead) => {
         lead.phone_number ?? null,
         lead.enquire_for ?? null,
         lead.city ?? null,
+        metaLeadId ?? null,
       ],
     );
 
