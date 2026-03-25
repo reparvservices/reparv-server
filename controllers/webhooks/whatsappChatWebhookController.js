@@ -38,9 +38,21 @@ export const verifyWebhook = (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
-  const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+  // Meta (WhatsApp Cloud API) sends a GET request with hub.* query params.
+  // In some deployments env var names differ; accept a small set of known names.
+  const verifyTokenRaw =
+    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
+    process.env.WHATSAPP_VERIFY_TOKEN ||
+    process.env.VERIFY_TOKEN;
+  const verifyToken = typeof verifyTokenRaw === "string" ? verifyTokenRaw.trim() : "";
+  const incomingToken = typeof token === "string" ? token.trim() : "";
 
-  if (mode === "subscribe" && token && verifyToken && token === verifyToken) {
+  if (
+    mode === "subscribe" &&
+    incomingToken &&
+    verifyToken &&
+    incomingToken === verifyToken
+  ) {
     return res.status(200).send(challenge);
   }
   return res.sendStatus(403);
