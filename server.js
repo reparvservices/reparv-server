@@ -57,6 +57,7 @@ import newsAnalyticsRoutes from "./routes/admin/newsAnalyticsRoutes.js";
 import subscribersRoutes from "./routes/admin/subscribersRoutes.js";
 import whatsappChatRoutes from "./routes/admin/whatsappChatRoutes.js";
 import whatsappChatWebhookRoutes from "./routes/webhooks/whatsappChatWebhookRoutes.js";
+import { resolveWhatsappWebhookVerifyToken } from "./controllers/webhooks/whatsappChatWebhookController.js";
 
 //frontend
 import allPropertiesRoutes from "./routes/frontend/allPropertiesRoutes.js";
@@ -363,6 +364,11 @@ app.use(express.json({ limit: "500mb" }));
 
 // WhatsApp Cloud API webhooks (Meta) must be public (no JWT).
 app.use("/webhooks/whatsapp-chat", whatsappChatWebhookRoutes);
+if (!resolveWhatsappWebhookVerifyToken()) {
+  console.warn(
+    "[webhooks/whatsapp-chat] WHATSAPP_WEBHOOK_VERIFY_TOKEN (or VERIFY_TOKEN) is not set — Meta callback URL verification will return 403 until it is set in the process environment.",
+  );
+}
 
 app.use(cookieParser());
 

@@ -34,28 +34,45 @@ function extractIncomingMessages(body) {
   return out;
 }
 
-export const verifyWebhook = (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-  // Meta (WhatsApp Cloud API) sends a GET request with hub.* query params.
-  // In some deployments env var names differ; accept a small set of known names.
-  const verifyTokenRaw =
+function firstQueryString(q, key) {
+  const v = q?.[key];
+  if (v == null) return "";
+  if (Array.isArray(v)) return String(v[0] ?? "").trim();
+  return String(v).trim();
+}
+
+/** Resolve verify token from env (production often uses PM2/systemd without a local .env file). */
+export function resolveWhatsappWebhookVerifyToken() {
+  const raw =
     process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
     process.env.WHATSAPP_VERIFY_TOKEN ||
     process.env.VERIFY_TOKEN;
-  const verifyToken = typeof verifyTokenRaw === "string" ? verifyTokenRaw.trim() : "";
-  const incomingToken = typeof token === "string" ? token.trim() : "";
+  return typeof raw === "string" ? raw.trim() : "";
+}
 
-  if (
-    mode === "subscribe" &&
-    incomingToken &&
-    verifyToken &&
-    incomingToken === verifyToken
-  ) {
-    return res.status(200).send(challenge);
+export const verifyWebhook = (req, res) => {
+  const mode = firstQueryString(req.query, "hub.mode");
+  const incomingToken = firstQueryString(req.query, "hub.verify_token");
+  const challenge = firstQueryString(req.query, "hub.challenge");
+  const verifyToken = resolveWhatsappWebhookVerifyToken();
+
+  if (mode !== "subscribe") {
+    return res.status(403).send("WEBHOOK_INVALID_MODE");
   }
-  return res.sendStatus(403);
+  if (!incomingToken) {
+    return res.status(403).send("WEBHOOK_MISSING_HUB_VERIFY_TOKEN");
+  }
+  if (!verifyToken) {
+    return res
+      .status(403)
+      .send(
+        "WEBHOOK_VERIFY_TOKEN_NOT_SET — set WHATSAPP_WEBHOOK_VERIFY_TOKEN (or VERIFY_TOKEN) on the server and restart",
+      );
+  }
+  if (incomingToken !== verifyToken) {
+    return res.status(403).send("WEBHOOK_VERIFY_TOKEN_MISMATCH");
+  }
+  return res.status(200).send(challenge);
 };
 
 export const receiveWebhook = (req, res) => {
