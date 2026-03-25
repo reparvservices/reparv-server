@@ -267,7 +267,7 @@ const saveEnquiry = async (lead, metaLeadId) => {
     }
 
     // 2️⃣ Insert into enquirers
-    await db.execute(
+    const [execResult] = await db.execute(
       `
       INSERT INTO enquirers
       (adsid, propertyid, projectpartnerid, source, customer, contact, location, city, meta_lead_id)
@@ -290,6 +290,14 @@ const saveEnquiry = async (lead, metaLeadId) => {
       ],
     );
 
+    let enquiryId = execResult.insertId;
+    if (!enquiryId && metaLeadId) {
+      const [rows] = await db.execute(
+        "SELECT enquirersid FROM enquirers WHERE meta_lead_id = ? ORDER BY updated_at DESC LIMIT 1",
+        [metaLeadId],
+      );
+      enquiryId = rows[0]?.enquirersid;
+    }
     console.log("Enquiry saved successfully");
   } catch (error) {
     console.error("SAVE ENQUIRY ERROR:", error.message);

@@ -55,6 +55,8 @@ import blogAnalyticsRoutes from "./routes/admin/blogAnalyticsRoutes.js";
 import newsRoutes from "./routes/admin/newsRoute.js";
 import newsAnalyticsRoutes from "./routes/admin/newsAnalyticsRoutes.js";
 import subscribersRoutes from "./routes/admin/subscribersRoutes.js";
+import whatsappChatRoutes from "./routes/admin/whatsappChatRoutes.js";
+import whatsappChatWebhookRoutes from "./routes/webhooks/whatsappChatWebhookRoutes.js";
 
 //frontend
 import allPropertiesRoutes from "./routes/frontend/allPropertiesRoutes.js";
@@ -359,6 +361,9 @@ app.use("/meta", metaLeadRoutes);
 
 app.use(express.json({ limit: "500mb" }));
 
+// WhatsApp Cloud API webhooks (Meta) must be public (no JWT).
+app.use("/webhooks/whatsapp-chat", whatsappChatWebhookRoutes);
+
 app.use(cookieParser());
 
 export const verifyToken = (req, res, next) => {
@@ -621,6 +626,7 @@ app.use("/admin/propertytypes", propertytypeRoutes);
 app.use("/admin/enquirers", enquirerRoutes);
 app.use("/admin/call-enquirers", callEnquirerRoutes);
 app.use("/admin/whatsapp-enquirers", whatsappEnquirerRoutes);
+app.use("/admin/whatsapp-chat", whatsappChatRoutes);
 // CSV File add Enquiries Route
 app.use("/admin/enquiries", verifyToken, addEnquiryRoutes);
 app.use("/admin/auctionmembers", auctionmembersRoutes);
