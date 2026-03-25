@@ -26,6 +26,7 @@ import {
   uploadBrochureAndVideoLink,
   newAddProperty,
   newUpdate,
+  newUpdateImages,
 } from "../../controllers/projectPartner/propertyController.js";
 
 const router = express.Router();
@@ -77,6 +78,10 @@ router.post("/check-property-name", checkPropertyName);
  */
 router.post("/new/add", newAddProperty);
 router.put("/new/edit/:id", newUpdate);
+router.put(
+  "/images/new/edit/:id",
+  newUpdateImages,
+);
 
 router.post(
   "/add",

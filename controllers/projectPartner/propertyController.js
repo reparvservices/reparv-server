@@ -418,7 +418,13 @@ export const newAddProperty = async (req, res) => {
       carpetArea,
       state,
       city,
+      pincode,
       address,
+      latitude,
+      longitude,
+      projectBy,
+      contact,
+      email,
 
       // images coming from frontend as URLs
       frontView = [],
@@ -462,13 +468,14 @@ export const newAddProperty = async (req, res) => {
             projectpartnerid, propertyCategory,
             propertyName, totalSalesPrice,
             totalOfferPrice, builtUpArea, carpetArea,
-            state, city, address,
+            state, city, pincode, address, latitude, longitude,
+            projectBy, contact, email,
             frontView, sideView, kitchenView, hallView,
             bedroomView, bathroomView, balconyView,
             nearestLandmark, developedAmenities, seoSlug,
             updated_at, created_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const values = [
@@ -481,7 +488,13 @@ export const newAddProperty = async (req, res) => {
           carpetArea,
           state,
           city,
+          pincode,
           address,
+          latitude,
+          longitude,
+          projectBy,
+          contact,
+          email,
 
           // store URLs as JSON
           JSON.stringify(frontView),
@@ -846,6 +859,8 @@ export const newUpdate = async (req, res) => {
     distanceFromCityCenter,
     latitude,
     longitude,
+    contact,
+    email,
     totalSalesPrice,
     totalOfferPrice,
     stampDuty,
@@ -947,7 +962,7 @@ export const newUpdate = async (req, res) => {
         const updateSQL = `
           UPDATE properties SET 
             builderid=?, projectBy=?, possessionDate=?, propertyCategory=?, propertyApprovedBy=?, propertyName=?, address=?, state=?, city=?, pincode=?, location=?,
-            distanceFromCityCenter=?, latitude=?, longitude=?, totalSalesPrice=?, totalOfferPrice=?, emi=?, stampDuty=?, registrationFee=?, gst=?, advocateFee=?, 
+            distanceFromCityCenter=?, latitude=?, longitude=?, contact=?, email=?, totalSalesPrice=?, totalOfferPrice=?, emi=?, stampDuty=?, registrationFee=?, gst=?, advocateFee=?, 
             msebWater=?, maintenance=?, other=?, tags=?, propertyType=?, builtYear=?, ownershipType=?,
             builtUpArea=?, carpetArea=?, parkingAvailability=?, totalFloors=?, floorNo=?, loanAvailability=?,
             propertyFacing=?, reraRegistered=?, furnishing=?, waterSupply=?, powerBackup=?, locationFeature=?, sizeAreaFeature=?, parkingFeature=?, terraceFeature=?,
@@ -973,6 +988,8 @@ export const newUpdate = async (req, res) => {
           distanceFromCityCenter,
           latitude,
           longitude,
+          contact,
+          email,
           totalSalesPrice,
           totalOfferPrice,
           emi,
@@ -1936,6 +1953,92 @@ export const getImages = (req, res) => {
 
     return res.status(200).json(results[0]);
   });
+};
+
+export const newUpdateImages = async (req, res) => {
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+  const Id = req.params.id;
+
+  if (!Id || isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid property ID" });
+  }
+
+  try {
+    const newImages = req.body;
+
+    db.query(
+      "SELECT * FROM properties WHERE propertyid = ?",
+      [Id],
+      async (err, result) => {
+        if (err) {
+          console.error("DB error:", err);
+          return res.status(500).json({ message: "Database error", error: err });
+        }
+
+        if (result.length === 0) {
+          return res.status(404).json({ message: "Property not found" });
+        }
+
+        const existing = result[0];
+
+        // Helper: merge new URLs OR keep old
+        const getUpdatedField = (field) => {
+          if (newImages[field] && newImages[field].length > 0) {
+            return JSON.stringify(newImages[field]); // new S3 URLs
+          }
+          return existing[field]; // keep old
+        };
+
+        const frontView = getUpdatedField("frontView");
+        const sideView = getUpdatedField("sideView");
+        const kitchenView = getUpdatedField("kitchenView");
+        const hallView = getUpdatedField("hallView");
+        const bedroomView = getUpdatedField("bedroomView");
+        const bathroomView = getUpdatedField("bathroomView");
+        const balconyView = getUpdatedField("balconyView");
+        const nearestLandmark = getUpdatedField("nearestLandmark");
+        const developedAmenities = getUpdatedField("developedAmenities");
+
+        const updateSQL = `
+          UPDATE properties SET 
+            frontView = ?, sideView = ?, kitchenView = ?, hallView = ?, bedroomView = ?, bathroomView = ?, 
+            balconyView = ?, nearestLandmark = ?, developedAmenities = ?, updated_at = ?
+          WHERE propertyid = ?
+        `;
+
+        const values = [
+          frontView,
+          sideView,
+          kitchenView,
+          hallView,
+          bedroomView,
+          bathroomView,
+          balconyView,
+          nearestLandmark,
+          developedAmenities,
+          currentdate,
+          Id,
+        ];
+
+        db.query(updateSQL, values, async (err) => {
+          if (err) {
+            console.error("Update error:", err);
+            return res.status(500).json({ message: "Update failed", error: err });
+          }
+
+          res.status(200).json({
+            message: "Property images updated successfully",
+          });
+        });
+      }
+    );
+  } catch (err) {
+    console.error("Update error:", err);
+    return res.status(500).json({
+      message: "Update failed",
+      error: err,
+    });
+  }
 };
 
 export const updateImages = async (req, res) => {
