@@ -119,12 +119,14 @@ export const getAll = (req, res) => {
     sql = `
       SELECT 
         enquirers.*, 
+        meta_leads.*,
         properties.frontView, properties.seoSlug, properties.commissionAmount,
         territorypartner.fullname AS territoryName, 
         territorypartner.contact AS territoryContact,
         projectpartner.fullname AS projectPartnerName, 
         projectpartner.contact AS projectPartnerContact
       FROM enquirers 
+      LEFT JOIN meta_leads ON enquirers.meta_lead_id = meta_leads.id
       LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
       LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
       LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid

@@ -118,8 +118,9 @@ export const getAll = (req, res) => {
   else if (enquirySource === "Ads") {
     sql = `
       SELECT 
-        enquirers.*, 
-        properties.frontView, 
+        enquirers.*,
+        meta_leads.*,
+        properties.frontView,
         properties.seoSlug, 
         properties.commissionAmount,
         territorypartner.fullname AS territoryName, 
@@ -127,6 +128,7 @@ export const getAll = (req, res) => {
         projectpartner.fullname AS projectPartnerName, 
         projectpartner.contact AS projectPartnerContact
       FROM enquirers 
+      LEFT JOIN meta_leads ON enquirers.meta_lead_id = meta_leads.id
       LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
       LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
       LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid
