@@ -20,6 +20,7 @@ export const getAll = (req, res) => {
     sql = `
       SELECT 
         enquirers.*, 
+        meta_leads.raw_payload AS raw_payload,
         properties.frontView, 
         properties.seoSlug, 
         properties.commissionAmount,
@@ -29,6 +30,7 @@ export const getAll = (req, res) => {
         projectpartner.contact AS projectPartnerContact
       FROM enquirers 
       LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+      LEFT JOIN meta_leads ON meta_leads.id = enquirers.meta_lead_id
       LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
       LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid
       WHERE properties.status = 'active' 
@@ -44,6 +46,7 @@ export const getAll = (req, res) => {
     sql = `
       SELECT 
         enquirers.*, 
+        meta_leads.raw_payload AS raw_payload,
         properties.frontView, 
         properties.seoSlug, 
         properties.commissionAmount,
@@ -78,6 +81,7 @@ export const getAll = (req, res) => {
 
       FROM enquirers
       LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+      LEFT JOIN meta_leads ON meta_leads.id = enquirers.meta_lead_id
       LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
       LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid
 
@@ -97,6 +101,7 @@ export const getAll = (req, res) => {
     sql = `
       SELECT 
         enquirers.*, 
+        meta_leads.raw_payload AS raw_payload,
         properties.frontView, 
         properties.seoSlug, 
         properties.commissionAmount,
@@ -106,6 +111,7 @@ export const getAll = (req, res) => {
         projectpartner.contact AS projectPartnerContact
       FROM enquirers 
       LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+      LEFT JOIN meta_leads ON meta_leads.id = enquirers.meta_lead_id
       LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
       LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid
       WHERE enquirers.source = 'CSV File' 
@@ -118,9 +124,9 @@ export const getAll = (req, res) => {
   else if (enquirySource === "Ads") {
     sql = `
       SELECT 
-        enquirers.*,
-        meta_leads.*,
-        properties.frontView,
+        enquirers.*, 
+        meta_leads.raw_payload AS raw_payload,
+        properties.frontView, 
         properties.seoSlug, 
         properties.commissionAmount,
         territorypartner.fullname AS territoryName, 
@@ -128,8 +134,8 @@ export const getAll = (req, res) => {
         projectpartner.fullname AS projectPartnerName, 
         projectpartner.contact AS projectPartnerContact
       FROM enquirers 
-      LEFT JOIN meta_leads ON enquirers.meta_lead_id = meta_leads.id
       LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+      LEFT JOIN meta_leads ON meta_leads.id = enquirers.meta_lead_id
       LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
       LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid
       WHERE enquirers.source = 'Ads' 
@@ -143,6 +149,7 @@ export const getAll = (req, res) => {
     sql = `
       SELECT 
         enquirers.*, 
+        meta_leads.raw_payload AS raw_payload,
         properties.frontView, 
         properties.seoSlug, 
         properties.commissionAmount,
@@ -152,6 +159,7 @@ export const getAll = (req, res) => {
         projectpartner.contact AS projectPartnerContact
       FROM enquirers 
       LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+      LEFT JOIN meta_leads ON meta_leads.id = enquirers.meta_lead_id
       LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
       LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid
       WHERE properties.status = 'active' 
@@ -167,6 +175,7 @@ export const getAll = (req, res) => {
     sql = `
       SELECT 
         enquirers.*, 
+        meta_leads.raw_payload AS raw_payload,
         properties.frontView, 
         properties.seoSlug, 
         properties.commissionAmount,
@@ -176,6 +185,7 @@ export const getAll = (req, res) => {
         projectpartner.contact AS projectPartnerContact
       FROM enquirers 
       LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+      LEFT JOIN meta_leads ON meta_leads.id = enquirers.meta_lead_id
       LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
       LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid
       WHERE enquirers.status != 'Token'
@@ -198,10 +208,16 @@ export const getAll = (req, res) => {
     const formatted = result.map((row) => ({
       ...row,
       created_at: row.created_at
-        ? moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
+        ? moment
+            .utc(row.created_at)
+            .tz("Asia/Kolkata")
+            .format("DD MMM YYYY | hh:mm A")
         : null,
       updated_at: row.updated_at
-        ? moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
+        ? moment
+            .utc(row.updated_at)
+            .tz("Asia/Kolkata")
+            .format("DD MMM YYYY | hh:mm A")
         : null,
     }));
 
@@ -303,10 +319,16 @@ export const getAllDigitalBroker = (req, res) => {
     const formatted = result.map((row) => ({
       ...row,
       created_at: row.created_at
-        ? moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
+        ? moment
+            .utc(row.created_at)
+            .tz("Asia/Kolkata")
+            .format("DD MMM YYYY | hh:mm A")
         : null,
       updated_at: row.updated_at
-        ? moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
+        ? moment
+            .utc(row.updated_at)
+            .tz("Asia/Kolkata")
+            .format("DD MMM YYYY | hh:mm A")
         : null,
     }));
 
@@ -393,7 +415,7 @@ export const getProperties = (req, res) => {
         message: "Properties fetched successfully.",
         data: propertyResults,
       });
-    }
+    },
   );
 };
 
@@ -441,7 +463,7 @@ export const getPropertyList = (req, res) => {
         }
 
         res.json(propertyResults);
-      }
+      },
     );
   });
 };
@@ -502,9 +524,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -582,9 +604,9 @@ export const assignEnquiry = async (req, res) => {
               contact: salespersoncontact,
             },
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -624,9 +646,9 @@ export const updateEnquirerProperty = async (req, res) => {
           res.status(200).json({
             message: "Enquirer Property Updated Successfully",
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -659,7 +681,7 @@ export const del = (req, res) => {
         }
         res.status(200).json({ message: "Enquiry deleted successfully" });
       });
-    }
+    },
   );
 };
 
@@ -712,9 +734,9 @@ export const visitScheduled = (req, res) => {
             message: "Visit added successfully",
             Id: insertResult.insertId,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -722,13 +744,8 @@ export const token = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-    const {
-      paymenttype,
-      tokenamount,
-      remark,
-      dealamount,
-      enquiryStatus,
-    } = req.body;
+    const { paymenttype, tokenamount, remark, dealamount, enquiryStatus } =
+      req.body;
 
     if (
       !paymenttype ||
@@ -773,10 +790,7 @@ export const token = async (req, res) => {
     =============================== */
     const [enquirerResult] = await db
       .promise()
-      .query(
-        "SELECT propertyid FROM enquirers WHERE enquirersid = ?",
-        [Id]
-      );
+      .query("SELECT propertyid FROM enquirers WHERE enquirersid = ?", [Id]);
 
     if (enquirerResult.length === 0) {
       return res.status(404).json({ message: "Enquirer not found" });
@@ -790,18 +804,15 @@ export const token = async (req, res) => {
     const [propertyResult] = await db.promise().query(
       `SELECT commissionType, commissionAmount, commissionPercentage
        FROM properties WHERE propertyid = ?`,
-      [propertyId]
+      [propertyId],
     );
 
     if (propertyResult.length === 0) {
       return res.status(404).json({ message: "Property not found" });
     }
 
-    let {
-      commissionType,
-      commissionAmount,
-      commissionPercentage,
-    } = propertyResult[0];
+    let { commissionType, commissionAmount, commissionPercentage } =
+      propertyResult[0];
 
     commissionType = commissionType || "";
     commissionPercentage = Number(commissionPercentage) || 0;
@@ -809,8 +820,7 @@ export const token = async (req, res) => {
 
     // Percentage-based commission
     if (commissionType.toLowerCase() === "percentage") {
-      finalCommissionAmount =
-        (Number(dealamount) * commissionPercentage) / 100;
+      finalCommissionAmount = (Number(dealamount) * commissionPercentage) / 100;
     }
 
     /* ===============================
@@ -824,12 +834,10 @@ export const token = async (req, res) => {
 
     const grossTerritoryCommission = (finalCommissionAmount * 20) / 100;
     const territoryCommission =
-      grossTerritoryCommission -
-      (grossTerritoryCommission * 2) / 100;
+      grossTerritoryCommission - (grossTerritoryCommission * 2) / 100;
 
     const TDS =
-      (grossSalesCommission * 2) / 100 +
-      (grossTerritoryCommission * 2) / 100;
+      (grossSalesCommission * 2) / 100 + (grossTerritoryCommission * 2) / 100;
 
     /* ===============================
        Step 3: Insert Follow-Up
@@ -853,22 +861,24 @@ export const token = async (req, res) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    const [insertResult] = await db.promise().query(insertSQL, [
-      Id,
-      paymenttype,
-      tokenamount,
-      remark,
-      dealamount,
-      enquiryStatus,
-      finalCommissionAmount,
-      reparvCommission,
-      salesCommission,
-      territoryCommission,
-      TDS,
-      paymentImage,
-      currentdate,
-      currentdate,
-    ]);
+    const [insertResult] = await db
+      .promise()
+      .query(insertSQL, [
+        Id,
+        paymenttype,
+        tokenamount,
+        remark,
+        dealamount,
+        enquiryStatus,
+        finalCommissionAmount,
+        reparvCommission,
+        salesCommission,
+        territoryCommission,
+        TDS,
+        paymentImage,
+        currentdate,
+        currentdate,
+      ]);
 
     return res.status(201).json({
       message: "Token added successfully",
@@ -1049,11 +1059,11 @@ export const newToken = (req, res) => {
                   territoryCommission,
                 },
               });
-            }
+            },
           );
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1121,9 +1131,9 @@ export const followUp = (req, res) => {
             message: "Follow Up remark added successfully",
             Id: insertResult.insertId,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1172,8 +1182,8 @@ export const cancelled = (req, res) => {
             message: "Remark added successfully",
             Id: insertResult.insertId,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
