@@ -24,6 +24,8 @@ import {
   addCsvFileForFlat,
   addCsvFileForPlot,
   uploadBrochureAndVideoLink,
+  newAddProperty,
+  newUpdate,
 } from "../../controllers/projectPartner/propertyController.js";
 
 const router = express.Router();
@@ -67,6 +69,14 @@ router.get("/:id", getById);
 router.get("/images/get/:id", getImages);
 router.delete("/images/delete/:id", deleteImages);
 router.post("/check-property-name", checkPropertyName);
+
+/* ---------- ADD / EDIT PROPERTY ---------- */
+/**
+ * Frontend uploads images to S3
+ * Frontend sends image URLs in req.body
+ */
+router.post("/new/add", newAddProperty);
+router.put("/new/edit/:id", newUpdate);
 
 router.post(
   "/add",
