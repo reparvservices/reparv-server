@@ -450,7 +450,8 @@ export const verifyToken = (req, res, next) => {
     "/territoryapp/enquiry/getAll",
     "/projectpartner/employee/",
     "/salesapp/schedule-notes",
-    "projectpartner/enquiries/",
+    "/projectpartner/enquiries/",
+
     "/projectpartner/enquiries/remarklist/",
     "/projectpartner/enquiries/assignEnquiry/",
     "/projectpartner/enquiries/create",
