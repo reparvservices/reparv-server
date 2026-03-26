@@ -8,6 +8,7 @@ import {
   getAll,
   getAllCreatedEnquiry,
   getAllDigitalEnquiry,
+  getAllLeads,
   getPartnersEnquiry,
   getRemarkList,
   status,
@@ -25,4 +26,7 @@ router.put("/assign/to/reparv/:id/:enquiryid", assignToReparv);
 router.get("/getdigitalenquiry/:id", getAllDigitalEnquiry);
 router.get("/remarklist/:id", getRemarkList);
 router.post("/create", createEnquiry);
+
+//meta leads
+router.get("/meta/:id", getAllLeads);
 export default router;

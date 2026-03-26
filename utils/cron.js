@@ -105,7 +105,7 @@ async function sendPPNotification(
   token,
   title,
   body,
-  screenName = "Enquiries",
+  screenName = "EnquiriesScreen",
 ) {
   if (!token) return;
 
@@ -120,7 +120,7 @@ async function sendPPNotification(
 
     // 👇 Data payload — strings only!
     data: {
-      screen: screenName || "Enquiries",
+      screen: screenName || "EnquiriesScreen",
       //  click_action: "FLUTTER_NOTIFICATION_CLICK",
     },
 
@@ -756,7 +756,7 @@ function notifyProjectPartnerForNewEnquiry() {
 📍 Location: ${location}`;
 
           try {
-            await sendPPNotification(token, title, message, "Enquiries");
+            await sendPPNotification(token, title, message, "EnquiriesScreen");
             console.log("Notification sent to:", token);
           } catch (notifyErr) {
             console.log("Error sending push notification:", notifyErr);
