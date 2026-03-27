@@ -2,7 +2,7 @@ import db from "../../config/dbconnect.js";
 import moment from "moment-timezone";
 import bcrypt from "bcryptjs";
 import sendEmail from "../../utils/nodeMailer.js";
-import { uploadToS3 } from "../../utils/imageUpload.js";
+import { uploadToS3, deleteFromS3 } from "../../utils/imageUpload.js";
 import { convertSingleImageToWebp } from "../../utils/convertSingleImageToWebp.js";
 
 const saltRounds = 10;
@@ -108,6 +108,197 @@ export const editProfile = async (req, res) => {
         res.status(200).json({
           message: "Profile updated successfully",
           userimage: finalImagePath,
+        });
+      });
+    },
+  );
+};
+
+export const v2EditProfile = async (req, res) => {
+  const userId = req.projectPartnerUser?.id;
+  if (!userId) {
+    return res.status(400).json({ message: "Invalid User ID" });
+  }
+
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+  const {
+    fullname,
+    username,
+    contact,
+    email,
+    companyName,
+    role,
+    location,
+    bio,
+    website,
+    territories,
+    BusinessCategories,
+    instagramUrl,
+    linkedinUrl,
+    youtubeUrl,
+    whatsappNumber,
+
+    // preferences
+    pref_showPosts,
+    pref_allowTagging,
+    pref_allowReposts,
+    pref_enableStories,
+    pref_autoPublish,
+  } = req.body;
+
+  if (!fullname || !username || !contact || !email) {
+    return res.status(400).json({ message: "Required fields missing" });
+  }
+
+  // 👉 Fetch existing data
+  db.query(
+    "SELECT userimage, coverImage FROM projectpartner WHERE id = ?",
+    [userId],
+    async (err, result) => {
+      if (err) {
+        console.error("Fetch error:", err);
+        return res.status(500).json({ message: "Database error" });
+      }
+
+      if (result.length === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      let finalImagePath = result[0].userimage;
+      let finalCoverPath = result[0].coverImage;
+
+      try {
+        // =========================
+        //  PROFILE IMAGE
+        // =========================
+        if (req.files?.image) {
+          let file = req.files.image[0];
+
+          if (file.mimetype?.startsWith("image/")) {
+            const compressed = await convertSingleImageToWebp(file);
+            if (compressed) file = compressed;
+          }
+
+          const newUrl = await uploadToS3(file);
+
+          // OPTIONAL: delete old image
+          if (finalImagePath) {
+            await deleteFromS3(finalImagePath);
+          }
+
+          finalImagePath = newUrl;
+        }
+
+        // =========================
+        // COVER IMAGE
+        // =========================
+        if (req.files?.coverImage) {
+          let file = req.files.coverImage[0];
+
+          if (file.mimetype?.startsWith("image/")) {
+            const compressed = await convertSingleImageToWebp(file);
+            if (compressed) file = compressed;
+          }
+
+          const newUrl = await uploadToS3(file);
+
+          if (finalCoverPath) {
+            await deleteFromS3(finalCoverPath);
+          }
+
+          finalCoverPath = newUrl;
+        }
+      } catch (uploadErr) {
+        console.error("S3 Error:", uploadErr);
+        return res.status(500).json({
+          message: "Image upload failed",
+          error: uploadErr,
+        });
+      }
+
+      // =========================
+      // UPDATE QUERY
+      // =========================
+
+      const safePref = (val) => (val === "1" || val === 1 ? 1 : 0);
+
+      const prefData = {
+        pref_showPosts: safePref(pref_showPosts),
+        pref_allowTagging: safePref(pref_allowTagging),
+        pref_allowReposts: safePref(pref_allowReposts),
+        pref_enableStories: safePref(pref_enableStories),
+        pref_autoPublish: safePref(pref_autoPublish),
+      };
+
+      const updateSql = `
+        UPDATE projectpartner SET
+          fullname = ?,
+          username = ?,
+          contact = ?,
+          email = ?,
+          companyName = ?,
+          role = ?,
+          location = ?,
+          bio = ?,
+          website = ?,
+          territories = ?,
+          BusinessCategories = ?,
+          instagramUrl = ?,
+          linkedinUrl = ?,
+          youtubeUrl = ?,
+          whatsappNumber = ?,
+          pref_showPosts = ?,
+          pref_allowTagging = ?,
+          pref_allowReposts = ?,
+          pref_enableStories = ?,
+          pref_autoPublish = ?,
+          userimage = ?,
+          coverImage = ?,
+          updated_at = ?
+        WHERE id = ?
+      `;
+
+      const values = [
+        fullname,
+        username,
+        contact,
+        email,
+        companyName || null,
+        role || null,
+        location || null,
+        bio || null,
+        website || null,
+        territories || null, // already JSON string
+        BusinessCategories || null, // already JSON string
+        instagramUrl || null,
+        linkedinUrl || null,
+        youtubeUrl || null,
+        whatsappNumber || null,
+        prefData.pref_showPosts,
+        prefData.pref_allowTagging,
+        prefData.pref_allowReposts,
+        prefData.pref_enableStories,
+        prefData.pref_autoPublish,
+        finalImagePath,
+        finalCoverPath,
+        currentdate,
+        userId,
+      ];
+
+      db.query(updateSql, values, (updateErr) => {
+        if (updateErr) {
+          console.error("Update error:", updateErr);
+          return res.status(500).json({
+            message: "Database update failed",
+            error: updateErr,
+          });
+        }
+
+        res.status(200).json({
+          message: "Profile updated successfully",
+          userimage: finalImagePath,
+          coverImage: finalCoverPath,
         });
       });
     },

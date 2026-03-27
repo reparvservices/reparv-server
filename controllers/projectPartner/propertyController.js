@@ -400,7 +400,7 @@ export const addProperty = async (req, res) => {
   }
 };
 
-export const newAddProperty = async (req, res) => {
+export const v2AddProperty = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
     const partnerId = req.projectPartnerUser?.id;
@@ -836,7 +836,7 @@ export const addPropertyOld = async (req, res) => {
   }
 };
 
-export const newUpdate = async (req, res) => {
+export const v2Update = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const Id = req.params.id;
 
@@ -1955,7 +1955,7 @@ export const getImages = (req, res) => {
   });
 };
 
-export const newUpdateImages = async (req, res) => {
+export const v2UpdateImages = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const Id = req.params.id;
 
