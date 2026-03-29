@@ -120,6 +120,7 @@ export const addEnquiry = async (req, res) => {
     city,
     location,
     message,
+    whatsappNumber,
   } = req.body;
 
   // Validate all required fields
@@ -156,10 +157,11 @@ export const addEnquiry = async (req, res) => {
         location,
         propertyid,
         message,
+       whatsappNumber,
         source,
         updated_at,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?)
     `;
 
     insertData = [
@@ -175,6 +177,7 @@ export const addEnquiry = async (req, res) => {
       location,
       propertyid,
       message,
+      whatsappNumber,
       "Direct",
       currentdate,
       currentdate,
@@ -197,10 +200,11 @@ export const addEnquiry = async (req, res) => {
         city,
         location,
         message,
+         whatsappNumber,
         source,
         updated_at,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
     `;
 
     insertData = [
@@ -215,6 +219,7 @@ export const addEnquiry = async (req, res) => {
       city,
       location,
       message,
+      whatsappNumber,
       "Direct",
       currentdate,
       currentdate,

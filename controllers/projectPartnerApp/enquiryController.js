@@ -708,6 +708,7 @@ export const createEnquiry = async (req, res) => {
     followUpDate,
     selectedProperty,
     projectpartnerid,
+    whatsappNumber,
   } = req.body;
 
   console.log(req.body);
@@ -765,9 +766,10 @@ export const createEnquiry = async (req, res) => {
         message,
         source,
         notes,
+        whatsappNumber,
         updated_at,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     insertData = [
@@ -784,6 +786,7 @@ export const createEnquiry = async (req, res) => {
       message,
       leadSource || "Direct",
       notes,
+      whatsappNumber,
       currentdate,
       currentdate,
     ];
@@ -804,9 +807,10 @@ export const createEnquiry = async (req, res) => {
         message,
         source,
         notes,
+         whatsappNumber,
         updated_at,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     insertData = [
@@ -823,6 +827,7 @@ export const createEnquiry = async (req, res) => {
       message,
       leadSource || "Direct",
       notes,
+      whatsappNumber,
       currentdate,
       currentdate,
     ];
