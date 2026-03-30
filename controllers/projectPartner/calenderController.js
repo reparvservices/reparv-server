@@ -42,7 +42,7 @@ export const getNotes = (req, res) => {
 
     const { date } = req.query;
 
-    let sql = "SELECT * FROM calenderNotes WHERE projectPartnerId = ?";
+    let sql = "SELECT * FROM calendernotes WHERE projectPartnerId = ?";
     let values = [userId];
 
     if (date) {
@@ -89,7 +89,7 @@ export const addNote = (req, res) => {
     }
 
     db.query(
-      "INSERT INTO calenderNotes (projectPartnerId, date, time, note) VALUES (?, ?, ?, ?)",
+      "INSERT INTO calendernotes (projectPartnerId, date, time, note) VALUES (?, ?, ?, ?)",
       [userId, date, time, note],
       (err, result) => {
         if (err) {
@@ -128,7 +128,7 @@ export const deleteNote = (req, res) => {
     }
 
     db.query(
-      "DELETE FROM calenderNotes WHERE id = ? AND projectPartnerId = ?",
+      "DELETE FROM calendernotes WHERE id = ? AND projectPartnerId = ?",
       [noteid, userId],
       (err, result) => {
         if (err) {
