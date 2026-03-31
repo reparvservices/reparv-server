@@ -202,6 +202,8 @@ import projectDepartmentRoutes from "./routes/projectPartner/departmentRoutes.js
 import projectSliderRoutes from "./routes/projectPartner/sliderRoutes.js";
 import projectPartnerMessageRoutes from "./routes/projectPartner/messageRoutes.js";
 import projectPartnerSubscriptionRoutes from "./routes/projectPartner/subscriptionRoutes.js";
+import projectPartnerSalesAndTerritoryRoutes from "./routes/projectPartner/partnerRoutes.js";
+import projectPartnerEventRoutes from "./routes/projectPartner/eventRoutes.js";
 
 // import Territory Partner Routes
 import territoryPartnerLoginRoutes from "./routes/territoryPartner/loginRoutes.js";
@@ -768,6 +770,8 @@ app.use("/project-partner/employees", projectEmployeeRoutes);
 app.use("/project-partner/slider", projectSliderRoutes);
 app.use("/project-partner/messages", projectPartnerMessageRoutes);
 app.use("/project-partner/subscription", projectPartnerSubscriptionRoutes);
+app.use("/project-partner/partner", projectPartnerSalesAndTerritoryRoutes);
+app.use("/project-partner/event", projectPartnerEventRoutes);
 
 // Territory Partner Routes
 app.use("/territory-partner", territoryPartnerLoginRoutes);
