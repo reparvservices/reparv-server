@@ -3,7 +3,7 @@ import moment from "moment-timezone";
 
 export const getCount = (req, res) => {
   const id = req.projectPartnerUser?.id;
-  const adhar = req.projectPartnerUser?.adharId;
+  const email = req.projectPartnerUser?.email;
 
   const query = `
     SELECT
@@ -54,7 +54,7 @@ export const getCount = (req, res) => {
 
   db.query(
     query,
-    [id, id, id, id, id, id, id, id, id, id, id, id],
+    [id, id, id, id, id, email, id, id, id, id, id, id],
     (err, results) => {
       if (err) {
         console.error("Optimized Query Error:", err);

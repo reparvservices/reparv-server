@@ -3,10 +3,298 @@ import moment from "moment-timezone";
 
 export const getAll = (req, res) => {
   const Id = req.projectPartnerUser?.id;
+  const email = req.projectPartnerUser?.email;
+
+  if (!Id || !email) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized! Please login again." });
+  }
+
+  const ticketGenerator = req.params.generator;
+  if (!ticketGenerator) {
+    return res.status(400).json({ message: "Ticket generator not specified." });
+  }
+
+  let sql;
+  let params = [];
+
+  // COMMON JOINS (handles all roles)
+  const commonJoins = `
+    LEFT JOIN projectpartner pp ON pp.email = tickets.ticketadder
+    LEFT JOIN salespersons sp ON sp.email = tickets.ticketadder
+    LEFT JOIN territorypartner tp ON tp.email = tickets.ticketadder
+  `;
+
+  const ticketAdderFields = `
+    COALESCE(pp.fullname, sp.fullname, tp.fullname) AS ticketadder_name,
+    COALESCE(pp.contact, sp.contact, tp.contact) AS ticketadder_contact,
+    COALESCE(pp.role, sp.role, tp.role) AS ticketadder_role
+  `;
+
+  // Case 1: Self
+  if (ticketGenerator === "Self") {
+    sql = `
+      SELECT 
+        tickets.*, 
+        users.name AS admin_name, 
+        departments.department,
+        employees.name AS employee_name, 
+        employees.uid,
+        ${ticketAdderFields}
+      FROM tickets 
+      ${commonJoins}
+      LEFT JOIN users ON tickets.adminid = users.id 
+      LEFT JOIN departments ON tickets.departmentid = departments.departmentid
+      LEFT JOIN employees ON tickets.employeeid = employees.id
+      WHERE tickets.ticketadder = ?
+      ORDER BY tickets.created_at DESC
+    `;
+    params = [email];
+
+    // Case 2: Sales Person
+  } else if (ticketGenerator === "Sales Person") {
+    sql = `
+      SELECT 
+        tickets.*, 
+        users.name AS admin_name, 
+        departments.department,
+        employees.name AS employee_name, 
+        employees.uid,
+        ${ticketAdderFields},
+        projectpartner.fullname AS project_partner
+      FROM tickets 
+      ${commonJoins}
+      LEFT JOIN users ON tickets.adminid = users.id 
+      LEFT JOIN departments ON tickets.departmentid = departments.departmentid
+      LEFT JOIN employees ON tickets.employeeid = employees.id
+      LEFT JOIN projectpartner ON tickets.projectpartnerid = projectpartner.id
+      WHERE tickets.projectpartnerid = ?
+      ORDER BY tickets.created_at DESC
+    `;
+    params = [Id];
+
+    // Case 3: Territory Partner
+  } else if (ticketGenerator === "Territory Partner") {
+    sql = `
+      SELECT 
+        tickets.*, 
+        users.name AS admin_name, 
+        departments.department,
+        employees.name AS employee_name, 
+        employees.uid,
+        ${ticketAdderFields},
+        projectpartner.fullname AS project_partner
+      FROM tickets 
+      ${commonJoins}
+      LEFT JOIN users ON tickets.adminid = users.id 
+      LEFT JOIN departments ON tickets.departmentid = departments.departmentid
+      LEFT JOIN employees ON tickets.employeeid = employees.id
+      LEFT JOIN projectpartner ON tickets.projectpartnerid = projectpartner.id
+      WHERE tickets.projectpartnerid = ?
+      ORDER BY tickets.created_at DESC
+    `;
+    params = [Id];
+
+    // Default
+  } else {
+    sql = `
+      SELECT 
+        tickets.*, 
+        users.name AS admin_name, 
+        departments.department,
+        employees.name AS employee_name, 
+        employees.uid,
+        ${ticketAdderFields}
+      FROM tickets
+      ${commonJoins}
+      LEFT JOIN users ON tickets.adminid = users.id 
+      LEFT JOIN departments ON tickets.departmentid = departments.departmentid
+      LEFT JOIN employees ON tickets.employeeid = employees.id
+      WHERE tickets.projectpartnerid = ? OR tickets.ticketadder = ?
+      ORDER BY tickets.created_at DESC
+    `;
+    params = [Id, email];
+  }
+
+  db.query(sql, params, (err, result) => {
+    if (err) {
+      console.error("Error fetching tickets:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    const formatted = result.map((row) => ({
+      ...row,
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+    }));
+
+    res.json(formatted);
+  });
+};
+// Get by ID (NO CHANGE needed)
+export const getById = (req, res) => {
+  const Id = parseInt(req.params.id);
+
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid ticket ID" });
+  }
+
+  const sql = `SELECT tickets.*,
+   users.name AS admin_name,
+    departments.department,
+     employees.uid,
+     employees.name AS employee_name,
+     projectpartner.fullname AS project_partner
+       FROM tickets 
+       LEFT JOIN users ON tickets.adminid = users.id 
+       LEFT JOIN departments ON tickets.departmentid = departments.departmentid
+       LEFT JOIN employees ON tickets.employeeid = employees.id
+       LEFT JOIN projectpartner ON tickets.projectpartnerid = projectpartner.id
+       WHERE ticketid = ? ORDER BY ticketid DESC`;
+
+  db.query(sql, [Id], (err, result) => {
+    if (err)
+      return res.status(500).json({ message: "Database error", error: err });
+    if (result.length === 0)
+      return res.status(404).json({ message: "Ticket not found" });
+
+    res.status(200).json(result[0]);
+  });
+};
+
+export const getAdmins = (req, res) => {
+  const sql =
+    "SELECT users.id, users.name FROM users WHERE role = 'Superadmin' ORDER BY id DESC";
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error("Error fetching Admins:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    return res.status(200).json(result);
+  });
+};
+
+export const getDepartments = (req, res) => {
+  const sql =
+    "SELECT * FROM departments WHERE projectpartnerid = '' OR projectpartnerid IS NULL ORDER BY departmentid DESC";
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error("Error fetching departments:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    return res.status(200).json(result);
+  });
+};
+
+export const getEmployees = (req, res) => {
+  const Id = parseInt(req.params.id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid Employee ID" });
+  }
+
+  const sql = "SELECT * FROM employees WHERE departmentid = ? ORDER BY id DESC";
+  db.query(sql, [Id], (err, result) => {
+    if (err) {
+      console.error("Error fetching employees:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    return res.json(result);
+  });
+};
+
+// ADD (IMPORTANT CHANGE HERE)
+export const add = (req, res) => {
+  const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+  const email = req.projectPartnerUser?.email;
+  if (!email) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized! Please Login Again" });
+  }
+
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const digits = "0123456789";
+
+  const generateCode = () => {
+    const randomLetters = Array.from(
+      { length: 3 },
+      () => letters[Math.floor(Math.random() * letters.length)],
+    ).join("");
+
+    const randomDigits = Array.from(
+      { length: 3 },
+      () => digits[Math.floor(Math.random() * digits.length)],
+    ).join("");
+
+    return randomLetters + randomDigits;
+  };
+
+  const { adminid, departmentid, employeeid, issue, details, priority } =
+    req.body;
+
+  if (!issue || !details) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  const tryInsert = () => {
+    const ticketno = generateCode();
+
+    const sql = `INSERT INTO tickets 
+      (ticketadder, adminid, departmentid, employeeid, ticketno, issue, details, priority, updated_at, created_at) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+    db.query(
+      sql,
+      [
+        email,
+        adminid,
+        departmentid,
+        employeeid,
+        ticketno,
+        issue,
+        details,
+        priority,
+        currentDate,
+        currentDate,
+      ],
+      (err, result) => {
+        if (err) {
+          if (err.code === "ER_DUP_ENTRY") return tryInsert();
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        return res.status(201).json({
+          message: "Ticket added successfully",
+          Id: result.insertId,
+          ticketno,
+        });
+      },
+    );
+  };
+
+  tryInsert();
+};
+
+export const getAllOld = (req, res) => {
+  const Id = req.projectPartnerUser?.id;
   const adharId = req.projectPartnerUser?.adharId;
 
   if (!Id || !adharId) {
-    return res.status(401).json({ message: "Unauthorized! Please login again." });
+    return res
+      .status(401)
+      .json({ message: "Unauthorized! Please login again." });
   }
 
   const ticketGenerator = req.params.generator;
@@ -38,7 +326,7 @@ export const getAll = (req, res) => {
     `;
     params = [adharId];
 
-  // Case 2: Sales Person — tickets linked to this Project Partner
+    // Case 2: Sales Person — tickets linked to this Project Partner
   } else if (ticketGenerator === "Sales Person") {
     sql = `
       SELECT 
@@ -61,7 +349,7 @@ export const getAll = (req, res) => {
     `;
     params = [Id];
 
-  // Case 3: Territory Partner — tickets under this Project Partner
+    // Case 3: Territory Partner — tickets under this Project Partner
   } else if (ticketGenerator === "Territory Partner") {
     sql = `
       SELECT 
@@ -84,7 +372,7 @@ export const getAll = (req, res) => {
     `;
     params = [Id];
 
-  // Default: All tickets related to this Project Partner or created by them
+    // Default: All tickets related to this Project Partner or created by them
   } else {
     sql = `
       SELECT 
@@ -113,8 +401,14 @@ export const getAll = (req, res) => {
     // Format Dates
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -122,7 +416,7 @@ export const getAll = (req, res) => {
 };
 
 // **Fetch Single by ID**
-export const getById = (req, res) => {
+export const getByIdOld = (req, res) => {
   const Id = parseInt(req.params.id);
 
   // Check if ID is valid
@@ -156,53 +450,15 @@ export const getById = (req, res) => {
   });
 };
 
-export const getAdmins = (req, res) => {
-  const sql = "SELECT users.id, users.name FROM users WHERE role = 'Superadmin' ORDER BY id DESC";
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error("Error fetching Admins:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-
-    return res.status(200).json(result);
-  });
-};
-
-export const getDepartments = (req, res) => {
-  const sql = "SELECT * FROM departments WHERE projectpartnerid = '' OR projectpartnerid IS NULL ORDER BY departmentid DESC";
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error("Error fetching departments:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-
-    return res.status(200).json(result);
-  });
-};
-
-export const getEmployees = (req, res) => {
-  const Id = parseInt(req.params.id);
-  if (isNaN(Id)) {
-    return res.status(400).json({ message: "Invalid Employee ID" });
-  }
-
-  const sql = "SELECT * FROM employees WHERE departmentid = ? ORDER BY id DESC";
-  db.query(sql, [Id], (err, result) => {
-    if (err) {
-      console.error("Error fetching employees:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-    return res.json(result);
-  });
-};
-
 // **Add New **
-export const add = (req, res) => {
+export const addOld = (req, res) => {
   const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
 
   const adharId = req.projectPartnerUser?.adharId;
-  if(!adharId){
-    return res.status(401).json({message: 'Unauthorized! Please Login Again'});
+  if (!adharId) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized! Please Login Again" });
   }
 
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -211,12 +467,12 @@ export const add = (req, res) => {
   const generateCode = () => {
     const randomLetters = Array.from(
       { length: 3 },
-      () => letters[Math.floor(Math.random() * letters.length)]
+      () => letters[Math.floor(Math.random() * letters.length)],
     ).join("");
 
     const randomDigits = Array.from(
       { length: 3 },
-      () => digits[Math.floor(Math.random() * digits.length)]
+      () => digits[Math.floor(Math.random() * digits.length)],
     ).join("");
 
     return randomLetters + randomDigits; // Letters first, then numbers
@@ -236,7 +492,7 @@ export const add = (req, res) => {
 
     db.query(
       sql,
-      [ 
+      [
         adharId,
         adminid,
         departmentid,
@@ -266,7 +522,7 @@ export const add = (req, res) => {
           Id: result.insertId,
           ticketno,
         });
-      }
+      },
     );
   };
   tryInsert();
@@ -300,7 +556,7 @@ export const reOpen = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Re-open ticket successfully" });
-      }
+      },
     );
   });
 };
@@ -339,7 +595,7 @@ export const changeStatus = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Status changed successfully" });
-      }
+      },
     );
   });
 };
@@ -347,7 +603,7 @@ export const changeStatus = (req, res) => {
 // **Edit **
 export const update = (req, res) => {
   const Id = parseInt(req.params.id);
-  const { adminid, departmentid, employeeid, issue, details } = req.body;
+  const { adminid, departmentid, employeeid, issue, details, priority } = req.body;
 
   if (!issue || !details) {
     return res.status(400).json({ message: "All fields are required" });
@@ -359,11 +615,11 @@ export const update = (req, res) => {
     if (result.length === 0)
       return res.status(404).json({ message: "Ticket not found" });
 
-    const sql = `UPDATE tickets SET adminid=?, departmentid=?, employeeid=?, issue=?, details=? WHERE ticketid=?`;
+    const sql = `UPDATE tickets SET adminid=?, departmentid=?, employeeid=?, issue=?, details=?, priority=? WHERE ticketid=?`;
 
     db.query(
       sql,
-      [adminid, departmentid, employeeid, issue, details, Id],
+      [adminid, departmentid, employeeid, issue, details, priority, Id],
       (err) => {
         if (err) {
           console.error("Error updating :", err);
@@ -372,7 +628,7 @@ export const update = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Ticket updated successfully" });
-      }
+      },
     );
   });
 };
@@ -413,7 +669,7 @@ export const addResponse = (req, res) => {
 
         res.status(200).json(rows[0]);
       });
-    }
+    },
   );
 };
 
