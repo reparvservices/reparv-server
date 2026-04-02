@@ -8,6 +8,7 @@ import {
   updateOneSignalId,
   updateProjectPartner,
   changeProjectPartnerRequestSend,
+  v2EditProfile,
 } from "../../controllers/territoryPartner/profileController.js";
 
 const router = express.Router();
@@ -28,6 +29,14 @@ const upload = multer({
 
 router.get("/", getProfile);
 router.put("/edit", upload.single("image"), editProfile);
+router.put(
+  "/v2/edit",
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "coverImage", maxCount: 1 },
+  ]),
+  v2EditProfile,
+);
 router.put("/changepassword", changePassword);
 router.put("/update-onesignal", updateOneSignalId);
 router.put("/update-projectpartner", updateProjectPartner);

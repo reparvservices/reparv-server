@@ -71,6 +71,8 @@ import testimonialFeedbackRoutes from "./routes/frontend/testimonialRoutes.js";
 import frontendEmiRoutes from "./routes/frontend/emiRoutes.js";
 import frontendContactUsRoutes from "./routes/frontend/contactUsRoutes.js";
 import frontendNewsRoute from "./routes/frontend/newsRoute.js";
+import frontendSeoRoutes from "./routes/frontend/seoData.routes.js";
+
 // frontend project-partner landing page
 import frontendProjectPartnerRoutes from "./routes/frontend/projectPartnerRoutes.js";
 
@@ -169,6 +171,7 @@ import salesCalenderRoutes from "./routes/sales/calenderRoutes.js";
 import salesPropertiesRoutes from "./routes/sales/propertiesRoutes.js";
 import salesPropertyinfoRoutes from "./routes/sales/propertyinfoRoutes.js";
 import enquiryRoutesSaleApp from "./routes/salesAppRoute/enquiryRoute.js";
+import salesSubscriptionRoutes from "./routes/sales/subscriptionRoutes.js";
 
 // import onBarding Partner Routes
 import partnerLoginRoutes from "./routes/onboardingPartner/partnerLoginRoutes.js";
@@ -219,6 +222,7 @@ import territoryPartnerEnquiryRoutes from "./routes/territoryPartner/enquiryRout
 import territoryPartnerCalenderRoutes from "./routes/territoryPartner/calenderRoutes.js";
 import territoryPartnerPropertiesRoutes from "./routes/territoryPartner/propertiesRoutes.js";
 import territoryPartnerPropertyinfoRoutes from "./routes/territoryPartner/propertyinfoRoutes.js";
+import territoryPartnerSubscriptionRoutes from "./routes/territoryPartner/subscriptionRoutes.js";
 
 import bookPropertyRoute from "./routes/sales/propertyBookingRoute.js";
 //sales app route
@@ -427,6 +431,7 @@ export const verifyToken = (req, res, next) => {
     "/frontend/project-partner",
     "/frontend/contact-us",
     "/frontend/news",
+    "/frontend/seo-data",
     "/salesapp/enquiry",
     "/api/booking",
     "/salesapp/api/edit",
@@ -581,6 +586,7 @@ app.use("/frontend/testimonial", testimonialFeedbackRoutes);
 app.use("/frontend/emi", frontendEmiRoutes);
 app.use("/frontend/contact-us", frontendContactUsRoutes);
 app.use("/frontend/news", frontendNewsRoute);
+app.use("/frontend/seo-data", frontendSeoRoutes);
 // frontend project-partner landing page
 app.use("/frontend/project-partner", frontendProjectPartnerRoutes);
 
@@ -731,6 +737,7 @@ app.use("/sales/customers", salesCustomerRoutes);
 app.use("/sales/tickets", salesTicketRoutes);
 app.use("/sales/calender", salesCalenderRoutes);
 app.use("/sales/enquiry", salesEnquiryRoutes);
+app.use("/sales/subscription", salesSubscriptionRoutes);
 // Property Pages Routes
 app.use("/sales/properties", salesPropertiesRoutes);
 app.use("/sales/propertyinfo", salesPropertyinfoRoutes);
@@ -785,7 +792,7 @@ app.use("/territory-partner/customers", territoryPartnerCustomerRoutes);
 app.use("/territory-partner/enquirers", territoryPartnerEnquirersRoutes);
 app.use("/territory-partner/enquiry", territoryPartnerEnquiryRoutes);
 app.use("/territory-partner/calender", territoryPartnerCalenderRoutes);
-
+app.use("/territory-partner/subscription", territoryPartnerSubscriptionRoutes);
 // Property Pages Routes
 app.use("/territory-partner/properties", territoryPartnerPropertiesRoutes);
 app.use("/territory-partner/propertyinfo", territoryPartnerPropertyinfoRoutes);

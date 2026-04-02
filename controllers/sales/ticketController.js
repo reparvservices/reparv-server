@@ -3,27 +3,38 @@ import moment from "moment-timezone";
 
 // **Fetch All **
 export const getAll = (req, res) => {
-  const adharId = req.salesUser?.adharId;
-  if(!adharId){
-    return res.status(401).json({message: "Unauthorized! Please Login again"})
-  }
-  const sql = `SELECT tickets.*,
-       projectpartner.fullname AS project_partner
-       FROM tickets
-       LEFT JOIN projectpartner ON projectpartner.id = tickets.projectpartnerid
-       WHERE tickets.ticketadder = ?
-       ORDER BY ticketid DESC`;
+  const email = req.salesUser?.email;
 
-  db.query(sql, [adharId], (err, result) => {
+  if (!email) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized! Please Login again" });
+  }
+
+  const sql = `
+    SELECT tickets.*, projectpartner.fullname AS project_partner
+    FROM tickets
+    LEFT JOIN projectpartner ON projectpartner.id = tickets.projectpartnerid
+    WHERE tickets.ticketadder = ?
+    ORDER BY ticketid DESC
+  `;
+
+  db.query(sql, [email], (err, result) => {
     if (err) {
-      console.error("Error fetching :", err);
+      console.error("Error fetching:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
 
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -59,74 +70,9 @@ export const getById = (req, res) => {
   });
 };
 
-// **Fetch All **
-export const getAllOld = (req, res) => {
-  const adharId = req.salesUser?.adharId;
-  if(!adharId){
-    return res.status(401).json({message: "Unauthorized! Please Login again"})
-  }
-  const sql = `SELECT tickets.*,
-   users.name AS admin_name,
-    departments.department,
-     employees.name AS employee_name,
-      employees.uid
-       FROM tickets LEFT JOIN users ON tickets.adminid = users.id 
-       LEFT JOIN departments ON tickets.departmentid = departments.departmentid
-       LEFT JOIN employees ON tickets.employeeid = employees.id
-       WHERE tickets.ticketadder = ?
-       ORDER BY ticketid DESC`;
-
-  db.query(sql, [adharId], (err, result) => {
-    if (err) {
-      console.error("Error fetching :", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-
-    const formatted = result.map((row) => ({
-      ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-    }));
-
-    res.json(formatted);
-  });
-};
-
-// **Fetch Single by ID**
-export const getByIdOld = (req, res) => {
-  const Id = parseInt(req.params.id);
-
-  // Check if ID is valid
-  if (isNaN(Id)) {
-    return res.status(400).json({ message: "Invalid ticket ID" });
-  }
-
-  const sql = `SELECT tickets.*,
-   users.name AS admin_name,
-    departments.department,
-     employees.name AS employee_name,
-      employees.uid
-       FROM tickets LEFT JOIN users ON tickets.adminid = users.id 
-       LEFT JOIN departments ON tickets.departmentid = departments.departmentid
-       LEFT JOIN employees ON tickets.employeeid = employees.id
-       WHERE ticketid = ? ORDER BY ticketid DESC`;
-
-  db.query(sql, [Id], (err, result) => {
-    if (err) {
-      console.error("Error fetching ticket:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-
-    if (result.length === 0) {
-      return res.status(404).json({ message: "Ticket not found" });
-    }
-
-    res.status(200).json(result[0]);
-  });
-};
-
 export const getAdmins = (req, res) => {
-  const sql = "SELECT users.id, users.name FROM users WHERE role = 'Superadmin' ORDER BY id DESC";
+  const sql =
+    "SELECT users.id, users.name FROM users WHERE role = 'Superadmin' ORDER BY id DESC";
   db.query(sql, (err, result) => {
     if (err) {
       console.error("Error fetching Admins:", err);
@@ -138,7 +84,8 @@ export const getAdmins = (req, res) => {
 };
 
 export const getDepartments = (req, res) => {
-  const sql = "SELECT * FROM departments WHERE projectpartnerid = '' OR projectpartnerid IS NULL ORDER BY departmentid DESC";
+  const sql =
+    "SELECT * FROM departments WHERE projectpartnerid = '' OR projectpartnerid IS NULL ORDER BY departmentid DESC";
   db.query(sql, (err, result) => {
     if (err) {
       console.error("Error fetching departments:", err);
@@ -167,19 +114,28 @@ export const getEmployees = (req, res) => {
 
 export const add = (req, res) => {
   const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
-  const adharId = req.salesUser?.adharId;
+  const email = req.salesUser?.email;
 
-  if (!adharId) {
-    return res.status(401).json({ message: "Unauthorized! Please Login Again" });
+  if (!email) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized! Please Login Again" });
   }
 
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const digits = "0123456789";
 
-  // Generate unique ticket number like ABC123
   const generateCode = () => {
-    const randomLetters = Array.from({ length: 3 }, () => letters[Math.floor(Math.random() * letters.length)]).join("");
-    const randomDigits = Array.from({ length: 3 }, () => digits[Math.floor(Math.random() * digits.length)]).join("");
+    const randomLetters = Array.from(
+      { length: 3 },
+      () => letters[Math.floor(Math.random() * letters.length)],
+    ).join("");
+
+    const randomDigits = Array.from(
+      { length: 3 },
+      () => digits[Math.floor(Math.random() * digits.length)],
+    ).join("");
+
     return randomLetters + randomDigits;
   };
 
@@ -189,10 +145,14 @@ export const add = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // Step 1: Fetch sales person details
-  const fetchSalesPersonSql = `SELECT projectpartnerid FROM salespersons WHERE adharno = ?`;
+  // ✅ FIX: use email instead of adharno
+  const fetchSalesPersonSql = `
+    SELECT projectpartnerid 
+    FROM salespersons 
+    WHERE email = ?
+  `;
 
-  db.query(fetchSalesPersonSql, [adharId], (err, salesResults) => {
+  db.query(fetchSalesPersonSql, [email], (err, salesResults) => {
     if (err) {
       console.error("Error fetching salesperson:", err);
       return res.status(500).json({ message: "Database error", error: err });
@@ -204,11 +164,6 @@ export const add = (req, res) => {
 
     const projectpartnerid = salesResults[0].projectpartnerid;
 
-    if (!projectpartnerid) {
-      return res.status(400).json({ message: "No Project Partner linked to this Sales Person" });
-    }
-
-    // Step 2: Try inserting new ticket
     const tryInsert = () => {
       const ticketno = generateCode();
 
@@ -220,15 +175,24 @@ export const add = (req, res) => {
 
       db.query(
         sql,
-        [projectpartnerid, adharId, ticketno, issue, details, currentDate, currentDate],
+        [
+          projectpartnerid,
+          email,
+          ticketno,
+          issue,
+          details,
+          currentDate,
+          currentDate,
+        ],
         (err, result) => {
           if (err) {
             if (err.code === "ER_DUP_ENTRY") {
-              console.warn("Duplicate ticket number, retrying...");
-              return tryInsert(); // retry with new code
+              return tryInsert();
             }
             console.error("Error inserting ticket:", err);
-            return res.status(500).json({ message: "Database error", error: err });
+            return res
+              .status(500)
+              .json({ message: "Database error", error: err });
           }
 
           return res.status(201).json({
@@ -236,7 +200,7 @@ export const add = (req, res) => {
             ticketId: result.insertId,
             ticketno,
           });
-        }
+        },
       );
     };
 
@@ -272,7 +236,7 @@ export const reOpen = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Re-open ticket successfully" });
-      }
+      },
     );
   });
 };
@@ -311,7 +275,7 @@ export const changeStatus = (req, res) => {
             .json({ message: "Database error", error: err });
         }
         res.status(200).json({ message: "Status changed successfully" });
-      }
+      },
     );
   });
 };
@@ -333,19 +297,13 @@ export const update = (req, res) => {
 
     const sql = `UPDATE tickets SET issue=?, details=? WHERE ticketid=?`;
 
-    db.query(
-      sql,
-      [ issue, details, Id],
-      (err) => {
-        if (err) {
-          console.error("Error updating :", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-        }
-        res.status(200).json({ message: "Ticket updated successfully" });
+    db.query(sql, [issue, details, Id], (err) => {
+      if (err) {
+        console.error("Error updating :", err);
+        return res.status(500).json({ message: "Database error", error: err });
       }
-    );
+      res.status(200).json({ message: "Ticket updated successfully" });
+    });
   });
 };
 
