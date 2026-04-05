@@ -72,8 +72,8 @@ export const addNote = (req, res) => {
   `;
 
   const values = [
-    scheduleId || null, // schedule_id
-    scheduleType || null, // schedule_type
+    scheduleId || 2, // schedule_id
+    scheduleType || "meeting", // schedule_type
     note || null, // note
     title || null, // title
     eventType || null, // event_type
