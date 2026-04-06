@@ -284,6 +284,7 @@ import builderpostRoute from "./routes/builderAppRoute/BuilderpostRoutes.js";
 //Event App
 import userRoutes from "./routes/eventRoute/authRoute.js";
 import eventuserProfileRoutes from "./routes/eventRoute/profileRoute.js";
+import eventHandlerRoutes from "./routes/eventRoute/eventRoute.js";
 
 // Meta Leads routes
 
@@ -521,6 +522,7 @@ export const verifyToken = (req, res, next) => {
     "/api/auth/forgot-password/",
     "/event/users/auth",
     "/event/profile",
+    "/event",
   ];
 
   // Skip verification for public routes
@@ -867,6 +869,7 @@ app.use("/builderapp/post", builderpostRoute);
 //Event App Routes
 app.use("/event/users/auth", userRoutes);
 app.use("/event/profile", eventuserProfileRoutes);
+app.use("/event", eventHandlerRoutes);
 //  Start Server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

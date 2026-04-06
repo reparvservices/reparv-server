@@ -5,10 +5,10 @@ import {
 } from "../../controllers/eventController/authContoller.js";
 const router = express.Router();
 
-// 📲 Send OTP
+//Send OTP
 router.post("/send-otp", sendUserOtp);
 
-// ✅ Verify OTP
+// Verify OTP
 router.post("/verify-otp", verifyUserOtp);
 
 export default router;
