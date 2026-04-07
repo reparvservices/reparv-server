@@ -521,8 +521,8 @@ export const verifyToken = (req, res, next) => {
     "/api/follow/",
     "/api/auth/forgot-password/",
     "/event/users/auth",
-    "/event/profile",
-    "/event",
+    "/event/profile/",
+    "/event/",
   ];
 
   // Skip verification for public routes

@@ -14,7 +14,9 @@ export const generateSignedUrl = async (req, res) => {
     const { fileName, fileType, folder } = req.body;
 
     if (!fileName || !fileType) {
-      return res.status(400).json({ message: "fileName and fileType required" });
+      return res
+        .status(400)
+        .json({ message: "fileName and fileType required" });
     }
 
     const key = `${folder || "uploads"}/${Date.now()}-${fileName}`;
