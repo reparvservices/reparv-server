@@ -1,6 +1,6 @@
 import db from "../../config/dbconnect.js";
 
-// POST /api/events/create
+// eventController.js
 export const createEvent = (req, res) => {
   const {
     title,
@@ -12,8 +12,12 @@ export const createEvent = (req, res) => {
     meeting_link,
     banner_url,
     description,
-    latitude, // ← ADD
-    longitude, // ← ADD
+    latitude,
+    longitude,
+    is_online,
+    is_paid,
+    ticket_price,
+    total_seats,
   } = req.body;
 
   if (!title || !event_type || !event_date || !event_time) {
@@ -23,29 +27,35 @@ export const createEvent = (req, res) => {
     });
   }
 
-  const VALID_TYPES = [
-    "Webinar",
-    "Conference",
-    "Training",
-    "Launch",
-    "Workshop",
-  ];
-  if (!VALID_TYPES.includes(event_type)) {
-    return res.status(400).json({
-      success: false,
-      message: `event_type must be one of: ${VALID_TYPES.join(", ")}`,
-    });
-  }
+  // const VALID_TYPES = [
+  //   "Webinar",
+  //   "Conference",
+  //   "Training",
+  //   "Launch",
+  //   "Workshop",
+  //   "Project Launch",
+  //   "Site Visit",
+  //   "Meeting",
+  // ];
 
-  const query = `
+  // if (!VALID_TYPES.includes(event_type)) {
+  //   return res.status(400).json({
+  //     success: false,
+  //     message: `event_type must be one of: ${VALID_TYPES.join(", ")}`,
+  //   });
+  // }
+
+  console.log("createEvent called with:", req.body);
+  const insertQuery = `
     INSERT INTO events
     (title, event_type, user_id, event_date, event_time, location, meeting_link,
-     banner_url, description, latitude, longitude, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')
+     banner_url, description, latitude, longitude, is_online, is_paid,
+     ticket_price, total_seats, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')
   `;
 
   db.execute(
-    query,
+    insertQuery,
     [
       title,
       event_type,
@@ -56,21 +66,44 @@ export const createEvent = (req, res) => {
       meeting_link || null,
       banner_url || null,
       description || null,
-      latitude || null, // ← ADD
-      longitude || null, // ← ADD
+      latitude || null,
+      longitude || null,
+      is_online ? 1 : 0,
+      is_paid ? 1 : 0,
+      is_paid ? ticket_price || null : null,
+      is_paid ? total_seats || null : null,
     ],
     (err, result) => {
       if (err) {
         console.error("createEvent error:", err);
-        return res
-          .status(500)
-          .json({ success: false, message: "Internal server error." });
+        return res.status(500).json({
+          success: false,
+          message: "Internal server error.",
+        });
       }
-      return res.status(201).json({
-        success: true,
-        message: "Event created successfully.",
-        eventId: result.insertId,
-      });
+
+      const eventId = result.insertId;
+
+      // ✅ Fetch inserted event
+      db.execute(
+        "SELECT * FROM events WHERE id = ?",
+        [eventId],
+        (err2, rows) => {
+          if (err2) {
+            console.error("fetch event error:", err2);
+            return res.status(500).json({
+              success: false,
+              message: "Event created but fetch failed.",
+            });
+          }
+
+          return res.status(201).json({
+            success: true,
+            message: "Event created successfully.",
+            event: rows[0], // ✅ full inserted event
+          });
+        },
+      );
     },
   );
 };
