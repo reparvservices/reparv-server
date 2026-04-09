@@ -178,7 +178,9 @@ export const requestMobileChangeOtp = async (req, res) => {
 export const verifyMobileChangeOtp = (req, res) => {
   const userId = req.params.id;
   const { newMobile, otp } = req.body;
-
+  console.log("===== verifyMobileChangeOtp API Called =====");
+  console.log("Params:", req.params);
+  console.log("Body:", req.body);
   if (!newMobile || !otp) {
     return res
       .status(400)

@@ -7,6 +7,7 @@ import {
   deleteEvent,
   updateEvent,
   changeEventStatus,
+  getAnalytics,
 } from "../../controllers/eventController/eventController.js";
 
 const router = express.Router();
@@ -17,5 +18,7 @@ router.get("/", getActiveEvents);
 router.delete("/:eventId", deleteEvent); // DELETE single event
 router.put("/:eventId", updateEvent); // UPDATE event fields
 router.patch("/:eventId/status", changeEventStatus); // CHANGE status only
+// router
+router.get("/analytics/:userId", getAnalytics);
 
 export default router;

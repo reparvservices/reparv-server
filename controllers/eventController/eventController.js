@@ -248,7 +248,13 @@ export const changeEventStatus = (req, res) => {
   const { eventId } = req.params;
   const { status } = req.body;
 
-  const VALID_STATUS = ["Active", "Inactive", "Draft", "Cancelled"];
+  const VALID_STATUS = [
+    "Active",
+    "Inactive",
+    "Draft",
+    "Cancelled",
+    "Completed",
+  ];
   if (!status || !VALID_STATUS.includes(status)) {
     return res.status(400).json({
       success: false,
@@ -277,4 +283,124 @@ export const changeEventStatus = (req, res) => {
       });
     },
   );
+};
+
+// GET /event/analytics/:userId?days=30
+export const getAnalytics = (req, res) => {
+  const { userId } = req.params;
+  const days = parseInt(req.query.days, 10); // 0 = all time, omitted = all time
+  const useFilter = days > 0;
+
+  // SQL fragment injected into each query when a period is requested
+  const dateFilter = useFilter
+    ? `AND created_at >= DATE_SUB(NOW(), INTERVAL ${days} DAY)`
+    : "";
+
+  const queries = {
+    // ── KPI totals (period-filtered) ────────────────────────────────────────
+    kpi: `
+      SELECT
+        COUNT(*)                                              AS total_events,
+        COALESCE(SUM(view_count), 0)                          AS total_views,
+        COALESCE(SUM(registration_count), 0)                  AS total_registrations,
+        COALESCE(SUM(click_count), 0)                         AS total_clicks,
+        COALESCE(SUM(tickets_sold), 0)                        AS total_tickets_sold,
+        COALESCE(SUM(revenue), 0)                             AS total_revenue,
+        ROUND(SUM(revenue) / NULLIF(SUM(tickets_sold), 0), 0) AS avg_ticket_price,
+        COUNT(CASE WHEN status = 'Active'    THEN 1 END)      AS active_events,
+        COUNT(CASE WHEN status = 'Draft'     THEN 1 END)      AS draft_events,
+        COUNT(CASE WHEN status = 'Inactive'  THEN 1 END)      AS inactive_events,
+        COUNT(CASE WHEN status = 'Cancelled' THEN 1 END)      AS cancelled_events
+      FROM events
+      WHERE user_id = ? ${dateFilter}`,
+
+    // ── All-time ticket total (no date filter, always returned) ─────────────
+    allTimeTickets: `
+      SELECT COALESCE(SUM(tickets_sold), 0) AS total
+      FROM events
+      WHERE user_id = ?`,
+
+    // ── Top 5 events by revenue then views ──────────────────────────────────
+    topEvents: `
+      SELECT
+        id, title, event_type, status,
+        view_count, registration_count,
+        COALESCE(tickets_sold, 0) AS tickets_sold,
+        COALESCE(revenue, 0)      AS revenue,
+        event_date, banner_url
+      FROM events
+      WHERE user_id = ? ${dateFilter}
+      ORDER BY revenue DESC, view_count DESC
+      LIMIT 5`,
+
+    // ── Monthly breakdown for chart (grouped by calendar month) ─────────────
+    monthly: `
+      SELECT
+        DATE_FORMAT(event_date, '%b')         AS month,
+        COUNT(*)                               AS count,
+        COALESCE(SUM(view_count), 0)           AS views,
+        COALESCE(SUM(tickets_sold), 0)         AS tickets,
+        COALESCE(SUM(revenue), 0)              AS revenue
+      FROM events
+      WHERE user_id = ? ${dateFilter}
+        AND event_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY DATE_FORMAT(event_date, '%Y-%m')
+      ORDER BY MIN(event_date) ASC`,
+
+    // ── Event type breakdown ─────────────────────────────────────────────────
+    byType: `
+      SELECT event_type, COUNT(*) AS count
+      FROM events
+      WHERE user_id = ? ${dateFilter}
+      GROUP BY event_type`,
+
+    // ── Status breakdown ─────────────────────────────────────────────────────
+    byStatus: `
+      SELECT status, COUNT(*) AS count
+      FROM events
+      WHERE user_id = ? ${dateFilter}
+      GROUP BY status`,
+  };
+
+  const run = (sql, params = [userId]) =>
+    new Promise((resolve, reject) => {
+      db.execute(sql, params, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+
+  Promise.all([
+    run(queries.kpi),
+    run(queries.allTimeTickets, [userId]), // always unfiltered
+    run(queries.topEvents),
+    run(queries.monthly),
+    run(queries.byType),
+    run(queries.byStatus),
+  ])
+    .then(([kpi, allTimeTickets, topEvents, monthly, byType, byStatus]) => {
+      const kpiRow = kpi[0];
+
+      res.json({
+        success: true,
+        data: {
+          kpi: {
+            ...kpiRow,
+            // period-filtered ticket count is already in total_tickets_sold
+            // expose all-time ticket count separately for the UI if needed
+            all_time_tickets_sold: Number(allTimeTickets[0]?.total ?? 0),
+          },
+          topEvents,
+          monthly,
+          byType,
+          byStatus,
+        },
+      });
+    })
+    .catch((err) => {
+      console.error("getAnalytics error:", err);
+      res
+        .status(500)
+        .json({ success: false, message: "Internal server error." });
+    });
 };
