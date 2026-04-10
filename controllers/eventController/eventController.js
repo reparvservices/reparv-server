@@ -437,3 +437,116 @@ export const getAnalytics = (req, res) => {
         .json({ success: false, message: "Internal server error." });
     });
 };
+
+// ── Single Event Analytics ─────────────────────────────────────────────────
+export const getEventAnalytics = (req, res) => {
+  const { eventId } = req.params;
+
+  const run = (sql, params) =>
+    new Promise((resolve, reject) =>
+      db.execute(sql, params, (err, rows) =>
+        err ? reject(err) : resolve(rows),
+      ),
+    );
+
+  Promise.all([
+    // Core event row
+    run(
+      `SELECT id, title, event_type, status, banner_url, event_date, event_time,
+              location, meeting_link, is_online, is_paid, ticket_price,
+              COALESCE(view_count, 0)          AS view_count,
+              COALESCE(registration_count, 0)  AS registration_count,
+              COALESCE(click_count, 0)         AS click_count,
+              COALESCE(tickets_sold, 0)        AS tickets_sold,
+              COALESCE(revenue, 0)             AS revenue,
+              total_seats,
+              created_at
+       FROM events WHERE id = ?`,
+      [eventId],
+    ),
+
+    // Owner's average KPIs across ALL their events (for benchmark)
+    run(
+      `SELECT
+         ROUND(AVG(view_count), 0)         AS avg_views,
+         ROUND(AVG(tickets_sold), 0)       AS avg_tickets,
+         ROUND(AVG(revenue), 0)            AS avg_revenue
+       FROM events
+       WHERE user_id = (SELECT user_id FROM events WHERE id = ?)
+         AND id != ?`,
+      [eventId, eventId],
+    ),
+
+    // Daily view_count increments for sparkline (last 30 days via created_at proxy)
+    // If you track daily stats in a separate table replace this with that query.
+    // For now we return the single aggregate so the UI can show a snapshot card.
+    run(
+      `SELECT
+         DATE_FORMAT(created_at, '%d %b') AS day,
+         view_count, tickets_sold, revenue
+       FROM events WHERE id = ?`,
+      [eventId],
+    ),
+  ])
+    .then(([eventRows, benchRows, snapshot]) => {
+      if (!eventRows.length)
+        return res
+          .status(404)
+          .json({ success: false, message: "Event not found." });
+
+      const ev = eventRows[0];
+      const bench = benchRows[0] || {};
+
+      const views = Number(ev.view_count);
+      const tickets = Number(ev.tickets_sold);
+      const revenue = Number(ev.revenue);
+
+      // Conversion & fill rates
+      const convRate = views > 0 ? ((tickets / views) * 100).toFixed(1) : "0.0";
+      const seatFillRate =
+        ev.total_seats > 0
+          ? ((tickets / ev.total_seats) * 100).toFixed(1)
+          : null;
+
+      // vs benchmark (% delta)
+      const delta = (key) => {
+        const bench_val = Number(bench[`avg_${key}`]) || 0;
+        if (bench_val === 0) return null;
+        return (((Number(ev[key]) - bench_val) / bench_val) * 100).toFixed(1);
+      };
+
+      res.json({
+        success: true,
+        data: {
+          event: ev,
+          kpi: {
+            view_count: views,
+            registration_count: Number(ev.registration_count),
+            click_count: Number(ev.click_count),
+            tickets_sold: tickets,
+            revenue,
+            avg_ticket_price: ev.ticket_price
+              ? Number(ev.ticket_price).toFixed(2)
+              : null,
+            total_seats: ev.total_seats,
+            seat_fill_rate: seatFillRate,
+            conv_rate: convRate,
+          },
+          benchmark: {
+            avg_views: Number(bench.avg_views || 0),
+            avg_tickets: Number(bench.avg_tickets || 0),
+            avg_revenue: Number(bench.avg_revenue || 0),
+            delta_views: delta("view_count"),
+            delta_tickets: delta("tickets_sold"),
+            delta_revenue: delta("revenue"),
+          },
+        },
+      });
+    })
+    .catch((err) => {
+      console.error("getEventAnalytics error:", err);
+      res
+        .status(500)
+        .json({ success: false, message: "Internal server error." });
+    });
+};

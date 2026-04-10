@@ -8,6 +8,7 @@ import {
   updateEvent,
   changeEventStatus,
   getAnalytics,
+  getEventAnalytics,
 } from "../../controllers/eventController/eventController.js";
 
 const router = express.Router();
@@ -20,5 +21,6 @@ router.put("/:eventId", updateEvent); // UPDATE event fields
 router.patch("/:eventId/status", changeEventStatus); // CHANGE status only
 // router
 router.get("/analytics/:userId", getAnalytics);
+router.get("/analytics/event/:eventId", getEventAnalytics);
 
 export default router;
