@@ -210,22 +210,13 @@ export const updateEvent = (req, res) => {
     description,
     latitude,
     longitude,
+    is_online,
+    is_paid,
+    ticket_price,
+    total_seats,
   } = req.body;
 
-  const VALID_TYPES = [
-    "Webinar",
-    "Conference",
-    "Training",
-    "Launch",
-    "Workshop",
-  ];
-  if (event_type && !VALID_TYPES.includes(event_type)) {
-    return res.status(400).json({
-      success: false,
-      message: `event_type must be one of: ${VALID_TYPES.join(", ")}`,
-    });
-  }
-
+  console.log("updateEvent called with:", req.body);
   const query = `
     UPDATE events SET
       title        = COALESCE(?, title),
@@ -238,9 +229,17 @@ export const updateEvent = (req, res) => {
       description  = COALESCE(?, description),
       latitude     = COALESCE(?, latitude),
       longitude    = COALESCE(?, longitude),
+      is_online    = COALESCE(?, is_online),
+      is_paid      = COALESCE(?, is_paid),
+      ticket_price = COALESCE(?, ticket_price),
+      total_seats  = COALESCE(?, total_seats),
       updated_at   = NOW()
     WHERE id = ?
   `;
+
+  // For booleans, only pass a value if the field was explicitly sent
+  const isOnlineVal = is_online !== undefined ? (is_online ? 1 : 0) : null;
+  const isPaidVal = is_paid !== undefined ? (is_paid ? 1 : 0) : null;
 
   db.execute(
     query,
@@ -255,6 +254,10 @@ export const updateEvent = (req, res) => {
       description || null,
       latitude || null,
       longitude || null,
+      isOnlineVal,
+      isPaidVal,
+      ticket_price || null,
+      total_seats || null,
       eventId,
     ],
     (err, result) => {

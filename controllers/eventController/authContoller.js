@@ -9,6 +9,7 @@ const generateOtp = () => {
 export const sendUserOtp = async (req, res) => {
   const { mobile } = req.body;
 
+  console.log("Received Mobile:", mobile);
   if (!mobile) {
     return res.status(400).json({
       success: false,
@@ -27,7 +28,6 @@ export const sendUserOtp = async (req, res) => {
       console.log("Check Error:", err);
       return res.status(500).json({
         success: false,
-        message: "Database error",
       });
     }
 
