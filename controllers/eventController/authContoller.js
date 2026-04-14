@@ -19,44 +19,71 @@ export const sendUserOtp = async (req, res) => {
   const otp = generateOtp();
   const expiry = new Date(Date.now() + 5 * 60 * 1000);
 
-  const query = `
-    INSERT INTO eventUsers (mobileNumber, otp, otp_expiry)
-    VALUES (?, ?, ?)
-    ON DUPLICATE KEY UPDATE 
-      otp = VALUES(otp),
-      otp_expiry = VALUES(otp_expiry)
-  `;
+  // 🔹 Step 1: Check if user exists
+  const checkQuery = `SELECT * FROM eventUsers WHERE mobileNumber = ?`;
 
-  db.query(query, [mobile, otp, expiry], async (err) => {
+  db.query(checkQuery, [mobile], async (err, result) => {
     if (err) {
-      console.log("DB Error:", err);
+      console.log("Check Error:", err);
       return res.status(500).json({
         success: false,
         message: "Database error",
       });
     }
 
-    try {
-      const smsResponse = await sendOtpSMS(mobile, otp);
-      console.log("SMS Response:", smsResponse);
-      if (!smsResponse) {
+    let query;
+    let values;
+
+    if (result.length > 0) {
+      // 🔹 User exists → UPDATE OTP
+      query = `
+        UPDATE eventUsers 
+        SET otp = ?, otp_expiry = ? 
+        WHERE mobileNumber = ?
+      `;
+      values = [otp, expiry, mobile];
+    } else {
+      // 🔹 New user → INSERT
+      query = `
+        INSERT INTO eventUsers (mobileNumber, otp, otp_expiry)
+        VALUES (?, ?, ?)
+      `;
+      values = [mobile, otp, expiry];
+    }
+
+    // 🔹 Step 2: Run INSERT or UPDATE
+    db.query(query, values, async (err) => {
+      if (err) {
+        console.log("Insert/Update Error:", err);
         return res.status(500).json({
           success: false,
-          message: "OTP generated but SMS failed",
+          message: "Database error",
         });
       }
 
-      return res.status(200).json({
-        success: true,
-        message: "OTP sent successfully",
-      });
-    } catch (error) {
-      console.log("SMS Error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to send OTP",
-      });
-    }
+      try {
+        const smsResponse = await sendOtpSMS(mobile, otp);
+        console.log("SMS Response:", smsResponse);
+
+        if (!smsResponse) {
+          return res.status(500).json({
+            success: false,
+            message: "OTP generated but SMS failed",
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: "OTP sent successfully",
+        });
+      } catch (error) {
+        console.log("SMS Error:", error);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to send OTP",
+        });
+      }
+    });
   });
 };
 
@@ -101,23 +128,12 @@ export const verifyUserOtp = (req, res) => {
       });
     }
 
-    const clearOtpQuery = `
-      UPDATE eventUsers 
-      SET otp = NULL, otp_expiry = NULL 
-      WHERE mobileNumber = ?
-    `;
-
-    db.query(clearOtpQuery, [mobile], (err) => {
-      if (err) {
-        console.log("Clear OTP Error:", err);
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: "OTP verified successfully",
-        user,
-        token: user.id, // replace with JWT later
-      });
+    // ✅ Do NOT clear OTP
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully",
+      user,
+      token: user.id, // replace with JWT later
     });
   });
 };
