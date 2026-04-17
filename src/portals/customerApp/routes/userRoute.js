@@ -1,0 +1,31 @@
+import express from "express";
+import { add, facebookLogin, getProfile, googleLogin, resendOtp, update, verifyOtp } from "../controllers/userController.js";
+import multer from "multer";
+import path from 'path';
+
+const router = express.Router();
+
+/* ---------- MULTER (MEMORY) ---------- */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 1024 * 1024 * 2, // 2MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+    if (!allowed.includes(file.mimetype)) {
+      return cb(new Error("Only JPEG, PNG, JPG, WEBP allowed"));
+    }
+    cb(null, true);
+  },
+});
+
+router.post("/signup", add);
+//router.post("/login",login)
+router.post("/verify-otp",verifyOtp);
+router.post("/resend-otp",resendOtp)
+router.put("/update",upload.single('userimage'),update);
+router.get("/profile",getProfile)
+router.post('/google-login', googleLogin);
+router.post('/facebook-login',facebookLogin)
+export default router;

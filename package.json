@@ -2,11 +2,16 @@
   "name": "backend",
   "version": "1.0.0",
   "type": "module",
-  "main": "server.js",
+  "main": "src/server.js",
+  "imports": {
+    "#db": "./src/core/db/dbconnect.js",
+    "#db/promise": "./src/core/db/db-promise.js",
+    "#utils/*": "./src/core/utils/*"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "TZ=Asia/Kolkata node server.js",
-    "dev": "TZ=Asia/Kolkata nodemon server.js"
+    "start": "TZ=Asia/Kolkata node src/server.js",
+    "dev": "TZ=Asia/Kolkata nodemon src/server.js"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +22,7 @@
     "@aws-sdk/s3-request-presigner": "^3.991.0",
     "axios": "^1.12.2",
     "bcryptjs": "^2.4.3",
+    "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",

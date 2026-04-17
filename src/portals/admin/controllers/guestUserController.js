@@ -1,0 +1,416 @@
+import fs from "fs";
+import path from "path";
+import db from "#db";
+import moment from "moment-timezone";
+import bcrypt from "bcryptjs";
+import sendEmail from "#utils/nodeMailer.js";
+import { deleteFromS3, uploadToS3 } from "#utils/imageUpload.js";
+
+const saltRounds = 10;
+// **Fetch All **
+export const getAll = (req, res) => {
+  const sql = "SELECT * FROM guestUsers ORDER BY id DESC";
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error("Error fetching :", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    const formatted = result.map((row) => ({
+      ...row,
+      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+    }));
+
+    res.json(formatted);
+  });
+};
+
+// **Fetch All**
+export const getAllActive = (req, res) => {
+  const sql =
+    "SELECT * FROM guestUsers WHERE status = 'Active' ORDER BY id DESC";
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error("Error fetching:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    res.json(result);
+  });
+};
+
+// **Fetch Single by ID**
+export const getById = (req, res) => {
+  const Id = parseInt(req.params.id);
+  const sql = "SELECT * FROM guestUsers WHERE id = ?";
+
+  db.query(sql, [Id], (err, result) => {
+    if (err) {
+      console.error("Error fetching :", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    if (result.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.json(result[0]);
+  });
+};
+
+// **Add New **
+export const add = async (req, res) => {
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+  const {
+    fullname,
+    contact,
+    email,
+    address,
+    state,
+    city,
+    pincode,
+    experience,
+    adharno,
+    panno,
+    bankname,
+    accountholdername,
+    accountnumber,
+    ifsc,
+  } = req.body;
+
+  if (!fullname || !contact || !email) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  try {
+    /* ---------- DUPLICATE CHECK ---------- */
+    const checkSql = `SELECT id FROM guestUsers WHERE contact = ? OR email = ?`;
+
+    db.query(
+      checkSql,
+      [contact, email.toLowerCase()],
+      async (checkErr, checkResult) => {
+        if (checkErr)
+          return res.status(500).json({
+            message: "Database error during validation",
+            error: checkErr,
+          });
+
+        if (checkResult.length > 0) {
+          return res.status(409).json({
+            message: "User already exists with this contact or email",
+          });
+        }
+
+        /* ---------- UPLOAD TO S3 ---------- */
+        let adharImageUrl = null;
+        let panImageUrl = null;
+
+        if (req.files?.adharImage?.[0]) {
+          adharImageUrl = await uploadToS3(
+            req.files.adharImage[0],
+            "documents/adhar",
+          );
+        }
+
+        if (req.files?.panImage?.[0]) {
+          panImageUrl = await uploadToS3(
+            req.files.panImage[0],
+            "documents/pan",
+          );
+        }
+
+        /* ---------- INSERT ---------- */
+        const sql = `
+          INSERT INTO guestUsers
+          (
+            fullname, contact, email, address, state, city, pincode,
+            experience, adharno, panno,
+            bankname, accountholdername, accountnumber, ifsc,
+            adharimage, panimage, updated_at, created_at
+          )
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `;
+
+        db.query(
+          sql,
+          [
+            fullname,
+            contact,
+            email.toLowerCase(),
+            address,
+            state,
+            city,
+            pincode,
+            experience,
+            adharno,
+            panno,
+            bankname,
+            accountholdername,
+            accountnumber,
+            ifsc,
+            adharImageUrl,
+            panImageUrl,
+            currentdate,
+            currentdate,
+          ],
+          (err, result) => {
+            if (err) {
+              return res
+                .status(500)
+                .json({ message: "Database error", error: err });
+            }
+
+            res.status(201).json({
+              message: "User added successfully",
+              id: result.insertId,
+            });
+          },
+        );
+      },
+    );
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const edit = async (req, res) => {
+  const userid = req.params.id;
+  if (!userid) {
+    return res.status(400).json({ message: "Invalid User ID" });
+  }
+
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+  const {
+    fullname,
+    contact,
+    email,
+    address,
+    state,
+    city,
+    pincode,
+    experience,
+    adharno,
+    panno,
+    bankname,
+    accountholdername,
+    accountnumber,
+    ifsc,
+  } = req.body;
+
+  if (!fullname || !contact || !email) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  try {
+    /* ---------- FETCH OLD IMAGES ---------- */
+    const [rows] = await db
+      .promise()
+      .query("SELECT adharimage, panimage FROM guestUsers WHERE id = ?", [
+        userid,
+      ]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const oldAdhar = rows[0].adharimage;
+    const oldPan = rows[0].panimage;
+
+    /* ---------- UPLOAD NEW FILES ---------- */
+    let adharImageUrl = null;
+    let panImageUrl = null;
+
+    if (req.files?.adharImage?.[0]) {
+      adharImageUrl = await uploadToS3(
+        req.files.adharImage[0],
+        "documents/adhar",
+      );
+    }
+
+    if (req.files?.panImage?.[0]) {
+      panImageUrl = await uploadToS3(req.files.panImage[0], "documents/pan");
+    }
+
+    /* ---------- UPDATE QUERY ---------- */
+    let updateSql = `
+      UPDATE guestUsers SET
+        fullname = ?, contact = ?, email = ?, address = ?, state = ?, city = ?,
+        pincode = ?, experience = ?, adharno = ?, panno = ?, bankname = ?,
+        accountholdername = ?, accountnumber = ?, ifsc = ?, updated_at = ?
+    `;
+
+    const updateValues = [
+      fullname,
+      contact,
+      email.toLowerCase(),
+      address,
+      state,
+      city,
+      pincode,
+      experience,
+      adharno,
+      panno,
+      bankname,
+      accountholdername,
+      accountnumber,
+      ifsc,
+      currentdate,
+    ];
+
+    if (adharImageUrl) {
+      updateSql += `, adharimage = ?`;
+      updateValues.push(adharImageUrl);
+    }
+
+    if (panImageUrl) {
+      updateSql += `, panimage = ?`;
+      updateValues.push(panImageUrl);
+    }
+
+    updateSql += ` WHERE id = ?`;
+    updateValues.push(userid);
+
+    await db.promise().query(updateSql, updateValues);
+
+    /* ---------- DELETE OLD S3 IMAGES ---------- */
+    if (adharImageUrl && oldAdhar) {
+      await deleteFromS3(oldAdhar);
+    }
+
+    if (panImageUrl && oldPan) {
+      await deleteFromS3(oldPan);
+    }
+
+    res.status(200).json({ message: "User updated successfully" });
+  } catch (error) {
+    console.error("Edit user error:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+
+// **Delete **
+export const del = (req, res) => {
+  const Id = parseInt(req.params.id);
+
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid Partner ID" });
+  }
+
+  db.query("SELECT * FROM guestUsers WHERE id = ?", [Id], (err, result) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    if (result.length === 0) {
+      return res.status(404).json({ message: "user not found" });
+    }
+
+    db.query("DELETE FROM guestUsers WHERE id = ?", [Id], (err) => {
+      if (err) {
+        console.error("Error deleting :", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+      res.status(200).json({ message: "User deleted successfully" });
+    });
+  });
+};
+
+//**Change status */
+export const status = (req, res) => {
+  const Id = parseInt(req.params.id);
+  console.log(Id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid User ID" });
+  }
+
+  db.query("SELECT * FROM guestUsers WHERE id = ?", [Id], (err, result) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    let status = "";
+    if (result[0].status === "Active") {
+      status = "Inactive";
+    } else {
+      status = "Active";
+    }
+    console.log(status);
+    db.query(
+      "UPDATE guestUsers SET status = ? WHERE id = ?",
+      [status, Id],
+      (err, result) => {
+        if (err) {
+          console.error("Error Changing Status :", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+        res.status(200).json({ message: "Status change successfully" });
+      },
+    );
+  });
+};
+
+export const assignLogin = async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const Id = parseInt(req.params.id);
+
+    if (isNaN(Id)) {
+      return res.status(400).json({ message: "Invalid Partner ID" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10); // Use 10 as salt rounds
+
+    db.query("SELECT * FROM guestUsers WHERE id = ?", [Id], (err, result) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+      if (result.length === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      let loginstatus = "Active";
+      const email = result[0].email;
+
+      db.query(
+        "UPDATE guestUsers SET loginstatus = ?, username = ?, password = ? WHERE id = ?",
+        [loginstatus, username, hashedPassword, Id],
+        (err, updateResult) => {
+          if (err) {
+            console.error("Error updating record:", err);
+            return res
+              .status(500)
+              .json({ message: "Database error", error: err });
+          }
+
+          // Send email after successful update
+          sendEmail(
+            email,
+            username,
+            password,
+            "Guest User",
+            "https://users.reparv.in",
+          )
+            .then(() => {
+              res.status(200).json({
+                message: "User login assigned successfully and email sent.",
+              });
+            })
+            .catch((emailError) => {
+              console.error("Error sending email:", emailError);
+              res
+                .status(500)
+                .json({ message: "Login updated but email failed to send." });
+            });
+        },
+      );
+    });
+  } catch (error) {
+    console.error("Unexpected error:", error);
+    res.status(500).json({ message: "Unexpected server error", error });
+  }
+};

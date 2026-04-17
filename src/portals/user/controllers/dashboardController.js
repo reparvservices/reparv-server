@@ -1,0 +1,112 @@
+import db from "#db";
+
+export const getCount = (req, res) => {
+  const guestUserId = req.guestUser?.id;
+
+  if (!guestUserId) {
+    return res.status(401).json({ message: "Unauthorized access" });
+  }
+
+  const query = `
+    SELECT
+      -- Total properties added by the guest user
+      (SELECT COUNT(propertyid)
+       FROM properties
+       WHERE guestUserId = ?) AS totalProperty,
+
+      -- Total enquiries for those properties
+      (SELECT COUNT(enquirersid)
+       FROM enquirers
+       WHERE propertyid IN (
+         SELECT propertyid
+         FROM properties
+         WHERE guestUserId = ?
+       )) AS totalEnquiry,
+
+      -- Total views for those properties
+      (SELECT IFNULL(SUM(pa.views), 0)
+       FROM property_analytics pa
+       WHERE pa.property_id IN (
+         SELECT propertyid
+         FROM properties
+         WHERE guestUserId = ?
+       )) AS totalViews,
+
+      -- Total likes for those properties
+      (SELECT COUNT(DISTINCT w.guest_user_id)
+       FROM user_property_wishlist w
+       WHERE w.property_id IN (
+         SELECT propertyid
+         FROM properties
+         WHERE guestUserId = ?
+       )) AS totalLikes
+  `;
+
+  db.query(
+    query,
+    [guestUserId, guestUserId, guestUserId, guestUserId],
+    (err, results) => {
+      if (err) {
+        console.error("Error fetching dashboard stats:", err);
+        return res.status(500).json({ error: "Database error" });
+      }
+
+      res.json(results[0]);
+    }
+  );
+};
+
+
+// **Get Partner Properties with Enquiry/Booking Status**
+export const getProperties = (req, res) => {
+  const partnerId = req.guestUser?.id;
+
+  if (!partnerId) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized Access, Please Login Again!" });
+  }
+
+  const sql = `
+    SELECT 
+      p.*,
+      builders.company_name,      
+      COUNT(e.enquirersid) AS totalEnquiries,
+      SUM(CASE WHEN e.status = 'Token' THEN 1 ELSE 0 END) AS bookedCount,
+      SUM(CASE WHEN e.status != 'Token' THEN 1 ELSE 0 END) AS enquiryCount
+    FROM properties p
+    INNER JOIN builders ON p.builderid = builders.builderid
+    LEFT JOIN enquirers e ON p.propertyid = e.propertyid
+    WHERE p.guestUserId = ?
+    GROUP BY p.propertyid
+    ORDER BY p.created_at DESC;
+  `;
+
+  db.query(sql, [partnerId], (err, result) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+
+    if (result.length === 0) {
+      return res.status(404).json({ message: "No properties found" });
+    }
+
+    // Format with status
+    let formatted = result.map((row) => {
+      let enquiryStatus = "None";
+      if (row.bookedCount > 0) {
+        enquiryStatus = "Booked";
+      } else if (row.enquiryCount > 0) {
+        enquiryStatus = "Enquired";
+      }
+
+      return {
+        ...row,
+        enquiryStatus,
+      };
+    });
+
+    res.status(200).json(formatted);
+  });
+};
