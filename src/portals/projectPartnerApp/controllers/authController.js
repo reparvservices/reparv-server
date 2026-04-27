@@ -4,6 +4,7 @@ import { uploadToS3 } from "#utils/imageUpload.js";
 import sendEmail from "#utils/nodeMailer.js";
 import { sendOtpSMS } from "#utils/sendOtpSMS.js";
 import moment from "moment";
+import jwt from "jsonwebtoken";
 export const add = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -190,7 +191,7 @@ export const add = async (req, res) => {
     res.status(500).json({ message: "Server error", error: err });
   }
 };
-// Generate OTPccit 
+// Generate OTPccit
 const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000);
 };
@@ -273,48 +274,73 @@ export const sendProjectPartnerOtp = async (req, res) => {
 
 export const verifyProjectPartnerOtp = (req, res) => {
   const { mobile, otp } = req.body;
-  console.log(mobile, "dd", otp);
 
   if (!mobile || !otp) {
-    return res.status(400).json({
-      success: false,
-      message: "Mobile and OTP required",
-    });
+    return res
+      .status(400)
+      .json({ success: false, message: "Mobile and OTP required" });
   }
 
   const query = "SELECT * FROM projectpartner WHERE contact = ? AND otp = ?";
 
   db.query(query, [mobile, otp], (err, result) => {
     if (err) {
-      console.log(err);
-      return res.status(500).json({
-        success: false,
-        message: "Database error",
-      });
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
     }
 
     if (result.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid OTP",
-      });
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
+
+    const user = result[0];
 
     const clearOtpQuery =
       "UPDATE projectpartner SET otp = NULL WHERE contact = ?";
 
     db.query(clearOtpQuery, [mobile], (err) => {
-      if (err) {
-        console.log(err);
-      }
+      if (err) console.log(err);
 
-      console.log(result[0]);
+      // ✅ Generate real JWT — same payload as login route
+      const token = jwt.sign(
+        {
+          id: user.id,
+          username: user.username,
+          contact: user.contact,
+          email: user.email,
+          adharId: user.adharno,
+          freeProjectPartner: user.freeProjectPartner,
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: "10d" },
+      );
+
+      // ✅ Set same cookie as login route
+      const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        maxAge: 10 * 24 * 60 * 60 * 1000,
+      };
+
+      res.cookie("projectPartnerToken", token, cookieOptions);
 
       return res.status(200).json({
         success: true,
         message: "OTP verified successfully",
-        user: result[0],
-        token: result[0].id,
+        token, // ✅ real JWT now
+        user: {
+          id: user.id,
+          username: user.username,
+          userImage: user.userimage,
+          email: user.email,
+          name: user.fullname,
+          contact: user.contact,
+          adharId: user.adharno,
+          freeProjectPartner: user.freeProjectPartner,
+          role: "Project Partner",
+        },
       });
     });
   });

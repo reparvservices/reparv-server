@@ -3,6 +3,7 @@ import db from "#db";
 import fs from "fs";
 import path from "path";
 import { uploadToS3 } from "#utils/imageUpload.js";
+import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
 
 function toSlug(text) {
   return text
@@ -49,7 +50,7 @@ export const addInWishList = (req, res) => {
           }
 
           res.status(201).json({ message: "Successfully Added!" });
-        }
+        },
       );
     });
   } catch (error) {
@@ -113,8 +114,14 @@ export const getAll = (req, res) => {
 
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -326,7 +333,7 @@ export const addProperty = async (req, res) => {
             propertyid: result.insertId,
           });
         });
-      }
+      },
     );
   } catch (error) {
     console.error("Add property error:", error);
@@ -482,7 +489,7 @@ export const updateProperty = async (req, res) => {
             propertyid,
           });
         });
-      }
+      },
     );
   } catch (error) {
     console.error("Update error:", error);
@@ -530,9 +537,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 //delete property
@@ -605,7 +612,7 @@ export const del = (req, res) => {
           message: "Property and associated images deleted successfully",
         });
       });
-    }
+    },
   );
 };
 

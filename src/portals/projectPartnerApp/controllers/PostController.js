@@ -31,7 +31,6 @@ ORDER BY
       console.error("Error fetching:", err);
       return res.status(500).json({ message: "Database error", error: err });
     }
-    console.log(result);
 
     res.json(result);
   });
