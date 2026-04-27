@@ -222,6 +222,7 @@ import builderpostRoute from "../portals/builderApp/routes/BuilderpostRoutes.js"
 import userRoutes from "../portals/event/routes/authRoute.js";
 import eventuserProfileRoutes from "../portals/event/routes/profileRoute.js";
 import eventHandlerRoutes from "../portals/event/routes/eventRoute.js";
+import eventBookingRoutes from "../portals/event/routes/bookingRoute.js";
 
 import { verifyToken } from "../core/middleware/verifyToken.js";
 
@@ -453,4 +454,5 @@ export function mountProtectedRoutes(app) {
   app.use("/event/users/auth", userRoutes);
   app.use("/event/profile", eventuserProfileRoutes);
   app.use("/event", eventHandlerRoutes);
+  app.use("/event/bookings", eventBookingRoutes);
 }

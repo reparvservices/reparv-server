@@ -25,6 +25,7 @@ import otpRoutes from "../portals/shared/routes/otpRoutes.js";
 import Feed from "../portals/shared/routes/feedRoute.js";
 import FollowRoute from "../portals/shared/routes/followRoute.js";
 import ForgetPasswordRoute from "../portals/shared/routes/Forgotpasswordroutes.js";
+import sitemapRoutes from "../portals/shared/routes/sitemapRoutes.js";
 
 export function mountPublicRoutes(app) {
   app.use("/admin", loginRoutes);
@@ -54,4 +55,5 @@ export function mountPublicRoutes(app) {
   app.use("/api/feed/", Feed);
   app.use("/api/follow/", FollowRoute);
   app.use("/api/auth/forgot-password/", ForgetPasswordRoute);
+  app.use("/", sitemapRoutes);
 }
