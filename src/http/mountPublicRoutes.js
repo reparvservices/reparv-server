@@ -3,6 +3,7 @@
  */
 import loginRoutes from "../portals/admin/routes/loginRoutes.js";
 import allPropertiesRoutes from "../portals/frontend/routes/allPropertiesRoutes.js";
+import trendingPropertiesRoutes from "../portals/frontend/routes/trendingPropertiesRoutes.js";
 import propertiesRoutes from "../portals/frontend/routes/propertiesRoutes.js";
 import joinourteamRoutes from "../portals/frontend/routes/joinourteamRoutes.js";
 import propertyinfoRoutes from "../portals/frontend/routes/propertyinfoRoutes.js";
@@ -31,6 +32,7 @@ export function mountPublicRoutes(app) {
   app.use("/admin", loginRoutes);
 
   app.use("/frontend/all-properties", allPropertiesRoutes);
+  app.use("/frontend/trending-properties", trendingPropertiesRoutes);
   app.use("/frontend/properties", propertiesRoutes);
   app.use("/frontend/joinourteam", joinourteamRoutes);
   app.use("/frontend/propertyinfo", propertyinfoRoutes);
