@@ -253,17 +253,17 @@ export const update = (req, res) => {
 
   console.log("Update request body:", req.body);
 
-  // ✅ Required fields validation
+  //  Required fields validation
   if (!company_name || !contact_person || !contact) {
     return res.status(400).json({ message: "Required fields are missing" });
   }
 
-  // ✅ Format date safely
+  //  Format date safely
   const formattedDate = moment(dor, "YYYY-MM-DD", true).isValid()
     ? moment(dor).format("YYYY-MM-DD")
     : null;
 
-  // ✅ Convert arrays to JSON strings or set NULL
+  //  Convert arrays to JSON strings or set NULL
   const whyChooseValue =
     Array.isArray(whyChoose) && whyChoose.length > 0
       ? JSON.stringify(whyChoose)
@@ -274,7 +274,7 @@ export const update = (req, res) => {
       ? JSON.stringify(expertise)
       : null;
 
-  // ✅ Check if builder exists
+  //  Check if builder exists
   db.query(
     "SELECT builderid FROM builders WHERE builderid = ?",
     [Id],
@@ -287,7 +287,7 @@ export const update = (req, res) => {
         return res.status(404).json({ message: "Builder not found" });
       }
 
-      // ✅ Update query
+      //  Update query
       const sql = `
       UPDATE builders SET
         company_name = ?,
@@ -517,7 +517,7 @@ export const checkDuplicate = async (req, res) => {
       params.push(email);
     }
 
-    // ✅ SELECT contact and email — not just builderid
+    //  SELECT contact and email — not just builderid
     const query =
       "SELECT builderid, contact, email FROM builders WHERE " +
       conditions.join(" OR ");
@@ -534,7 +534,7 @@ export const checkDuplicate = async (req, res) => {
         return res.status(200).json({ exists: false });
       }
 
-      // ✅ r.contact now exists because we SELECT it above
+      //  r.contact now exists because we SELECT it above
       if (contact && result.some((r) => r.contact === contact)) {
         return res.status(200).json({
           exists: true,

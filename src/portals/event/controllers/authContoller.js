@@ -128,7 +128,7 @@ export const verifyUserOtp = (req, res) => {
       });
     }
 
-    // ✅ Do NOT clear OTP
+    //  Do NOT clear OTP
     return res.status(200).json({
       success: true,
       message: "OTP verified successfully",

@@ -50,11 +50,11 @@ const getActor = (req) => {
   );
 
   if (!id || isNaN(id)) {
-    console.warn("[getActor] ❌ Missing user_id — rawId:", rawId);
+    console.warn("[getActor]  Missing user_id — rawId:", rawId);
     throw Object.assign(new Error("user_id is required"), { status: 400 });
   }
   if (!role) {
-    console.warn("[getActor] ❌ Could not resolve role — rawRole:", rawRole);
+    console.warn("[getActor]  Could not resolve role — rawRole:", rawRole);
     throw Object.assign(new Error("user_role is required or invalid"), {
       status: 400,
     });
@@ -138,7 +138,7 @@ export const toggleSavePost = (req, res) => {
                     .status(500)
                     .json({ success: false, message: delErr.message });
                 console.log(
-                  `[toggleSavePost] ✅ unsaved  post_id=${postId} by ${actor.id}(${actor.role})`,
+                  `[toggleSavePost]  unsaved  post_id=${postId} by ${actor.id}(${actor.role})`,
                 );
                 return res.json({ success: true, saved: false });
               },
@@ -154,7 +154,7 @@ export const toggleSavePost = (req, res) => {
                     .status(500)
                     .json({ success: false, message: insErr.message });
                 console.log(
-                  `[toggleSavePost] ✅ saved    post_id=${postId} by ${actor.id}(${actor.role})`,
+                  `[toggleSavePost]  saved    post_id=${postId} by ${actor.id}(${actor.role})`,
                 );
                 return res.status(201).json({ success: true, saved: true });
               },
@@ -329,7 +329,7 @@ export const removeSavedPost = (req, res) => {
               .status(500)
               .json({ success: false, message: delErr.message });
           console.log(
-            `[removeSavedPost] ✅ removed post_id=${postId} for ${actor.id}(${actor.role})`,
+            `[removeSavedPost]  removed post_id=${postId} for ${actor.id}(${actor.role})`,
           );
           return res.json({ success: true });
         },

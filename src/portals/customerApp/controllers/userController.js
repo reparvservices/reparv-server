@@ -26,10 +26,13 @@ const transporter = nodemailer.createTransport({
 
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000);
 
-export const add = async (req, res) => {
+export const add = (req, res) => {
   try {
     const { fullname, contact } = req.body;
 
+    console.log(req.body);
+
+    /* ================= VALIDATION ================= */
     if (!fullname || !contact) {
       return res.status(400).json({
         success: false,
@@ -37,64 +40,118 @@ export const add = async (req, res) => {
       });
     }
 
+    if (!/^[6-9]\d{9}$/.test(contact)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid contact number",
+      });
+    }
+
     const otp = Math.floor(100000 + Math.random() * 900000);
     const otpExpiry = moment().add(5, "minutes").format("YYYY-MM-DD HH:mm:ss");
-
     const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
 
-    //  Check existing guest user
     const checkSql = "SELECT id FROM guestUsers WHERE contact = ?";
 
-    db.query(checkSql, [contact], async (err, users) => {
+    /* ================= CHECK USER ================= */
+    db.query(checkSql, [contact], (err, users) => {
       if (err) {
+        console.error(err);
         return res.status(500).json({
           success: false,
           message: "DB error",
         });
       }
 
-      /* ================= EXISTING GUEST USER ================= */
-      if (users.length > 0) {
+      /* ================= LOGIN FLOW ================= */
+      if (fullname === "User") {
+        if (users.length === 0) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "No account found with this contact. Please create an account first.",
+          });
+        }
+
         const guestUserId = users[0].id;
 
-        db.query(
+        return db.query(
           "UPDATE guestUsers SET otp = ?, otp_expires_at = ?, updated_at = ? WHERE id = ?",
           [otp, otpExpiry, timestamp, guestUserId],
-        );
+          (updateErr) => {
+            if (updateErr) {
+              console.error(updateErr);
+              return res.status(500).json({
+                success: false,
+                message: "DB error",
+              });
+            }
 
-        await sendOtpSMS(contact, otp);
-        console.log("OTP for", contact, "is", otp);
-        return res.status(200).json({
-          success: true,
-          message: "OTP sent successfully",
+            sendOtpSMS(contact, otp)
+              .then(() => {
+                console.log("OTP for", contact, "is", otp);
+                return res.status(200).json({
+                  success: true,
+                  message: "OTP sent successfully",
+                });
+              })
+              .catch((smsErr) => {
+                console.error(smsErr);
+                return res.status(500).json({
+                  success: false,
+                  message: "Failed to send OTP",
+                });
+              });
+          },
+        );
+      }
+
+      /* ================= SIGNUP FLOW ================= */
+
+      //  If already exists → throw error
+      if (users.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Number already registered, please login",
         });
       }
 
-      /* ================= NEW GUEST USER ================= */
+      //  Create new user
       db.query(
         `INSERT INTO guestUsers 
-         (fullname, contact, otp, otp_expires_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        (fullname, contact, otp, otp_expires_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)`,
         [fullname, contact, otp, otpExpiry, timestamp, timestamp],
-        async (insertErr) => {
+        (insertErr) => {
           if (insertErr) {
+            console.error(insertErr);
             return res.status(500).json({
               success: false,
               message: "DB error",
             });
           }
 
-          await sendOtpSMS(contact, otp);
-          console.log("OTP for", contact, "is", otp);
-          return res.status(201).json({
-            success: true,
-            message: "Guest signup successful, OTP sent",
-          });
+          sendOtpSMS(contact, otp)
+            .then(() => {
+              console.log("OTP for", contact, "is", otp);
+              return res.status(201).json({
+                success: true,
+                message: "Guest signup successful, OTP sent",
+              });
+            })
+            .catch((smsErr) => {
+              console.error(smsErr);
+              return res.status(500).json({
+                success: false,
+                message: "Failed to send OTP",
+              });
+            });
         },
       );
     });
   } catch (error) {
     console.error("Guest signup error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Internal server error",

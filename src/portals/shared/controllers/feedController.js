@@ -67,11 +67,11 @@ const getActor = (req) => {
   );
 
   if (!id || isNaN(id)) {
-    console.warn("[getActor] ❌ Missing user_id — rawId:", rawId);
+    console.warn("[getActor]  Missing user_id — rawId:", rawId);
     throw Object.assign(new Error("user_id is required"), { status: 400 });
   }
   if (!role) {
-    console.warn("[getActor] ❌ Could not resolve role — rawRole:", rawRole);
+    console.warn("[getActor]  Could not resolve role — rawRole:", rawRole);
     throw Object.assign(new Error("user_role is required or invalid"), {
       status: 400,
     });
@@ -209,7 +209,7 @@ export const getFeedPosts = (req, res) => {
            AND l.user_role = ?
        ) AS has_liked,
 
-       -- ✅ has current user saved this post
+       --  has current user saved this post
        EXISTS(
          SELECT 1 FROM feed_saved_posts sp
          WHERE sp.post_id   = p.id
@@ -254,7 +254,7 @@ export const getFeedPosts = (req, res) => {
       actor.id,
       actor.role, // has_liked
       actor.id,
-      actor.role, // is_saved  ✅ NEW
+      actor.role, // is_saved   NEW
       actor.role,
       actor.role, // visibility
       limit,
@@ -345,7 +345,7 @@ export const createPost = (req, res) => {
         console.error("[createPost] DB error:", err.message);
         return res.status(500).json({ success: false, message: err.message });
       }
-      console.log("[createPost] ✅ inserted post_id:", result.insertId);
+      console.log("[createPost]  inserted post_id:", result.insertId);
       return res.status(201).json({ success: true, post_id: result.insertId });
     },
   );
@@ -789,7 +789,7 @@ export const addComment = (req, res) => {
           res.status(500).json({ success: false, message: err.message });
         });
 
-      // ✅ INSERT with partner_name
+      //  INSERT with partner_name
       conn.query(
         `INSERT INTO feed_post_comments 
         (post_id, parent_id, author_id, author_role, partner_name, content) 
@@ -805,14 +805,14 @@ export const addComment = (req, res) => {
         (insErr, result) => {
           if (insErr) return rollback(insErr);
 
-          // ✅ Update comment count
+          //  Update comment count
           conn.query(
             "UPDATE feed_posts SET comments_count = comments_count + 1 WHERE id=?",
             [postId],
             (bumpErr) => {
               if (bumpErr) return rollback(bumpErr);
 
-              // ✅ Get post owner
+              //  Get post owner
               conn.query(
                 "SELECT author_id, author_role FROM feed_posts WHERE id=?",
                 [postId],
@@ -821,7 +821,7 @@ export const addComment = (req, res) => {
 
                   const post = postRows[0];
 
-                  // ✅ Notification
+                  //  Notification
                   if (post && post.author_id !== actor.id) {
                     notify(conn, {
                       recipientId: post.author_id,

@@ -93,14 +93,14 @@ export const requestMobileChangeOtp = async (req, res) => {
 
   // Validate mobile
   if (!newMobile || !/^\d{10}$/.test(newMobile)) {
-    console.log("❌ Invalid mobile number format");
+    console.log(" Invalid mobile number format");
     return res.status(400).json({
       success: false,
       message: "Valid 10-digit mobile number required",
     });
   }
 
-  console.log("✅ Mobile format valid. Checking if already exists...");
+  console.log(" Mobile format valid. Checking if already exists...");
 
   // Check if number already taken
   db.query(
@@ -108,7 +108,7 @@ export const requestMobileChangeOtp = async (req, res) => {
     [newMobile, userId],
     async (err, rows) => {
       if (err) {
-        console.error("❌ Database error during mobile check:", err);
+        console.error(" Database error during mobile check:", err);
         return res
           .status(500)
           .json({ success: false, message: "Database error" });
@@ -117,13 +117,13 @@ export const requestMobileChangeOtp = async (req, res) => {
       console.log("Mobile check result:", rows);
 
       if (rows.length > 0) {
-        console.log("❌ Mobile number already in use");
+        console.log(" Mobile number already in use");
         return res
           .status(409)
           .json({ success: false, message: "Mobile number already in use" });
       }
 
-      console.log("✅ Mobile not in use. Generating OTP...");
+      console.log(" Mobile not in use. Generating OTP...");
 
       // Generate OTP
       const otp = String(Math.floor(100000 + Math.random() * 900000));
@@ -138,7 +138,7 @@ export const requestMobileChangeOtp = async (req, res) => {
         [otp, expiry, userId],
         async (err2, result) => {
           if (err2) {
-            console.error("❌ Database error during OTP update:", err2);
+            console.error(" Database error during OTP update:", err2);
             return res
               .status(500)
               .json({ success: false, message: "Database error" });
@@ -149,9 +149,9 @@ export const requestMobileChangeOtp = async (req, res) => {
           try {
             console.log("📩 Sending OTP SMS...");
             await sendOtpSMS(newMobile, otp);
-            console.log("✅ OTP SMS sent successfully");
+            console.log(" OTP SMS sent successfully");
           } catch (smsError) {
-            console.error("❌ SMS sending failed:", smsError);
+            console.error(" SMS sending failed:", smsError);
             return res
               .status(500)
               .json({ success: false, message: "Failed to send OTP" });

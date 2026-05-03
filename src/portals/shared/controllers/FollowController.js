@@ -126,8 +126,8 @@ const notify = (conn, payload) => {
       payload.message ?? null,
     ],
     (err) => {
-      if (err) console.warn("[notify] ❌ failed silently:", err.message);
-      else console.log("[notify] ✅ inserted");
+      if (err) console.warn("[notify]  failed silently:", err.message);
+      else console.log("[notify]  inserted");
     },
   );
 };
@@ -174,7 +174,7 @@ export const toggleFollow = (req, res) => {
     [actor.id, actor.role, targetId, targetRole],
     (err, rows) => {
       if (err) {
-        console.error("[toggleFollow] ❌ DB check error:", err.message);
+        console.error("[toggleFollow]  DB check error:", err.message);
         return res.status(500).json({ success: false, message: err.message });
       }
 
@@ -186,15 +186,12 @@ export const toggleFollow = (req, res) => {
           [actor.id, actor.role, targetId, targetRole],
           (delErr) => {
             if (delErr) {
-              console.error(
-                "[toggleFollow] ❌ unfollow error:",
-                delErr.message,
-              );
+              console.error("[toggleFollow]  unfollow error:", delErr.message);
               return res
                 .status(500)
                 .json({ success: false, message: delErr.message });
             }
-            console.log("[toggleFollow] ✅ unfollowed");
+            console.log("[toggleFollow]  unfollowed");
             return res.json({ success: true, following: false });
           },
         );
@@ -202,7 +199,7 @@ export const toggleFollow = (req, res) => {
         console.log("[toggleFollow] → FOLLOW");
         db.getConnection((connErr, conn) => {
           if (connErr) {
-            console.error("[toggleFollow] ❌ getConnection:", connErr.message);
+            console.error("[toggleFollow]  getConnection:", connErr.message);
             return res
               .status(500)
               .json({ success: false, message: connErr.message });
@@ -211,17 +208,14 @@ export const toggleFollow = (req, res) => {
           conn.beginTransaction((txErr) => {
             if (txErr) {
               conn.release();
-              console.error(
-                "[toggleFollow] ❌ beginTransaction:",
-                txErr.message,
-              );
+              console.error("[toggleFollow]  beginTransaction:", txErr.message);
               return res
                 .status(500)
                 .json({ success: false, message: txErr.message });
             }
 
             const rollback = (e) => {
-              console.error("[toggleFollow] ❌ rollback:", e.message);
+              console.error("[toggleFollow]  rollback:", e.message);
               conn.rollback(() => {
                 conn.release();
                 res.status(500).json({ success: false, message: e.message });
@@ -249,7 +243,7 @@ export const toggleFollow = (req, res) => {
                 conn.commit((commitErr) => {
                   conn.release();
                   if (commitErr) return rollback(commitErr);
-                  console.log("[toggleFollow] ✅ followed");
+                  console.log("[toggleFollow]  followed");
                   return res
                     .status(201)
                     .json({ success: true, following: true });
@@ -292,11 +286,11 @@ export const getFollowStatus = (req, res) => {
     [actor.id, actor.role, targetId, targetRole],
     (err, rows) => {
       if (err) {
-        console.error("[getFollowStatus] ❌", err.message);
+        console.error("[getFollowStatus] ", err.message);
         return res.status(500).json({ success: false, message: err.message });
       }
       const following = rows.length > 0;
-      console.log(`[getFollowStatus] ✅ following=${following}`);
+      console.log(`[getFollowStatus]  following=${following}`);
       return res.json({ success: true, following });
     },
   );
@@ -322,7 +316,7 @@ export const getFollowCounts = (req, res) => {
       [actor.id, actor.role],
       (err, rows) => {
         if (err) {
-          console.error("[getFollowCounts] ❌ followers:", err.message);
+          console.error("[getFollowCounts]  followers:", err.message);
           return reject(err);
         }
         resolve(rows[0].cnt);
@@ -336,7 +330,7 @@ export const getFollowCounts = (req, res) => {
       [actor.id, actor.role],
       (err, rows) => {
         if (err) {
-          console.error("[getFollowCounts] ❌ following:", err.message);
+          console.error("[getFollowCounts]  following:", err.message);
           return reject(err);
         }
         resolve(rows[0].cnt);
@@ -347,7 +341,7 @@ export const getFollowCounts = (req, res) => {
   Promise.all([countFollowers, countFollowing])
     .then(([followers, following]) => {
       console.log(
-        `[getFollowCounts] ✅ followers=${followers} following=${following}`,
+        `[getFollowCounts]  followers=${followers} following=${following}`,
       );
       res.json({ success: true, followers, following });
     })
@@ -383,7 +377,7 @@ export const getFollowers = (req, res) => {
     [actor.id, actor.role, limit, offset],
     async (err, rows) => {
       if (err) {
-        console.error("[getFollowers] ❌ DB:", err.message);
+        console.error("[getFollowers]  DB:", err.message);
         return res.status(500).json({ success: false, message: err.message });
       }
       console.log(`[getFollowers] found ${rows.length} rows`);
@@ -402,7 +396,7 @@ export const getFollowers = (req, res) => {
           "person_id",
           "person_role",
         );
-        console.log(`[getFollowers] ✅ resolved ${followers.length} profiles`);
+        console.log(`[getFollowers]  resolved ${followers.length} profiles`);
         return res.json({
           success: true,
           page,
@@ -411,7 +405,7 @@ export const getFollowers = (req, res) => {
           followers,
         });
       } catch (e) {
-        console.error("[getFollowers] ❌ resolveProfiles:", e.message);
+        console.error("[getFollowers]  resolveProfiles:", e.message);
         return res.status(500).json({ success: false, message: e.message });
       }
     },
@@ -445,7 +439,7 @@ export const getFollowing = (req, res) => {
     [actor.id, actor.role, limit, offset],
     async (err, rows) => {
       if (err) {
-        console.error("[getFollowing] ❌ DB:", err.message);
+        console.error("[getFollowing]  DB:", err.message);
         return res.status(500).json({ success: false, message: err.message });
       }
       console.log(`[getFollowing] found ${rows.length} rows`);
@@ -464,7 +458,7 @@ export const getFollowing = (req, res) => {
           "person_id",
           "person_role",
         );
-        console.log(`[getFollowing] ✅ resolved ${following.length} profiles`);
+        console.log(`[getFollowing]  resolved ${following.length} profiles`);
         return res.json({
           success: true,
           page,
@@ -473,7 +467,7 @@ export const getFollowing = (req, res) => {
           following,
         });
       } catch (e) {
-        console.error("[getFollowing] ❌ resolveProfiles:", e.message);
+        console.error("[getFollowing]  resolveProfiles:", e.message);
         return res.status(500).json({ success: false, message: e.message });
       }
     },
@@ -517,7 +511,7 @@ export const getUserProfile = (req, res) => {
     [targetId],
     (err, rows) => {
       if (err) {
-        console.error("[getUserProfile] ❌ profile fetch:", err.message);
+        console.error("[getUserProfile]  profile fetch:", err.message);
         return res.status(500).json({ success: false, message: err.message });
       }
       if (!rows.length) {
@@ -528,7 +522,7 @@ export const getUserProfile = (req, res) => {
       }
 
       const profile = rows[0];
-      console.log(`[getUserProfile] ✅ profile found: ${profile.fullname}`);
+      console.log(`[getUserProfile]  profile found: ${profile.fullname}`);
 
       const followerCount = new Promise((resolve, reject) =>
         query(
@@ -558,7 +552,7 @@ export const getUserProfile = (req, res) => {
       Promise.all([followerCount, followingCount, isFollowing])
         .then(([followers, following, is_following]) => {
           console.log(
-            `[getUserProfile] ✅ followers=${followers} following=${following} is_following=${is_following}`,
+            `[getUserProfile]  followers=${followers} following=${following} is_following=${is_following}`,
           );
           return res.json({
             success: true,
@@ -572,7 +566,7 @@ export const getUserProfile = (req, res) => {
           });
         })
         .catch((e) => {
-          console.error("[getUserProfile] ❌ counts:", e.message);
+          console.error("[getUserProfile]  counts:", e.message);
           res.status(500).json({ success: false, message: e.message });
         });
     },
@@ -697,14 +691,14 @@ export const searchUsers = (req, res) => {
     ],
     async (err, rows) => {
       if (err) {
-        console.error("[searchUsers] ❌ DB UNION error:", err.message);
+        console.error("[searchUsers]  DB UNION error:", err.message);
         return res.status(500).json({ success: false, message: err.message });
       }
 
       console.log(`[searchUsers] raw rows returned: ${rows.length}`);
 
       if (!rows.length) {
-        console.log("[searchUsers] ✅ no results");
+        console.log("[searchUsers]  no results");
         return res.json({ success: true, users: [] });
       }
 
@@ -721,7 +715,7 @@ export const searchUsers = (req, res) => {
                   (e, r) => {
                     if (e) {
                       console.error(
-                        `[searchUsers] ❌ follow check for ${u.id}:`,
+                        `[searchUsers]  follow check for ${u.id}:`,
                         e.message,
                       );
                       return reject(e);
@@ -732,10 +726,10 @@ export const searchUsers = (req, res) => {
               ),
           ),
         );
-        console.log(`[searchUsers] ✅ returning ${withFollow.length} users`);
+        console.log(`[searchUsers]  returning ${withFollow.length} users`);
         return res.json({ success: true, users: withFollow });
       } catch (e) {
-        console.error("[searchUsers] ❌ follow check batch error:", e.message);
+        console.error("[searchUsers]  follow check batch error:", e.message);
         return res.status(500).json({ success: false, message: e.message });
       }
     },
@@ -768,13 +762,13 @@ const resolveProfiles = (rows, idKey, roleKey) => {
           (err, profileRows) => {
             if (err) {
               console.error(
-                `[resolveProfiles] ❌ ${cfg.table} id=${row[idKey]}:`,
+                `[resolveProfiles]  ${cfg.table} id=${row[idKey]}:`,
                 err.message,
               );
               return reject(err);
             }
             const profile = profileRows[0] || {};
-            console.log(`[resolveProfiles] ✅ resolved: ${profile.fullname}`);
+            console.log(`[resolveProfiles]  resolved: ${profile.fullname}`);
             resolve({
               ...profile,
               role: row[roleKey],

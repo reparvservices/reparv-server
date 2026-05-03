@@ -611,13 +611,13 @@ Team Reparv`,
           [sub.id],
         );
 
-        console.log(`✅ Sent 7-day expiry reminder to ${sub.fullname}`);
+        console.log(` Sent 7-day expiry reminder to ${sub.fullname}`);
       }
     }
 
-    console.log("✅ Expiry check and reminders completed successfully.");
+    console.log(" Expiry check and reminders completed successfully.");
   } catch (error) {
-    console.error("❌ Error in subscription cron:", error);
+    console.error(" Error in subscription cron:", error);
   }
 });
 
@@ -652,66 +652,71 @@ export const checkcalendernotes = () => {
 
     (async () => {
       for (const row of results) {
-      const title = "⏰ Upcoming Reminder";
-      const msg = `You have a scheduled note at ${formatTime(
-        row.time,
-      )} on ${formatDate(row.date)}.
+        const title = "⏰ Upcoming Reminder";
+        const msg = `You have a scheduled note at ${formatTime(
+          row.time,
+        )} on ${formatDate(row.date)}.
 Note: ${row.note}`;
 
-      // ---- SEND NOTIFICATION TO PROJECT PARTNER ----
-      if (row.project_onesignal) {
-        try {
-          await sendPPNotification(
-            row.project_onesignal,
-            title,
-            msg,
-            "Calender",
+        // ---- SEND NOTIFICATION TO PROJECT PARTNER ----
+        if (row.project_onesignal) {
+          try {
+            await sendPPNotification(
+              row.project_onesignal,
+              title,
+              msg,
+              "Calender",
+            );
+            console.log("PP notified:", row.project_onesignal);
+          } catch (e) {
+            console.error("PP notification error:", e);
+          }
+        }
+
+        // ---- SEND NOTIFICATION TO SALES PARTNER ----
+        if (row.sales_onesignal) {
+          try {
+            await sendSPNotification(
+              row.sales_onesignal,
+              title,
+              msg,
+              "Calender",
+            );
+            console.log("Sales notified:", row.sales_onesignal);
+          } catch (e) {
+            console.error("Sales notification error:", e);
+          }
+        }
+
+        // ---- SEND NOTIFICATION TO TERRITORY PARTNER ----
+        if (row.territory_onesignal) {
+          try {
+            await sendTPNotification(
+              row.territory_onesignal,
+              title,
+              msg,
+              "Calender",
+            );
+            console.log("Territory notified:", row.territory_onesignal);
+          } catch (e) {
+            console.error("Territory notification error:", e);
+          }
+        }
+
+        await new Promise((resolve, reject) => {
+          db.query(
+            "UPDATE calendernotes SET notified = 1 WHERE id = ?",
+            [row.id],
+            (updateErr) => {
+              if (updateErr) {
+                console.error("Update notify flag error:", updateErr);
+                reject(updateErr);
+              } else {
+                resolve();
+              }
+            },
           );
-          console.log("PP notified:", row.project_onesignal);
-        } catch (e) {
-          console.error("PP notification error:", e);
-        }
-      }
-
-      // ---- SEND NOTIFICATION TO SALES PARTNER ----
-      if (row.sales_onesignal) {
-        try {
-          await sendSPNotification(row.sales_onesignal, title, msg, "Calender");
-          console.log("Sales notified:", row.sales_onesignal);
-        } catch (e) {
-          console.error("Sales notification error:", e);
-        }
-      }
-
-      // ---- SEND NOTIFICATION TO TERRITORY PARTNER ----
-      if (row.territory_onesignal) {
-        try {
-          await sendTPNotification(
-            row.territory_onesignal,
-            title,
-            msg,
-            "Calender",
-          );
-          console.log("Territory notified:", row.territory_onesignal);
-        } catch (e) {
-          console.error("Territory notification error:", e);
-        }
-      }
-
-      await new Promise((resolve, reject) => {
-        db.query(
-          "UPDATE calendernotes SET notified = 1 WHERE id = ?",
-          [row.id],
-          (updateErr) => {
-            if (updateErr) {
-              console.error("Update notify flag error:", updateErr);
-              reject(updateErr);
-            } else {
-              resolve();
-            }
-          },
-        );
-      });
+        });
       }
     })().catch((e) => console.error("Calendar notes notify loop:", e));
   });
@@ -1027,7 +1032,7 @@ async function sendGuestNotification(guest, title, body, data = {}) {
     const response = await guestApp.messaging().send(message);
     console.log("📨 Guest notification sent:", response);
   } catch (err) {
-    console.error("❌ Error sending guest notification:", err);
+    console.error(" Error sending guest notification:", err);
   }
 }
 
@@ -1089,7 +1094,7 @@ async function notifyGuestsForNewProperties() {
             guest,
             "🏡 New Property in " + property.city,
             `${property.propertyName} just listed in ${property.city}! Explore price, photos & details now.`,
-            // ✅ deep-link data
+            //  deep-link data
             {
               screen: "PropertyDetails",
               propertyid: property.seoSlug,

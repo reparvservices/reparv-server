@@ -454,17 +454,17 @@ export const sendForgotPasswordOTP = async (req, res) => {
 
     console.log(`[sendForgotPasswordOTP] OTP for ${email} (${role}): ${otp}`);
 
-    // ✅ role is passed so email is branded for the correct role
+    //  role is passed so email is branded for the correct role
     await sendOTPEmail(user.email, user.name, otp, role);
 
-    console.log("[sendForgotPasswordOTP] ✅ email sent to:", email);
+    console.log("[sendForgotPasswordOTP]  email sent to:", email);
 
     return res.json({
       success: true,
       message: "OTP sent to your registered email address.",
     });
   } catch (err) {
-    console.error("[sendForgotPasswordOTP] ❌ error:", err.message);
+    console.error("[sendForgotPasswordOTP]  error:", err.message);
     return res.status(500).json({
       success: false,
       message: "Failed to send OTP. Please try again.",
@@ -542,7 +542,7 @@ export const verifyForgotPasswordOTP = (req, res) => {
     verified: true,
   });
 
-  console.log("[verifyForgotPasswordOTP] ✅ OTP verified for:", email);
+  console.log("[verifyForgotPasswordOTP]  OTP verified for:", email);
 
   return res.json({
     success: true,
@@ -605,7 +605,7 @@ export const resetPassword = async (req, res) => {
     let hashedPassword = newPassword;
     try {
       hashedPassword = await bcrypt.hash(newPassword, 10);
-      console.log("[resetPassword] ✅ password hashed with bcrypt");
+      console.log("[resetPassword]  password hashed with bcrypt");
     } catch {
       console.warn(
         "[resetPassword] ⚠️ bcrypt not available — storing plain password",
@@ -620,7 +620,7 @@ export const resetPassword = async (req, res) => {
     otpStore.delete(key);
 
     console.log(
-      "[resetPassword] ✅ password reset for userId:",
+      "[resetPassword]  password reset for userId:",
       entry.userId,
       "role:",
       role,
@@ -631,7 +631,7 @@ export const resetPassword = async (req, res) => {
       message: "Password reset successfully. You can now log in.",
     });
   } catch (err) {
-    console.error("[resetPassword] ❌ DB error:", err.message);
+    console.error("[resetPassword]  DB error:", err.message);
     return res.status(500).json({
       success: false,
       message: "Failed to reset password. Please try again.",

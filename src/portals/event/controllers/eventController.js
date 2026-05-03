@@ -84,7 +84,7 @@ export const createEvent = (req, res) => {
 
       const eventId = result.insertId;
 
-      // ✅ Fetch inserted event
+      //  Fetch inserted event
       db.execute(
         "SELECT * FROM events WHERE id = ?",
         [eventId],
@@ -100,7 +100,7 @@ export const createEvent = (req, res) => {
           return res.status(201).json({
             success: true,
             message: "Event created successfully.",
-            event: rows[0], // ✅ full inserted event
+            event: rows[0], //  full inserted event
           });
         },
       );

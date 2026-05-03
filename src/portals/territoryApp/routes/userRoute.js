@@ -32,9 +32,9 @@ router.post("/follow", (req, res) => {
           if (insertErr)
             return res.status(500).json({ error: "Insert failed" });
           res.json({ status: "Followed successfully" });
-        }
+        },
       );
-    }
+    },
   );
 });
 
@@ -60,7 +60,7 @@ router.post("/unfollow", (req, res) => {
       }
 
       res.status(200).json({ status: "Unfollowed successfully" });
-    }
+    },
   );
 });
 
@@ -84,7 +84,7 @@ router.get("/:id/followers", (req, res) => {
       }
 
       res.json(result);
-    }
+    },
   );
 });
 
@@ -107,7 +107,7 @@ router.get("/:id/following", async (req, res) => {
       console.log(result);
 
       res.json(result);
-    }
+    },
   );
 });
 
@@ -171,7 +171,7 @@ router.post("/add/follow", (req, res) => {
       }
 
       res.json({ status: "Followed successfully" });
-    }
+    },
   );
 });
 
@@ -201,7 +201,7 @@ router.post("/add/unfollow", (req, res) => {
       }
 
       res.json({ status: "Unfollowed successfully" });
-    }
+    },
   );
 });
 
@@ -342,7 +342,7 @@ router.post("/update-availability/:id", async (req, res) => {
 
     await db.query(
       "UPDATE territorypartner SET is_active = ?, inactive_until = ? WHERE id = ?",
-      [isAvailable, inactiveUntil || null, Id]
+      [isAvailable, inactiveUntil || null, Id],
     );
 
     res.json({ success: true, message: "Availability updated" });
@@ -377,7 +377,7 @@ router.post("/set-inactive/:id", async (req, res) => {
   try {
     await db.query(
       "UPDATE territorypartner SET is_active = ?, inactive_until = ? WHERE id = ?",
-      [isAvailable, JSON.stringify(inactiveDates), partnerId]
+      [isAvailable, JSON.stringify(inactiveDates), partnerId],
     );
 
     res.json({ success: true, message: "Availability updated successfully" });
@@ -394,7 +394,7 @@ router.get("/unavailable-dates/:id", async (req, res) => {
   try {
     const [rows] = await db.query(
       "SELECT inactive_until FROM territorypartner WHERE id = ?",
-      [partnerId]
+      [partnerId],
     );
 
     if (rows.length === 0) {
@@ -414,7 +414,7 @@ router.get("/unavailable-dates/:id", async (req, res) => {
 
     res.json({ success: true, unavailableDates });
   } catch (err) {
-    console.error("❌ Error fetching unavailable dates:", err);
+    console.error(" Error fetching unavailable dates:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -439,7 +439,7 @@ router.delete("/delete/unavailable-dates/:id", (req, res) => {
 
   db.query(searchSQL, [date, partnerId], (err, rows) => {
     if (err) {
-      console.error("❌ Error searching date:", err);
+      console.error(" Error searching date:", err);
       return res
         .status(500)
         .json({ success: false, message: "Database error", error: err });
@@ -460,7 +460,7 @@ router.delete("/delete/unavailable-dates/:id", (req, res) => {
 
     db.query(updateSQL, [path, partnerId], (err2, result) => {
       if (err2) {
-        console.error("❌ Error removing date:", err2);
+        console.error(" Error removing date:", err2);
         return res
           .status(500)
           .json({ success: false, message: "Database error", error: err2 });

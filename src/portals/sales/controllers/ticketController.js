@@ -145,7 +145,7 @@ export const add = (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  // ✅ FIX: use email instead of adharno
+  //  FIX: use email instead of adharno
   const fetchSalesPersonSql = `
     SELECT projectpartnerid 
     FROM salespersons 

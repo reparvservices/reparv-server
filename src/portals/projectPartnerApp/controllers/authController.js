@@ -302,7 +302,7 @@ export const verifyProjectPartnerOtp = (req, res) => {
     db.query(clearOtpQuery, [mobile], (err) => {
       if (err) console.log(err);
 
-      // ✅ Generate real JWT — same payload as login route
+      //  Generate real JWT — same payload as login route
       const token = jwt.sign(
         {
           id: user.id,
@@ -316,7 +316,7 @@ export const verifyProjectPartnerOtp = (req, res) => {
         { expiresIn: "10d" },
       );
 
-      // ✅ Set same cookie as login route
+      //  Set same cookie as login route
       const cookieOptions = {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -329,7 +329,7 @@ export const verifyProjectPartnerOtp = (req, res) => {
       return res.status(200).json({
         success: true,
         message: "OTP verified successfully",
-        token, // ✅ real JWT now
+        token, //  real JWT now
         user: {
           id: user.id,
           username: user.username,
