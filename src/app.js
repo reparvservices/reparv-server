@@ -50,7 +50,47 @@ if (!resolveWhatsappWebhookVerifyToken()) {
 }
 
 app.use(cookieParser());
+//deeplink.js
+app.get("/open", (req, res) => {
+  const { id, role, name } = req.query;
 
+  const deepLink = `reparv://UserProfile/${id}?role=${role}&name=${encodeURIComponent(name)}`;
+  const playStoreUrl =
+    "https://play.google.com/store/apps/details?id=com.reparvprojectpartner";
+  const appStoreUrl =
+    "https://play.google.com/store/apps/details?id=com.reparvprojectpartner";
+
+  // Detect device and redirect accordingly
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Opening Reparv...</title>
+      <meta property="og:title" content="${name} — Reparv Partner" />
+      <meta property="og:description" content="View ${name}'s profile on Reparv" />
+      <meta property="og:image" content="https://reparv.com/og-preview.png" />
+    </head>
+    <body>
+      <script>
+        const ua = navigator.userAgent.toLowerCase();
+        const isAndroid = /android/.test(ua);
+        const isIOS = /iphone|ipad/.test(ua);
+
+        // Try opening the app
+        window.location.href = "${deepLink}";
+
+        // If app not installed, fallback to store after 2s
+        setTimeout(() => {
+          if (isAndroid) window.location.href = "${playStoreUrl}";
+          else if (isIOS) window.location.href = "${appStoreUrl}";
+          else window.location.href = "https://reparv.com";
+        }, 2000);
+      </script>
+      <p>Opening Reparv app...</p>
+    </body>
+    </html>
+  `);
+});
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
