@@ -33,37 +33,9 @@ const upload = multer({
 /* ---------- ROUTES ---------- */
 router.post("/add-wishlist", addInWishList);
 router.get("/get-wishlist/:user_id", getUserWishlist);
-router.post(
-  "/post",
-  upload.fields([
-    { name: "frontView", maxCount: 3 },
-    { name: "sideView", maxCount: 3 },
-    { name: "kitchenView", maxCount: 3 },
-    { name: "hallView", maxCount: 3 },
-    { name: "bedroomView", maxCount: 3 },
-    { name: "bathroomView", maxCount: 3 },
-    { name: "balconyView", maxCount: 3 },
-    { name: "nearestLandmark", maxCount: 3 },
-    { name: "developedAmenities", maxCount: 3 },
-  ]),
-  addProperty,
-);
+router.post("/post", addProperty);
 router.get("/myproperty/:id", getAll);
-router.put(
-  "/update/:propertyid",
-  upload.fields([
-    { name: "frontView" },
-    { name: "sideView" },
-    { name: "kitchenView" },
-    { name: "hallView" },
-    { name: "bedroomView" },
-    { name: "bathroomView" },
-    { name: "balconyView" },
-    { name: "nearestLandmark" },
-    { name: "developedAmenities" },
-  ]),
-  updateProperty,
-);
+router.put("/update/:propertyid", updateProperty);
 router.get("/:id", getById);
 router.delete("/delete/:id", del);
 router.put("/status/:id", status);

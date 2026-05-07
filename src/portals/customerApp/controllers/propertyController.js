@@ -230,7 +230,18 @@ export const addProperty = async (req, res) => {
       city,
       address,
       customerid,
+      frontView,
+      sideView,
+      kitchenView,
+      hallView,
+      bedroomView,
+      bathroomView,
+      balconyView,
+      nearestLandmark,
+      developedAmenities,
     } = req.body;
+
+    console.log(req.body);
 
     // Basic validation
     if (!property_name || !customerid) {
@@ -276,40 +287,6 @@ export const addProperty = async (req, res) => {
           parsedAreas.find((a) => a?.label?.toLowerCase().includes("carpet"))
             ?.value || null;
 
-        /* ---------- IMAGE UPLOAD (FAST + PARALLEL) ---------- */
-        const uploadField = async (field) => {
-          if (!req.files?.[field]) return [];
-
-          const uploads = req.files[field].map(async (file) => {
-            const converted = await convertSingleImageToWebp(file);
-            return converted ? uploadToS3(converted) : null;
-          });
-
-          return (await Promise.all(uploads)).filter(Boolean);
-        };
-
-        const [
-          frontView,
-          sideView,
-          kitchenView,
-          hallView,
-          bedroomView,
-          bathroomView,
-          balconyView,
-          nearestLandmark,
-          developedAmenities,
-        ] = await Promise.all([
-          uploadField("frontView"),
-          uploadField("sideView"),
-          uploadField("kitchenView"),
-          uploadField("hallView"),
-          uploadField("bedroomView"),
-          uploadField("bathroomView"),
-          uploadField("balconyView"),
-          uploadField("nearestLandmark"),
-          uploadField("developedAmenities"),
-        ]);
-
         /* ---------- INSERT PROPERTY ---------- */
         const insertSQL = `
           INSERT INTO properties (
@@ -324,31 +301,67 @@ export const addProperty = async (req, res) => {
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
         `;
 
+        // ✅ Values now correctly match the SQL column order above
         const values = [
-          customerid,
-          customerid,
-          property_type,
-          property_type,
-          property_name,
-          price,
-          ofprice,
-          contact,
-          ownername,
-          state,
-          city,
-          address,
-          builtUpArea,
-          carpetArea,
-          JSON.stringify(frontView),
-          JSON.stringify(sideView),
-          JSON.stringify(kitchenView),
-          JSON.stringify(hallView),
-          JSON.stringify(bedroomView),
-          JSON.stringify(bathroomView),
-          JSON.stringify(balconyView),
-          JSON.stringify(nearestLandmark),
-          JSON.stringify(developedAmenities),
-          toSlug(property_name),
+          customerid, // customerid
+          null, // guestUserId (not sent from client)
+          property_type, // propertyType
+          property_type, // propertyCategory (same as type, adjust if needed)
+          property_name, // propertyName
+          price, // totalSalesPrice
+          ofprice, // totalOfferPrice
+          contact, // contact
+          ownername, // projectBy
+          state, // state
+          city, // city
+          address, // address
+          builtUpArea, // builtUpArea
+          carpetArea, // carpetArea
+          // ✅ Image views stored as JSON arrays
+          frontView
+            ? JSON.stringify(Array.isArray(frontView) ? frontView : [frontView])
+            : null,
+          sideView
+            ? JSON.stringify(Array.isArray(sideView) ? sideView : [sideView])
+            : null,
+          kitchenView
+            ? JSON.stringify(
+                Array.isArray(kitchenView) ? kitchenView : [kitchenView],
+              )
+            : null,
+          hallView
+            ? JSON.stringify(Array.isArray(hallView) ? hallView : [hallView])
+            : null,
+          bedroomView
+            ? JSON.stringify(
+                Array.isArray(bedroomView) ? bedroomView : [bedroomView],
+              )
+            : null,
+          bathroomView
+            ? JSON.stringify(
+                Array.isArray(bathroomView) ? bathroomView : [bathroomView],
+              )
+            : null,
+          balconyView
+            ? JSON.stringify(
+                Array.isArray(balconyView) ? balconyView : [balconyView],
+              )
+            : null,
+          nearestLandmark
+            ? JSON.stringify(
+                Array.isArray(nearestLandmark)
+                  ? nearestLandmark
+                  : [nearestLandmark],
+              )
+            : null,
+          developedAmenities
+            ? JSON.stringify(
+                Array.isArray(developedAmenities)
+                  ? developedAmenities
+                  : [developedAmenities],
+              )
+            : null,
+          toSlug(property_name), // seoSlug
         ];
 
         db.query(insertSQL, values, (err, result) => {
@@ -395,7 +408,18 @@ export const updateProperty = async (req, res) => {
       ofprice,
       state,
       city,
+      address,
+      frontView,
+      sideView,
+      kitchenView,
+      hallView,
+      bedroomView,
+      bathroomView,
+      balconyView,
+      nearestLandmark,
+      developedAmenities,
     } = req.body;
+    console.log(req.body);
 
     /* ---------- CHECK DUPLICATE NAME ---------- */
     db.query(
@@ -405,9 +429,7 @@ export const updateProperty = async (req, res) => {
       async (err, exists) => {
         if (err) {
           console.error(err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
+          return res.status(500).json({ message: "Database error" });
         }
 
         if (exists.length > 0) {
@@ -416,7 +438,7 @@ export const updateProperty = async (req, res) => {
             .json({ message: "Property name already exists!" });
         }
 
-        /* ---------- PARSE AREAS SAFELY ---------- */
+        /* ---------- PARSE AREAS ---------- */
         let parsedAreas = [];
         try {
           if (typeof areas === "string") parsedAreas = JSON.parse(areas);
@@ -433,33 +455,8 @@ export const updateProperty = async (req, res) => {
           parsedAreas.find((a) => a?.label?.toLowerCase().includes("carpet"))
             ?.value || null;
 
-        /* ---------- IMAGE UPLOAD (PARALLEL + OPTIONAL) ---------- */
-        const uploadField = async (field) => {
-          if (!req.files?.[field]) return null;
-
-          const uploads = req.files[field].map(async (file) => {
-            const converted = await convertSingleImageToWebp(file);
-            return converted ? uploadToS3(converted) : null;
-          });
-
-          const urls = (await Promise.all(uploads)).filter(Boolean);
-          return JSON.stringify(urls);
-        };
-
-        const images = {
-          frontView: await uploadField("frontView"),
-          sideView: await uploadField("sideView"),
-          kitchenView: await uploadField("kitchenView"),
-          hallView: await uploadField("hallView"),
-          bedroomView: await uploadField("bedroomView"),
-          bathroomView: await uploadField("bathroomView"),
-          balconyView: await uploadField("balconyView"),
-          nearestLandmark: await uploadField("nearestLandmark"),
-          developedAmenities: await uploadField("developedAmenities"),
-        };
-
-        /* ---------- BASE UPDATE QUERY ---------- */
-        let updateSQL = `
+        /* ---------- UPDATE QUERY ---------- */
+        const updateSQL = `
           UPDATE properties SET
             propertyType = ?,
             propertyCategory = ?,
@@ -470,10 +467,21 @@ export const updateProperty = async (req, res) => {
             projectBy = ?,
             state = ?,
             city = ?,
+            address = ?,
             builtUpArea = ?,
             carpetArea = ?,
+            frontView = ?,
+            sideView = ?,
+            kitchenView = ?,
+            hallView = ?,
+            bedroomView = ?,
+            bathroomView = ?,
+            balconyView = ?,
+            nearestLandmark = ?,
+            developedAmenities = ?,
             seoSlug = ?,
             updated_at = NOW()
+          WHERE propertyid = ?
         `;
 
         const values = [
@@ -486,29 +494,61 @@ export const updateProperty = async (req, res) => {
           ownername,
           state,
           city,
+          address,
           builtUpArea,
           carpetArea,
+          // ✅ Store arrays as JSON strings
+          frontView
+            ? JSON.stringify(Array.isArray(frontView) ? frontView : [frontView])
+            : null,
+          sideView
+            ? JSON.stringify(Array.isArray(sideView) ? sideView : [sideView])
+            : null,
+          kitchenView
+            ? JSON.stringify(
+                Array.isArray(kitchenView) ? kitchenView : [kitchenView],
+              )
+            : null,
+          hallView
+            ? JSON.stringify(Array.isArray(hallView) ? hallView : [hallView])
+            : null,
+          bedroomView
+            ? JSON.stringify(
+                Array.isArray(bedroomView) ? bedroomView : [bedroomView],
+              )
+            : null,
+          bathroomView
+            ? JSON.stringify(
+                Array.isArray(bathroomView) ? bathroomView : [bathroomView],
+              )
+            : null,
+          balconyView
+            ? JSON.stringify(
+                Array.isArray(balconyView) ? balconyView : [balconyView],
+              )
+            : null,
+          nearestLandmark
+            ? JSON.stringify(
+                Array.isArray(nearestLandmark)
+                  ? nearestLandmark
+                  : [nearestLandmark],
+              )
+            : null,
+          developedAmenities
+            ? JSON.stringify(
+                Array.isArray(developedAmenities)
+                  ? developedAmenities
+                  : [developedAmenities],
+              )
+            : null,
           toSlug(property_name),
+          propertyid,
         ];
 
-        /* ---------- ADD IMAGE FIELDS ONLY IF SENT ---------- */
-        Object.entries(images).forEach(([key, value]) => {
-          if (value !== null) {
-            updateSQL += `, ${key} = ?`;
-            values.push(value);
-          }
-        });
-
-        updateSQL += ` WHERE propertyid = ?`;
-        values.push(propertyid);
-
-        /* ---------- EXECUTE UPDATE ---------- */
         db.query(updateSQL, values, (err, result) => {
           if (err) {
             console.error("Update error:", err);
-            return res
-              .status(500)
-              .json({ message: "Update failed", error: err });
+            return res.status(500).json({ message: "Update failed" });
           }
 
           if (result.affectedRows === 0) {
@@ -527,11 +567,9 @@ export const updateProperty = async (req, res) => {
     console.error("Update error:", error);
     return res.status(500).json({
       message: "Server error",
-      error,
     });
   }
 };
-
 //**Change status */
 export const status = (req, res) => {
   const Id = parseInt(req.params.id);
