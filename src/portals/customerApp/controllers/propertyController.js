@@ -90,6 +90,38 @@ export const getUserWishlist = (req, res) => {
   }
 };
 
+export const removeFromWishlist = (req, res) => {
+  const { userId, propertyId } = req.params;
+  console.log(userId, "", propertyId);
+  if (!userId || !propertyId) {
+    return res
+      .status(400)
+      .json({ success: false, message: "userId and propertyId are required" });
+  }
+
+  const query = `DELETE FROM user_property_wishlist WHERE guest_user_id = ? AND property_id = ?`;
+
+  db.query(query, [userId, propertyId], (err, result) => {
+    if (err) {
+      console.error("removeFromWishlist DB error:", err);
+      return res
+        .status(500)
+        .json({ success: false, message: "Internal server error" });
+    }
+
+    if (result.affectedRows === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Wishlist item not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Property removed from wishlist",
+    });
+  });
+};
+
 // **Fetch All Properties**
 export const getAll = (req, res) => {
   const userId = req.params.id;

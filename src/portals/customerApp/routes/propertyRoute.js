@@ -10,6 +10,7 @@ import {
   status,
   getPropertyLikeCount,
   getById,
+  removeFromWishlist,
 } from "../controllers/propertyController.js";
 
 const router = express.Router();
@@ -67,6 +68,8 @@ router.get("/:id", getById);
 router.delete("/delete/:id", del);
 router.put("/status/:id", status);
 router.get("/likes/:id", getPropertyLikeCount);
+// DELETE /customerapp/property/remove-wishlist/:userId/:propertyId
+router.delete("/remove-wishlist/:userId/:propertyId", removeFromWishlist);
 
 /* ---------- MULTER ERROR HANDLER ---------- */
 router.use((err, req, res, next) => {
