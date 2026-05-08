@@ -6,11 +6,11 @@ export const getAll = (req, res) => {
   const sql = `
     SELECT 
       rc.*,
-      sp.planName,
-      sp.planDuration,
-      sp.totalPrice
+      sp.plan_name AS planName,
+      CONCAT(sp.duration, ' ' , IF(sp.billing_cycle = 'yearly', 'Year', 'Month')) AS planDuration,
+      sp.price AS totalPrice
     FROM redeem_codes AS rc
-    LEFT JOIN subscriptionPricing AS sp
+    LEFT JOIN subscription_plans AS sp
       ON rc.planId = sp.id
     ORDER BY rc.id DESC;
   `;
@@ -41,11 +41,11 @@ export const getById = (req, res) => {
   const sql = `
     SELECT 
       rc.*, 
-      sp.planName,
-      sp.planDuration,
-      sp.totalPrice
+      sp.plan_name AS planName,
+      CONCAT(sp.duration, ' ' , IF(sp.billing_cycle = 'yearly', 'Year', 'Month')) AS planDuration,
+      sp.price AS totalPrice
     FROM redeem_codes AS rc
-    LEFT JOIN subscriptionPricing AS sp
+    LEFT JOIN subscription_plans AS sp
       ON rc.planId = sp.id
     WHERE rc.id = ?;
   `;

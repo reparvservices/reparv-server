@@ -6,6 +6,77 @@ import sendForgotPasswordMail from "#utils/sendForgotPasswordMail.js";
 
 const router = express.Router();
 
+/**
+ * One-time / dev admin bootstrap: creates a row in `users` with bcrypt password.
+ * Requires ADMIN_SETUP_SECRET in env; send same value in header x-admin-setup-secret.
+ * Remove secret from production .env after use.
+ */
+router.post("/setup/create-user", async (req, res) => {
+  try {
+    if (!process.env.ADMIN_SETUP_SECRET) {
+      return res.status(503).json({
+        message:
+          "Admin setup is disabled. Set ADMIN_SETUP_SECRET in reparv-server/.env and restart the server.",
+      });
+    }
+    const secret =
+      req.headers["x-admin-setup-secret"] || req.body?.setupSecret;
+    if (secret !== process.env.ADMIN_SETUP_SECRET) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const {
+      name,
+      username,
+      email,
+      password,
+      contact = "",
+      adharno = "",
+      status = "active",
+      role = "admin",
+    } = req.body;
+
+    if (!name || !username || !email || !password) {
+      return res.status(400).json({
+        message: "name, username, email and password are required",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await new Promise((resolve, reject) => {
+      db.query(
+        `INSERT INTO users (name, username, email, password, contact, adharno, status, role)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [name, username, email, hashedPassword, contact, adharno, status, role],
+        (err, result) => {
+          if (err) {
+            if (err.code === "ER_DUP_ENTRY") {
+              return reject({
+                status: 409,
+                message: "Email or username already exists",
+              });
+            }
+            return reject(err);
+          }
+          resolve(result);
+        },
+      );
+    });
+
+    return res.status(201).json({ message: "Admin user created successfully" });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ message: error.message });
+    }
+    console.error("setup/create-user:", error);
+    return res.status(500).json({
+      message: "Failed to create user",
+      error: error.message,
+    });
+  }
+});
+
 // User Login Route
 router.post("/login", async (req, res) => {
   try {
@@ -30,9 +101,31 @@ router.post("/login", async (req, res) => {
       );
     });
 
-    //  Compare password securely
+    //  Compare password: bcrypt hash, or legacy plain text (upgrade to hash on success)
     try {
-      const isMatch = await bcrypt.compare(password, user?.password);
+      const stored = user?.password ?? "";
+      const looksLikeBcrypt =
+        typeof stored === "string" &&
+        stored.length >= 59 &&
+        stored.startsWith("$2");
+
+      let isMatch = false;
+      if (looksLikeBcrypt) {
+        isMatch = await bcrypt.compare(password, stored);
+      } else {
+        isMatch = password === stored;
+        if (isMatch) {
+          const hashedPassword = await bcrypt.hash(password, 10);
+          await new Promise((resolve, reject) => {
+            db.query(
+              "UPDATE users SET password = ? WHERE id = ?",
+              [hashedPassword, user.id],
+              (err) => (err ? reject(err) : resolve()),
+            );
+          });
+        }
+      }
+
       if (!isMatch) {
         return res.status(401).json({ message: "Wrong Password try again!" });
       }
