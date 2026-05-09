@@ -48,23 +48,12 @@ export const getAllByCity = (req, res) => {
       return res.status(500).json({ message: "Database error", error: err });
     }
 
-    const formatted = result.map((row) => {
-      let parsedType = [];
-
-      try {
-        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
-
-      return {
-        ...row,
-        propertyType: parsedType,
-        likes: Number(row.likes) || 0,
-        views: Number(row.views) || 0,
-        trendingScore: Number(row.trendingScore) || 0,
-      };
-    });
+    const formatted = result.map((row) => ({
+      ...row,
+      likes: Number(row.likes) || 0,
+      views: Number(row.views) || 0,
+      trendingScore: Number(row.trendingScore) || 0,
+    }));
 
     res.json(formatted);
   });
