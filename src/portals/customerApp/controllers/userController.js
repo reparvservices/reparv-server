@@ -572,3 +572,96 @@ export const facebookLogin = async (req, res) => {
     });
   }
 };
+
+export const deleteAccount = async (req, res) => {
+  try {
+    const { user_id } = req.body;
+
+    /* ── Validation ── */
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required",
+      });
+    }
+
+    /* ── Confirm user exists ── */
+    db.query(
+      "SELECT id, userimage FROM guestUsers WHERE id = ?",
+      [user_id],
+      async (err, users) => {
+        if (err) {
+          console.error("DB error:", err);
+          return res.status(500).json({
+            success: false,
+            message: "Database error",
+          });
+        }
+
+        if (users.length === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "User not found",
+          });
+        }
+
+        const user = users[0];
+
+        /* ── Delete profile image from S3 (if any) ── */
+        if (user.userimage) {
+          try {
+            await deleteFromS3(user.userimage);
+          } catch (s3Err) {
+            console.error("S3 image delete error:", s3Err);
+          }
+        }
+
+        /* ── Delete only safe dependent data ── */
+        const deleteDependents = () =>
+          new Promise((resolve, reject) => {
+            // ✅ Only delete wishlist (safe)
+            db.query(
+              "DELETE FROM user_property_wishlist WHERE user_id = ?",
+              [user_id],
+              (err) => {
+                if (err) return reject(err);
+                resolve();
+              },
+            );
+          });
+
+        try {
+          await deleteDependents();
+        } catch (depErr) {
+          console.error("Dependent delete error:", depErr);
+          return res.status(500).json({
+            success: false,
+            message: "Failed to remove user data",
+          });
+        }
+
+        /* ── Delete user ── */
+        db.query("DELETE FROM guestUsers WHERE id = ?", [user_id], (delErr) => {
+          if (delErr) {
+            console.error("User delete error:", delErr);
+            return res.status(500).json({
+              success: false,
+              message: "Failed to delete account",
+            });
+          }
+
+          return res.status(200).json({
+            success: true,
+            message: "Account deleted successfully",
+          });
+        });
+      },
+    );
+  } catch (error) {
+    console.error("Delete account error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
