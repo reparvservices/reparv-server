@@ -1,7 +1,16 @@
 import express from "express";
-import { add, facebookLogin, getProfile, googleLogin, resendOtp, update, verifyOtp } from "../controllers/userController.js";
+import {
+  add,
+  deleteAccount,
+  facebookLogin,
+  getProfile,
+  googleLogin,
+  resendOtp,
+  update,
+  verifyOtp,
+} from "../controllers/userController.js";
 import multer from "multer";
-import path from 'path';
+import path from "path";
 
 const router = express.Router();
 
@@ -22,10 +31,11 @@ const upload = multer({
 
 router.post("/signup", add);
 //router.post("/login",login)
-router.post("/verify-otp",verifyOtp);
-router.post("/resend-otp",resendOtp)
-router.put("/update",upload.single('userimage'),update);
-router.get("/profile",getProfile)
-router.post('/google-login', googleLogin);
-router.post('/facebook-login',facebookLogin)
+router.post("/verify-otp", verifyOtp);
+router.post("/resend-otp", resendOtp);
+router.put("/update", upload.single("userimage"), update);
+router.get("/profile", getProfile);
+router.post("/google-login", googleLogin);
+router.post("/facebook-login", facebookLogin);
+router.delete("/delete-account", deleteAccount);
 export default router;

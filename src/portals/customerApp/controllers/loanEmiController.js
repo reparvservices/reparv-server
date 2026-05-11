@@ -6,6 +6,7 @@ import { uploadToS3 } from "#utils/imageUpload.js";
 export const submitEmiForm = async (req, res) => {
   try {
     let {
+      // Common
       employmentType,
       fullname,
       dateOfBirth,
@@ -16,6 +17,10 @@ export const submitEmiForm = async (req, res) => {
       state,
       city,
       pincode,
+      user_id,
+      propertyid,
+
+      // Job fields
       employmentSector,
       workexperienceYear,
       workexperienceMonth,
@@ -27,22 +32,33 @@ export const submitEmiForm = async (req, res) => {
       yearIncome,
       monthIncome,
       ongoingEmi,
-      businessSector,
-      businessCategory,
-      businessExperienceYears,
-      businessExperienceMonths,
-      businessOtherIncome,
-      user_id,
-      propertyid,
+
+      // Business fields
+      businessType,
+      businessName,
+      businessVintage,
+      annualTurnover,
+      monthlyNetIncome,
+      existingLoanEMI,
+      gstRegistered,
+      itrFiled,
     } = req.body;
 
-    const toNull = (v) => (v === "" || v === undefined ? null : v);
+    const toNull = (v) =>
+      v === "" || v === undefined || v === null ? null : v;
 
     // 📅 DOB convert (DD/MM/YYYY → YYYY-MM-DD)
-    if (dateOfBirth) {
+    if (dateOfBirth && dateOfBirth.includes("/")) {
       const [dd, mm, yyyy] = dateOfBirth.split("/");
       dateOfBirth = `${yyyy}-${mm}-${dd}`;
     }
+
+    // ─── Boolean coerce ──────────────────────────────────────────────────
+    const toBool = (v) => {
+      if (v === "1" || v === true || v === "true") return 1;
+      if (v === "0" || v === false || v === "false") return 0;
+      return null;
+    };
 
     /* ===== IMAGE UPLOAD (WEBP + S3) ===== */
     let panImage = null;
@@ -50,28 +66,22 @@ export const submitEmiForm = async (req, res) => {
     let aadhaarBackImage = null;
 
     if (req.files?.panImage?.[0]) {
-      const converted = await convertSingleImageToWebp(
-        req.files.panImage[0]
-      );
+      const converted = await convertSingleImageToWebp(req.files.panImage[0]);
       panImage = converted ? await uploadToS3(converted) : null;
     }
 
     if (req.files?.aadhaarFrontImage?.[0]) {
       const converted = await convertSingleImageToWebp(
-        req.files.aadhaarFrontImage[0]
+        req.files.aadhaarFrontImage[0],
       );
-      aadhaarFrontImage = converted
-        ? await uploadToS3(converted)
-        : null;
+      aadhaarFrontImage = converted ? await uploadToS3(converted) : null;
     }
 
     if (req.files?.aadhaarBackImage?.[0]) {
       const converted = await convertSingleImageToWebp(
-        req.files.aadhaarBackImage[0]
+        req.files.aadhaarBackImage[0],
       );
-      aadhaarBackImage = converted
-        ? await uploadToS3(converted)
-        : null;
+      aadhaarBackImage = converted ? await uploadToS3(converted) : null;
     }
 
     const sql = `
@@ -88,6 +98,8 @@ export const submitEmiForm = async (req, res) => {
         state,
         city,
         pincode,
+
+        -- Job fields
         employmentSector,
         workexperienceYear,
         workexperienceMonth,
@@ -99,18 +111,31 @@ export const submitEmiForm = async (req, res) => {
         yearIncome,
         monthIncome,
         ongoingEmi,
-        businessSector,
-        businessCategory,
-        businessExperienceYears,
-        businessExperienceMonths,
-        businessOtherIncome,
+
+        -- Business fields
+        businessType,
+        businessName,
+        businessVintage,
+        annualTurnover,
+        monthlyNetIncome,
+        existingLoanEMI,
+        gstRegistered,
+        itrFiled,
+
+        -- Document images
         panImage,
         aadhaarFrontImage,
         aadhaarBackImage
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ) VALUES (
+        ?,?,?,?,?,?,?,?,?,?,?,?,
+        ?,?,?,?,?,?,?,?,?,?,?,
+        ?,?,?,?,?,?,?,?,
+        ?,?,?
+      )
     `;
 
     const values = [
+      // Common (12)
       user_id,
       propertyid,
       employmentType,
@@ -123,22 +148,31 @@ export const submitEmiForm = async (req, res) => {
       state,
       city,
       pincode,
-      employmentSector,
+
+      // Job (11)
+      toNull(employmentSector),
       toNull(workexperienceYear),
       toNull(workexperienceMonth),
-      salaryType,
+      toNull(salaryType),
       toNull(grossPay),
       toNull(netPay),
       toNull(pfDeduction),
-      otherIncome,
+      toNull(otherIncome),
       toNull(yearIncome),
       toNull(monthIncome),
       toNull(ongoingEmi),
-      toNull(businessSector),
-      toNull(businessCategory),
-      toNull(businessExperienceYears),
-      toNull(businessExperienceMonths),
-      toNull(businessOtherIncome),
+
+      // Business (8)
+      toNull(businessType),
+      toNull(businessName),
+      toNull(businessVintage),
+      toNull(annualTurnover),
+      toNull(monthlyNetIncome),
+      toNull(existingLoanEMI),
+      toBool(gstRegistered),
+      toBool(itrFiled),
+
+      // Images (3)
       panImage,
       aadhaarFrontImage,
       aadhaarBackImage,
@@ -151,7 +185,7 @@ export const submitEmiForm = async (req, res) => {
           error: err.sqlMessage,
         });
       }
-
+      console.log("login result", result);
       res.status(201).json({
         message: "Loan form submitted successfully",
         loanId: result.insertId,
@@ -162,7 +196,6 @@ export const submitEmiForm = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
-
 
 export const getUserLoanCounts = (req, res) => {
   try {

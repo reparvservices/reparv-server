@@ -572,3 +572,115 @@ export const facebookLogin = async (req, res) => {
     });
   }
 };
+export const deleteAccount = async (req, res) => {
+  try {
+    const { user_id } = req.body;
+
+    /* ── Validation ── */
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required",
+      });
+    }
+
+    /* ── Confirm user exists ── */
+    db.query(
+      "SELECT id, userimage FROM guestUsers WHERE id = ?",
+      [user_id],
+      async (err, users) => {
+        if (err) {
+          console.error("DB error:", err);
+          return res.status(500).json({
+            success: false,
+            message: "Database error",
+          });
+        }
+
+        if (users.length === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "User not found",
+          });
+        }
+
+        const user = users[0];
+
+        /* ── Delete profile image from S3 (if any) ── */
+        if (user.userimage) {
+          try {
+            await deleteFromS3(user.userimage);
+          } catch (s3Err) {
+            // Log but don't block account deletion
+            console.error("S3 image delete error:", s3Err);
+          }
+        }
+
+        /* ── Delete dependent records first (foreign key safe order) ──
+             Adjust table / column names to match your actual schema.      */
+        const deleteDependents = () =>
+          new Promise((resolve, reject) => {
+            // 1️⃣  Enquiries raised by the user
+            db.query(
+              "DELETE FROM enquiries WHERE user_id = ?",
+              [user_id],
+              (err1) => {
+                if (err1) return reject(err1);
+
+                // 2️⃣  Properties posted by the user
+                db.query(
+                  "DELETE FROM properties WHERE user_id = ?",
+                  [user_id],
+                  (err2) => {
+                    if (err2) return reject(err2);
+
+                    // 3️⃣  Wishlist / saved properties
+                    db.query(
+                      "DELETE FROM user_property_wishlist WHERE user_id = ?",
+                      [user_id],
+                      (err3) => {
+                        if (err3) return reject(err3);
+                        resolve();
+                      },
+                    );
+                  },
+                );
+              },
+            );
+          });
+
+        try {
+          await deleteDependents();
+        } catch (depErr) {
+          console.error("Dependent delete error:", depErr);
+          return res.status(500).json({
+            success: false,
+            message: "Failed to remove user data",
+          });
+        }
+
+        /* ── Finally delete the user row ── */
+        db.query("DELETE FROM guestUsers WHERE id = ?", [user_id], (delErr) => {
+          if (delErr) {
+            console.error("User delete error:", delErr);
+            return res.status(500).json({
+              success: false,
+              message: "Failed to delete account",
+            });
+          }
+
+          return res.status(200).json({
+            success: true,
+            message: "Account deleted successfully",
+          });
+        });
+      },
+    );
+  } catch (error) {
+    console.error("Delete account error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
