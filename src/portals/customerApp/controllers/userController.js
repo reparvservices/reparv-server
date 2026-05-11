@@ -572,6 +572,7 @@ export const facebookLogin = async (req, res) => {
     });
   }
 };
+
 export const deleteAccount = async (req, res) => {
   try {
     const { user_id } = req.body;
@@ -611,40 +612,20 @@ export const deleteAccount = async (req, res) => {
           try {
             await deleteFromS3(user.userimage);
           } catch (s3Err) {
-            // Log but don't block account deletion
             console.error("S3 image delete error:", s3Err);
           }
         }
 
-        /* ── Delete dependent records first (foreign key safe order) ──
-             Adjust table / column names to match your actual schema.      */
+        /* ── Delete only safe dependent data ── */
         const deleteDependents = () =>
           new Promise((resolve, reject) => {
-            // 1️⃣  Enquiries raised by the user
+            // ✅ Only delete wishlist (safe)
             db.query(
-              "DELETE FROM enquiries WHERE user_id = ?",
+              "DELETE FROM user_property_wishlist WHERE user_id = ?",
               [user_id],
-              (err1) => {
-                if (err1) return reject(err1);
-
-                // 2️⃣  Properties posted by the user
-                db.query(
-                  "DELETE FROM properties WHERE user_id = ?",
-                  [user_id],
-                  (err2) => {
-                    if (err2) return reject(err2);
-
-                    // 3️⃣  Wishlist / saved properties
-                    db.query(
-                      "DELETE FROM user_property_wishlist WHERE user_id = ?",
-                      [user_id],
-                      (err3) => {
-                        if (err3) return reject(err3);
-                        resolve();
-                      },
-                    );
-                  },
-                );
+              (err) => {
+                if (err) return reject(err);
+                resolve();
               },
             );
           });
@@ -659,7 +640,7 @@ export const deleteAccount = async (req, res) => {
           });
         }
 
-        /* ── Finally delete the user row ── */
+        /* ── Delete user ── */
         db.query("DELETE FROM guestUsers WHERE id = ?", [user_id], (delErr) => {
           if (delErr) {
             console.error("User delete error:", delErr);
