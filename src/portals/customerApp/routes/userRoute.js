@@ -11,6 +11,7 @@ import {
 } from "../controllers/userController.js";
 import multer from "multer";
 import path from "path";
+import { notifySubscriber } from "../controllers/notifycontroller.js";
 
 const router = express.Router();
 
@@ -38,4 +39,5 @@ router.get("/profile", getProfile);
 router.post("/google-login", googleLogin);
 router.post("/facebook-login", facebookLogin);
 router.delete("/delete-account", deleteAccount);
+router.post("/notify", notifySubscriber);
 export default router;

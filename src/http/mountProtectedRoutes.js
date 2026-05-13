@@ -210,6 +210,7 @@ import customerTrendRoute from "../portals/customerApp/routes/trendRoute.js";
 import customerEnquiryRoute from "../portals/customerApp/routes/enquiryRoute.js";
 import customerTicketRoute from "../portals/customerApp/routes/ticketRoute.js";
 import notificationRoutes from "../portals/customerApp/routes/notificationRoutes.js";
+import customerNotifyRoute from "../portals/customerApp/routes/notifyroute.js";
 
 import builderapploginRoute from "../portals/builderApp/routes/builderapploginRoute.js";
 import builderProfileRoute from "../portals/builderApp/routes/builderProfileRoutes.js";
@@ -391,9 +392,15 @@ export function mountProtectedRoutes(app) {
   app.use("/territory-partner/enquirers", territoryPartnerEnquirersRoutes);
   app.use("/territory-partner/enquiry", territoryPartnerEnquiryRoutes);
   app.use("/territory-partner/calender", territoryPartnerCalenderRoutes);
-  app.use("/territory-partner/subscription", territoryPartnerSubscriptionRoutes);
+  app.use(
+    "/territory-partner/subscription",
+    territoryPartnerSubscriptionRoutes,
+  );
   app.use("/territory-partner/properties", territoryPartnerPropertiesRoutes);
-  app.use("/territory-partner/propertyinfo", territoryPartnerPropertyinfoRoutes);
+  app.use(
+    "/territory-partner/propertyinfo",
+    territoryPartnerPropertyinfoRoutes,
+  );
 
   app.use("/salesapp/api", authRoute);
   app.use("/salesapp/flats", appFlatRoute);
@@ -442,6 +449,7 @@ export function mountProtectedRoutes(app) {
   app.use("/customerapp/enquiry", customerEnquiryRoute);
   app.use("/customerapp/ticket", customerTicketRoute);
   app.use("/customerapp/notifications", notificationRoutes);
+  app.use("/customerapp/notify", customerNotifyRoute);
 
   app.use("/builderapp/user", builderapploginRoute);
   app.use("/builderapp/profile", builderProfileRoute);
