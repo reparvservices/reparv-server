@@ -238,3 +238,83 @@ export const updateProfileHeader = async (req, res) => {
     });
   });
 };
+
+export const deactivateUser = (req, res) => {
+  try {
+    const { user_id, role } = req.body;
+
+    console.log("Deactivate Request:", req.body);
+
+    if (!user_id || !role) {
+      return res.status(400).json({
+        success: false,
+        message: "user_id and role are required",
+      });
+    }
+
+    // ✅ Table + ID column mapping
+    const roleConfig = {
+      "Project Partner": {
+        table: "projectpartner",
+        idColumn: "id",
+      },
+      "Sales Person": {
+        table: "salespersons",
+        idColumn: "salespersonsid",
+      },
+      "Territory Partner": {
+        table: "territorypartner",
+        idColumn: "id",
+      },
+    };
+
+    const config = roleConfig[role];
+
+    if (!config) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role",
+      });
+    }
+
+    const { table, idColumn } = config;
+
+    const query = `
+      UPDATE ${table}
+      SET loginstatus = 'Inactive',
+          status = 'Inactive'
+      WHERE ${idColumn} = ?
+    `;
+
+    console.log("Table:", table);
+    console.log("ID Column:", idColumn);
+
+    db.query(query, [user_id], (err, result) => {
+      if (err) {
+        console.error("Deactivate User Error:", err);
+        return res.status(500).json({
+          success: false,
+          message: "Database error",
+        });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "User deactivated successfully",
+      });
+    });
+  } catch (error) {
+    console.error("Deactivate User Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};

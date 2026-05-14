@@ -3,6 +3,7 @@
 import express from "express";
 import multer from "multer";
 import {
+  deactivateUser,
   getProfileHeader,
   updateProfileHeader,
 } from "../controllers/profileController.js";
@@ -55,11 +56,6 @@ router.put(
   ]),
   updateProfileHeader,
 );
+router.put("/deactivate-user", deactivateUser);
 
 export default router;
-
-/*
-  Register in app.js / server.js:
-  import profileRoutes from './routes/projectPartnerApp/profileRoutes.js';
-  app.use('/project-partner/profile', profileRoutes);
-*/
