@@ -25,14 +25,12 @@ const transporter = nodemailer.createTransport({
 });
 
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000);
-
 export const add = (req, res) => {
   try {
     const { fullname, contact } = req.body;
 
     console.log(req.body);
 
-    /* ================= VALIDATION ================= */
     if (!fullname || !contact) {
       return res.status(400).json({
         success: false,
@@ -47,13 +45,14 @@ export const add = (req, res) => {
       });
     }
 
+    const isBypassNumber = contact === "9867546352";
+
     const otp = Math.floor(100000 + Math.random() * 900000);
     const otpExpiry = moment().add(5, "minutes").format("YYYY-MM-DD HH:mm:ss");
     const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
 
     const checkSql = "SELECT id FROM guestUsers WHERE contact = ?";
 
-    /* ================= CHECK USER ================= */
     db.query(checkSql, [contact], (err, users) => {
       if (err) {
         console.error(err);
@@ -74,6 +73,14 @@ export const add = (req, res) => {
         }
 
         const guestUserId = users[0].id;
+
+        // ✅ SKIP OTP UPDATE for bypass number
+        if (isBypassNumber) {
+          return res.status(200).json({
+            success: true,
+            message: "OTP bypass success",
+          });
+        }
 
         return db.query(
           "UPDATE guestUsers SET otp = ?, otp_expires_at = ?, updated_at = ? WHERE id = ?",
@@ -108,7 +115,6 @@ export const add = (req, res) => {
 
       /* ================= SIGNUP FLOW ================= */
 
-      //  If already exists → throw error
       if (users.length > 0) {
         return res.status(400).json({
           success: false,
@@ -116,7 +122,14 @@ export const add = (req, res) => {
         });
       }
 
-      //  Create new user
+      // ✅ SKIP INSERT OTP for bypass number
+      if (isBypassNumber) {
+        return res.status(201).json({
+          success: true,
+          message: "Bypass signup success",
+        });
+      }
+
       db.query(
         `INSERT INTO guestUsers 
         (fullname, contact, otp, otp_expires_at, created_at, updated_at)
@@ -210,10 +223,13 @@ export const verifyOtp = (req, res) => {
         { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
       );
 
-      db.query(
-        "UPDATE guestUsers SET otp=NULL, otp_expires_at=NULL WHERE id=?",
-        [user.id],
-      );
+      // ✅ Skip clearing OTP for this number
+      if (user.contact !== "9867546352") {
+        db.query(
+          "UPDATE guestUsers SET otp=NULL, otp_expires_at=NULL WHERE id=?",
+          [user.id],
+        );
+      }
 
       return res.status(200).json({
         success: true,
@@ -226,7 +242,8 @@ export const verifyOtp = (req, res) => {
         },
       });
     });
-  } catch {
+  } catch (error) {
+    console.error("OTP verification error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -266,7 +283,8 @@ export const resendOtp = async (req, res) => {
         });
       },
     );
-  } catch {
+  } catch (error) {
+    console.error("OTP resend error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
