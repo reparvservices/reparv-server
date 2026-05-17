@@ -1,5 +1,5 @@
 /**
- * Backward-compatible route export.
- * Canonical subscription routes live under portals/subscription.
+ * Backward-compatible re-export.
+ * Canonical router: `portals/subscription/checkout/subscriptionCheckout.routes.js`.
  */
-export { default } from "../../subscription/routes/subscriptionAutopayRoutes.js";
+export { default } from "../../subscription/checkout/subscriptionCheckout.routes.js";

@@ -5,7 +5,7 @@ import {
   getAllFeatures,
   getFeatureById,
   updateFeature,
-} from "../controllers/featureController.js";
+} from "../controllers/subscriptionFeature.controller.js";
 
 const router = express.Router();
 

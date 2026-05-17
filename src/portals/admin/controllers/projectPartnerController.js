@@ -2,7 +2,6 @@ import db from "#db";
 import moment from "moment-timezone";
 import bcrypt from "bcryptjs";
 import sendEmail from "#utils/nodeMailer.js";
-import { verifyRazorpayPayment } from "../../shared/controllers/paymentController.js";
 import { deleteFromS3, uploadToS3 } from "#utils/imageUpload.js";
 import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
 
@@ -121,22 +120,8 @@ export const getById = async (req, res) => {
       return res.status(400).json({ message: "Invalid Partner ID" });
     }
 
-    /* Fetch Partner + Active Subscription */
-
     const [partnerResult] = await db.promise().query(
-      `SELECT 
-        p.*,
-        s.start_date,
-        s.end_date,
-        s.plan,
-        s.mode,
-        s.payment_type,
-        s.screenshot
-      FROM projectpartner p
-      LEFT JOIN subscriptions s 
-        ON p.id = s.projectpartnerid 
-        AND s.status = 'Active' 
-      WHERE p.id = ? ORDER BY s.end_date DESC LIMIT 1`,
+      `SELECT * FROM projectpartner WHERE id = ?`,
       [Id],
     );
 
@@ -146,22 +131,50 @@ export const getById = async (req, res) => {
 
     const partner = partnerResult[0];
 
+    const [latestSub] = await db.promise().query(
+      `SELECT us.start_date, us.end_date, us.payment_type, sp.duration AS plan
+       FROM user_subscriptions us
+       LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
+       WHERE us.user_id = ? AND us.role = 'project'
+       ORDER BY COALESCE(us.updated_at, us.created_at) DESC, us.id DESC
+       LIMIT 1`,
+      [Id],
+    );
+
+    if (latestSub.length > 0) {
+      const s = latestSub[0];
+      partner.start_date = s.start_date;
+      partner.end_date = s.end_date;
+      partner.plan = s.plan;
+      partner.mode = null;
+      partner.payment_type = s.payment_type;
+      partner.screenshot = null;
+    } else {
+      partner.start_date = null;
+      partner.end_date = null;
+      partner.plan = null;
+      partner.mode = null;
+      partner.payment_type = null;
+      partner.screenshot = null;
+    }
+
     /* Fetch Subscription History */
 
     const [history] = await db.promise().query(
       `SELECT 
-        id,
-        plan,
-        amount,
-        start_date,
-        end_date,
-        payment_type,
-        payment_id,
-        screenshot,
-        status
-      FROM subscriptions
-      WHERE projectpartnerid = ?
-      ORDER BY start_date DESC`,
+        us.id,
+        sp.duration AS plan,
+        us.final_amount AS amount,
+        us.start_date,
+        us.end_date,
+        us.payment_type,
+        us.razorpay_subscription_id AS payment_id,
+        NULL AS screenshot,
+        us.status
+      FROM user_subscriptions us
+      LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
+      WHERE us.user_id = ? AND us.role = 'project'
+      ORDER BY us.start_date DESC`,
       [Id],
     );
 
@@ -826,384 +839,12 @@ export const setFreePartner = (req, res) => {
   });
 };
 
-/* ---------- PLAN DURATION CONFIG ---------- */
-const PLAN_MONTHS = {
-  1: 1,
-  2: 2,
-  3: 3,
-  4: 4,
-  6: 6,
-  9: 9,
-  12: 12,
-  18: 18,
-  24: 24,
-};
-
 export const updatePaymentId = async (req, res) => {
-  try {
-    const partnerid = req.params.id;
-
-    const { amount, paymentid, paymentType, plan, mode, startDate, endDate } =
-      req.body;
-
-    if (!partnerid) {
-      return res.status(400).json({ message: "Invalid Partner ID" });
-    }
-
-    if (!amount || !paymentType) {
-      return res.status(400).json({
-        message: "Amount and Payment Type are required",
-      });
-    }
-
-    const allowedTypes = ["razorpay", "upi", "cash", "cheque", "direct"];
-    if (!allowedTypes.includes(paymentType)) {
-      return res.status(400).json({
-        message: "Invalid payment type",
-      });
-    }
-
-    /* ---------- Razorpay Validation ---------- */
-
-    if (paymentType === "razorpay") {
-      if (!paymentid) {
-        return res.status(400).json({
-          message: "Payment ID required for Razorpay",
-        });
-      }
-
-      const isValid = await verifyRazorpayPayment(paymentid, amount);
-
-      if (!isValid) {
-        return res.status(400).json({
-          message: "Invalid Razorpay Payment",
-        });
-      }
-    }
-
-    /* ---------- Upload Screenshot ---------- */
-
-    let screenshotUrl = null;
-
-    if (req.file) {
-      const compressedImage = await convertSingleImageToWebp(req.file);
-
-      if (compressedImage) {
-        screenshotUrl = await uploadToS3(compressedImage);
-      }
-    }
-
-    /* ---------- Get Partner ---------- */
-
-    const [partnerResult] = await db
-      .promise()
-      .query("SELECT * FROM projectpartner WHERE id = ?", [partnerid]);
-
-    if (partnerResult.length === 0) {
-      return res.status(404).json({
-        message: "Partner not found",
-      });
-    }
-
-    const partner = partnerResult[0];
-    const email = partner.email;
-
-    let username = partner.username;
-    let password = null;
-    let hashedPassword = partner.password;
-
-    let isNewPartner = false;
-
-    /* ---------- Create Login if not exists ---------- */
-
-    if (!partner.username || !partner.password) {
-      isNewPartner = true;
-
-      const extractNameFromEmail = (email) => {
-        const namePart = email.split("@")[0];
-        const lettersOnly = namePart.match(/[a-zA-Z]+/);
-        if (!lettersOnly) return "User";
-
-        const name = lettersOnly[0].toLowerCase();
-        return name.charAt(0).toUpperCase() + name.slice(1);
-      };
-
-      username = extractNameFromEmail(email);
-
-      const generatePassword = () => {
-        const chars =
-          "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
-
-        let password = "";
-        for (let i = 0; i < 8; i++) {
-          password += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-
-        return password;
-      };
-
-      password = generatePassword();
-      hashedPassword = await bcrypt.hash(password, 10);
-    }
-
-    /* ---------- Calculate Subscription Dates ---------- */
-
-    let subStartDate;
-    let subEndDate;
-
-    if (mode === "manual") {
-      if (!startDate || !endDate) {
-        return res.status(400).json({
-          message: "Start and End date required for manual mode",
-        });
-      }
-
-      subStartDate = moment(startDate).tz("Asia/Kolkata").toDate();
-      subEndDate = moment(endDate).tz("Asia/Kolkata").toDate();
-    } else {
-      const months = PLAN_MONTHS[plan];
-
-      if (!months) {
-        return res.status(400).json({
-          message: "Invalid plan",
-        });
-      }
-
-      /* ---------- Get Last Subscription ---------- */
-
-      const [lastSub] = await db.promise().query(
-        `SELECT * FROM subscriptions
-     WHERE projectpartnerid = ?
-     ORDER BY end_date DESC
-     LIMIT 1`,
-        [partnerid],
-      );
-
-      if (lastSub.length > 0 && moment(lastSub[0].end_date).isAfter(moment())) {
-        /* Active subscription → extend */
-
-        subStartDate = moment(lastSub[0].end_date).tz("Asia/Kolkata").toDate();
-      } else {
-        /* Expired OR first subscription */
-
-        subStartDate = moment().tz("Asia/Kolkata").toDate();
-      }
-
-      subEndDate = moment(subStartDate)
-        .add(months, "months")
-        .tz("Asia/Kolkata")
-        .toDate();
-    }
-
-    /* ---------- Expire Previous Active Subscription ---------- */
-
-    await db.promise().query(
-      `UPDATE subscriptions
-   SET status = 'Expired'
-   WHERE projectpartnerid = ?
-   AND status = 'Active'`,
-      [partnerid],
-    );
-
-    /* ---------- ALWAYS INSERT NEW RECORD ---------- */
-
-    await db.promise().query(
-      `INSERT INTO subscriptions
-   (projectpartnerid, mode, plan, amount, start_date, end_date, payment_id, payment_type, screenshot, status)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        partnerid,
-        mode,
-        plan,
-        amount,
-        subStartDate,
-        subEndDate,
-        paymentid || null,
-        paymentType,
-        screenshotUrl,
-        "Active",
-      ],
-    );
-
-    /* ---------- Update Partner ---------- */
-
-    await db.promise().query(
-      `UPDATE projectpartner
-       SET paymentstatus = ?, 
-           paymentid = ?, 
-           amount = ?, 
-           username = ?, 
-           password = ?, 
-           loginstatus = "Active"
-       WHERE id = ?`,
-      [
-        "Success",
-        paymentid || null,
-        amount,
-        username,
-        hashedPassword,
-        partnerid,
-      ],
-    );
-
-    /* ---------- Send Email ONLY for New Partner ---------- */
-
-    if (isNewPartner) {
-      await sendEmail(
-        email,
-        username,
-        password,
-        "Project Partner",
-        "https://projectpartner.reparv.in",
-      );
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Subscription updated successfully",
-      partner: {
-        id: partnerid,
-        email,
-        username,
-      },
-    });
-  } catch (error) {
-    console.error("Update Payment Error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
-  }
-};
-
-// Update Payment ID and Send Email
-export const updatePaymentIdOld = async (req, res) => {
-  try {
-    const partnerid = req.params.id;
-    if (!partnerid) {
-      return res.status(400).json({ message: "Invalid Partner ID" });
-    }
-
-    const { amount, paymentid } = req.body;
-    if (!amount || !paymentid) {
-      return res
-        .status(400)
-        .json({ message: "Amount and Payment ID are required" });
-    }
-
-    const isValid = await verifyRazorpayPayment(paymentid, amount);
-    if (!isValid) {
-      return res.status(400).json({ message: "Invalid Payment ID" });
-    }
-
-    // Get partner details
-    db.query(
-      "SELECT * FROM projectpartner WHERE id = ?",
-      [partnerid],
-      async (err, result) => {
-        if (err) {
-          console.error("Database error:", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-        }
-
-        if (result.length === 0) {
-          return res.status(404).json({ message: "Partner not found" });
-        }
-
-        const email = result[0].email;
-
-        const extractNameFromEmail = (email) => {
-          if (!email) return "";
-          const namePart = email.split("@")[0];
-          const lettersOnly = namePart.match(/[a-zA-Z]+/);
-          if (!lettersOnly) return "";
-          const name = lettersOnly[0].toLowerCase();
-          return name.charAt(0).toUpperCase() + name.slice(1);
-        };
-
-        const username = extractNameFromEmail(email);
-
-        const generatePassword = () => {
-          const chars =
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
-          let password = "";
-          for (let i = 0; i < 8; i++) {
-            password += chars.charAt(Math.floor(Math.random() * chars.length));
-          }
-          return password;
-        };
-
-        const password = generatePassword();
-        let hashedPassword;
-
-        try {
-          hashedPassword = await bcrypt.hash(password, 10);
-        } catch (hashErr) {
-          console.error("Error hashing password:", hashErr);
-          return res.status(500).json({ message: "Failed to hash password" });
-        }
-
-        const updateSql = `
-          UPDATE projectpartner 
-          SET amount = ?, paymentid = ?, username = ?, password = ?, paymentstatus = "Success", loginstatus = "Active" 
-          WHERE id = ?
-        `;
-        const updateValues = [
-          amount,
-          paymentid,
-          username,
-          hashedPassword,
-          partnerid,
-        ];
-
-        db.query(updateSql, updateValues, async (updateErr, updateResult) => {
-          if (updateErr) {
-            console.error("Error updating Payment ID:", updateErr);
-            return res.status(500).json({
-              message: "Database error during update",
-              error: updateErr,
-            });
-          }
-
-          try {
-            await sendEmail(
-              email,
-              username,
-              password,
-              "Project Partner",
-              "https://projectpartner.reparv.in",
-            );
-            return res.status(200).json({
-              message: "Payment ID updated and email sent successfully.",
-              partner: {
-                partnerid,
-                username,
-                email,
-              },
-            });
-          } catch (emailError) {
-            console.error("Error sending email:", emailError);
-            return res.status(500).json({
-              message: "Payment ID updated but failed to send email.",
-              partner: {
-                partnerid,
-                username,
-                email,
-              },
-            });
-          }
-        });
-      },
-    );
-  } catch (err) {
-    console.error("Unexpected server error:", err);
-    return res
-      .status(500)
-      .json({ message: "Unexpected server error", error: err });
-  }
+  return res.status(410).json({
+    success: false,
+    message:
+      "Admin-recorded subscriptions are disabled. Project partners subscribe via the app: POST /api/subscription/payment/create-subscription (Razorpay Subscriptions checkout).",
+  });
 };
 
 export const fetchFollowUpList = (req, res) => {

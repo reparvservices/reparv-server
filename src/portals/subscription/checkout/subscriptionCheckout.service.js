@@ -1,7 +1,16 @@
+/**
+ * Razorpay Subscriptions API: create a recurring subscription and confirm the first charge.
+ * Used by the public checkout mounted at `/api/subscription/payment`.
+ */
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import db from "#db";
 import sendSubscriptionEmail from "#utils/subscriptionMailer.js";
+import {
+  findUserSubscriptionByRazorpayId,
+  upsertRecurringPayment,
+  paymentEntityToRecord,
+} from "../services/recurringPayment.service.js";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -34,7 +43,7 @@ const addPlanDuration = (startDate, duration, billingCycle) => {
   return end;
 };
 
-export async function createAutopaySubscription(payload) {
+export async function startPartnerRecurringSubscription(payload) {
   const role = String(payload.role || "").toLowerCase();
   const userId = safeInt(payload.user_id);
   const localPlanId = safeInt(payload.plan_id || payload.planId);
@@ -49,7 +58,7 @@ export async function createAutopaySubscription(payload) {
   }
 
   const planRows = await dbQuery(
-    `SELECT id, plan_name, duration, price, billing_cycle, status, razorpay_plan_id
+    `SELECT id, plan_name, duration, price, billing_cycle, status, razorpay_plan_id, plan_type
      FROM subscription_plans
      WHERE id = ? AND role = ?`,
     [localPlanId, role],
@@ -59,6 +68,13 @@ export async function createAutopaySubscription(payload) {
   if (!planRow) {
     const e = new Error("Plan not found");
     e.statusCode = 404;
+    throw e;
+  }
+  if (String(planRow.plan_type || "paid").toLowerCase() === "trial") {
+    const e = new Error(
+      "This is a free trial plan. Use trial activation instead of payment checkout.",
+    );
+    e.statusCode = 400;
     throw e;
   }
   if (planRow.status !== "Active") {
@@ -94,7 +110,7 @@ export async function createAutopaySubscription(payload) {
        razorpay_subscription_id = VALUES(razorpay_subscription_id),
        discount_amount = VALUES(discount_amount),
        final_amount = VALUES(final_amount),
-       status = 'pending',
+       status = IF(LOWER(status) = 'active', 'active', 'pending'),
        updated_at = NOW()`,
     [userId, role, localPlanId, paymentType, rzSubscription.id, discountAmount, finalAmount],
   );
@@ -116,7 +132,7 @@ export async function createAutopaySubscription(payload) {
   };
 }
 
-export async function verifyAutopaySubscription(payload) {
+export async function completePartnerRecurringSubscription(payload) {
   const role = String(payload.role || "").toLowerCase();
   const userId = safeInt(payload.user_id);
   const localPlanId = safeInt(payload.plan_id || payload.planId);
@@ -124,8 +140,6 @@ export async function verifyAutopaySubscription(payload) {
   const subscriptionId = String(payload.razorpay_subscription_id || "").trim();
   const signature = String(payload.razorpay_signature || "").trim();
   const email = String(payload.email || "").trim();
-  const coupon = payload.coupon;
-  const isUsedCoupon = Boolean(payload.isUsedCoupon);
   const discountAmount = safeInt(payload.discount_amount || 0) || 0;
   const finalAmount = safeInt(payload.final_amount || 0) || 0;
 
@@ -172,11 +186,14 @@ export async function verifyAutopaySubscription(payload) {
   const nextBillingDate = rzSubscription.current_end
     ? new Date(rzSubscription.current_end * 1000)
     : null;
-  const endDate = addPlanDuration(
-    startDate,
-    Math.max(1, safeInt(planRow.duration) || 1),
-    planRow.billing_cycle,
-  );
+  // Recurring autopay: current billing period ends at Razorpay current_end
+  const endDate =
+    nextBillingDate ||
+    addPlanDuration(
+      startDate,
+      Math.max(1, safeInt(planRow.duration) || 1),
+      planRow.billing_cycle,
+    );
   const computedFinalAmount = finalAmount > 0 ? finalAmount : safeInt(planRow.price) || 0;
 
   await dbQuery(
@@ -205,8 +222,22 @@ export async function verifyAutopaySubscription(payload) {
     ],
   );
 
-  if (isUsedCoupon && coupon) {
-    await dbQuery("INSERT INTO redeem_used (code, user_id) VALUES (?, ?)", [coupon, userId]);
+  try {
+    const subRow = await findUserSubscriptionByRazorpayId(subscriptionId);
+    if (subRow) {
+      const payEntity = await razorpay.payments.fetch(paymentId);
+      await upsertRecurringPayment(
+        paymentEntityToRecord(payEntity, subRow, {
+          billingCycleStart: startDate,
+          billingCycleEnd: nextBillingDate,
+          chargeNumber: 1,
+          source: "verify",
+          razorpayEvent: "checkout.verify",
+        }),
+      );
+    }
+  } catch (payLogErr) {
+    console.error("Record first subscription payment:", payLogErr);
   }
 
   if (email) {

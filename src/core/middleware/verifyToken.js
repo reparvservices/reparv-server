@@ -60,7 +60,6 @@ const publicRoutes = [
   "/sales/flat",
   "/salesapp/flats",
   "/salesapp/subscription",
-  "/salesapp/subscription/validate",
   "/territoryapp/user",
   "/territoryapp/subscription",
   "/upload",

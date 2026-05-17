@@ -3,9 +3,27 @@ import {
   createRazorpayPlanForSubscriptionPlanTable,
   isRazorpayConfigured,
 } from "#utils/subscriptionRazorpayPlan.js";
+import { resolvePlanPricingFromBody } from "../../utils/gstCalculation.js";
 
 const VALID_ROLES = new Set(["sales", "territory", "project"]);
 const VALID_BILLING_CYCLES = new Set(["monthly", "yearly"]);
+const VALID_PLAN_TYPES = new Set(["paid", "trial"]);
+
+const normalizePlanType = (value) => {
+  const t = String(value || "paid").toLowerCase();
+  return VALID_PLAN_TYPES.has(t) ? t : "paid";
+};
+
+const planDurationLabel = (duration, billingCycle, planType) => {
+  const d = Number(duration) || 1;
+  if (planType === "trial") {
+    return `${d} Day${d > 1 ? "s" : ""}`;
+  }
+  if (billingCycle === "yearly") {
+    return `${d} Year${d > 1 ? "s" : ""}`;
+  }
+  return `${d} Month${d > 1 ? "s" : ""}`;
+};
 
 const toInt = (v) => Number.parseInt(v, 10);
 const PARTNER_ROLE_MAP = {
@@ -87,20 +105,52 @@ export const getPlansByPartnerType = async (req, res) => {
     }
 
     const [rows] = await dbPromise.query(
-      `SELECT id, role, plan_name AS planName, duration, price AS totalPrice, billing_cycle, status
-       FROM subscription_plans
-       WHERE role = ? AND status = 'Active'
-       ORDER BY price ASC`,
+      `SELECT
+        sp.id,
+        sp.role,
+        sp.plan_name AS planName,
+        sp.duration,
+        sp.base_price AS basePrice,
+        sp.gst_amount AS gstAmount,
+        sp.price AS totalPrice,
+        sp.billing_cycle,
+        sp.status,
+        sp.plan_type,
+        COALESCE(GROUP_CONCAT(DISTINCT sf.name ORDER BY sf.id SEPARATOR ','), '') AS features
+      FROM subscription_plans sp
+      LEFT JOIN plan_feature_mapping pfm ON pfm.plan_id = sp.id
+      LEFT JOIN subscription_feature sf ON sf.id = pfm.feature_id
+      WHERE sp.role = ? AND sp.status = 'Active'
+      GROUP BY sp.id
+      ORDER BY CASE WHEN sp.plan_type = 'trial' THEN 0 ELSE 1 END, sp.price ASC`,
       [role],
     );
 
-    const shaped = rows.map((r) => ({
-      ...r,
-      planDuration:
-        r.billing_cycle === "yearly"
-          ? `${r.duration} Year${r.duration > 1 ? "s" : ""}`
-          : `${r.duration} Month${r.duration > 1 ? "s" : ""}`,
-    }));
+    const shaped = rows.map((r) => {
+      const featureNames = r.features
+        ? String(r.features)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+      return {
+        ...r,
+        basePrice: r.basePrice ?? Math.round(Number(r.totalPrice || 0) / 1.18),
+        gstAmount:
+          r.gstAmount ??
+          Number(r.totalPrice || 0) - Math.round(Number(r.totalPrice || 0) / 1.18),
+        features: featureNames.join(", "),
+        feature_names: featureNames,
+        plan_type: r.plan_type || "paid",
+        planType: r.plan_type || "paid",
+        isTrial: String(r.plan_type || "").toLowerCase() === "trial",
+        planDuration: planDurationLabel(
+          r.duration,
+          r.billing_cycle,
+          r.plan_type || "paid",
+        ),
+      };
+    });
     return res.status(200).json(shaped);
   } catch (error) {
     return res.status(500).json({ message: "Failed to fetch plans", error });
@@ -114,51 +164,92 @@ export const createPlan = async (req, res) => {
       plan_name,
       duration,
       price,
+      base_price,
       billing_cycle = "monthly",
       status = "Active",
       feature_ids = [],
+      plan_type: planTypeRaw,
     } = req.body;
+
+    const plan_type = normalizePlanType(planTypeRaw);
+    const isTrial = plan_type === "trial";
+
+    // #region agent log
+    fetch("http://127.0.0.1:7873/ingest/e030798b-abf2-42c8-b0a1-b6795e79c4b6", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ab9682" },
+      body: JSON.stringify({
+        sessionId: "ab9682",
+        hypothesisId: "D",
+        location: "subscriptionPlan.controller.js:createPlan",
+        message: "createPlan",
+        data: { role, plan_type, isTrial, duration: toInt(duration) },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
 
     if (!VALID_ROLES.has(role)) {
       return res.status(400).json({ message: "Invalid role" });
     }
-    if (!VALID_BILLING_CYCLES.has(billing_cycle)) {
+    if (!VALID_BILLING_CYCLES.has(billing_cycle) && !isTrial) {
       return res.status(400).json({ message: "Invalid billing_cycle" });
     }
-    if (!plan_name || !duration || !price) {
-      return res
-        .status(400)
-        .json({ message: "role, plan_name, duration and price are required" });
+    if (!plan_name || !duration) {
+      return res.status(400).json({
+        message: "role, plan_name, and duration are required",
+      });
     }
 
     const d = toInt(duration);
-    const p = toInt(price);
     if (!d || d < 1) {
       return res.status(400).json({ message: "duration must be >= 1" });
     }
-    if (!p || p < 1) {
-      return res.status(400).json({ message: "price must be >= 1" });
+
+    let basePrice;
+    let gstAmount;
+    let totalPrice;
+    if (isTrial) {
+      basePrice = 0;
+      gstAmount = 0;
+      totalPrice = 0;
+    } else {
+      if (base_price == null && price == null) {
+        return res.status(400).json({
+          message: "base_price (or price) is required for paid plans",
+        });
+      }
+      const pricing = resolvePlanPricingFromBody({ base_price, price });
+      if (!pricing || !pricing.base || pricing.base < 1) {
+        return res.status(400).json({ message: "base_price must be >= 1" });
+      }
+      basePrice = pricing.base;
+      gstAmount = pricing.gst;
+      totalPrice = pricing.total;
     }
+
+    const cycleForDb = isTrial ? "monthly" : billing_cycle;
 
     const [duplicates] = await dbPromise.query(
       "SELECT id FROM subscription_plans WHERE role = ? AND plan_name = ? AND billing_cycle = ?",
-      [role, plan_name, billing_cycle],
+      [role, plan_name, cycleForDb],
     );
     if (duplicates.length) {
-      return res
-        .status(409)
-        .json({ message: "Plan already exists for this role and billing cycle" });
+      return res.status(409).json({
+        message:
+          "This plan name already exists for the selected partner type and billing period. Change the plan name or billing period, or edit the existing plan.",
+      });
     }
 
     let razorpay_plan_id = null;
     let syncMeta = { synced: false };
 
-    if (isRazorpayConfigured()) {
+    if (!isTrial && isRazorpayConfigured()) {
       const rz = await createRazorpayPlanForSubscriptionPlanTable({
         role,
         planName: plan_name,
-        price: p,
-        billingCycle: billing_cycle,
+        price: totalPrice,
+        billingCycle: cycleForDb,
         duration: d,
       });
       if (!rz.skipped && rz.planId) {
@@ -167,6 +258,8 @@ export const createPlan = async (req, res) => {
       } else {
         syncMeta = { synced: false, reason: rz.reason };
       }
+    } else if (isTrial) {
+      syncMeta = { synced: false, reason: "Trial plans do not use Razorpay" };
     } else {
       syncMeta = {
         synced: false,
@@ -176,9 +269,20 @@ export const createPlan = async (req, res) => {
 
     const [result] = await dbPromise.query(
       `INSERT INTO subscription_plans
-        (role, plan_name, duration, price, billing_cycle, razorpay_plan_id, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [role, plan_name, d, p, billing_cycle, razorpay_plan_id, status],
+        (role, plan_name, duration, price, base_price, gst_amount, billing_cycle, razorpay_plan_id, status, plan_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        role,
+        plan_name,
+        d,
+        totalPrice,
+        basePrice,
+        gstAmount,
+        cycleForDb,
+        razorpay_plan_id,
+        status,
+        plan_type,
+      ],
     );
     const cleanFeatureIds = normalizeFeatureIds(feature_ids);
     if (cleanFeatureIds.length) {
@@ -205,13 +309,22 @@ export const createPlan = async (req, res) => {
 export const updatePlan = async (req, res) => {
   try {
     const id = toInt(req.params.id);
-    const { plan_name, duration, price, status, billing_cycle, feature_ids } = req.body;
+    const {
+      plan_name,
+      duration,
+      price,
+      base_price,
+      status,
+      billing_cycle,
+      feature_ids,
+      plan_type: planTypeRaw,
+    } = req.body;
 
     if (!id) return res.status(400).json({ message: "Invalid id" });
-    if (!plan_name || !duration || !price) {
-      return res
-        .status(400)
-        .json({ message: "plan_name, duration and price are required" });
+    if (!plan_name || !duration) {
+      return res.status(400).json({
+        message: "plan_name and duration are required",
+      });
     }
 
     const [rows] = await dbPromise.query(
@@ -222,40 +335,73 @@ export const updatePlan = async (req, res) => {
       return res.status(404).json({ message: "Subscription plan not found" });
     }
     const oldPlan = rows[0];
+    const plan_type = normalizePlanType(planTypeRaw ?? oldPlan.plan_type);
+    const isTrial = plan_type === "trial";
+
+    const nextCycle = isTrial
+      ? oldPlan.billing_cycle || "monthly"
+      : billing_cycle || oldPlan.billing_cycle || "monthly";
 
     const [duplicates] = await dbPromise.query(
       "SELECT id FROM subscription_plans WHERE role = ? AND plan_name = ? AND billing_cycle = ? AND id != ?",
-      [oldPlan.role, plan_name, billing_cycle || oldPlan.billing_cycle || "monthly", id],
+      [oldPlan.role, plan_name, nextCycle, id],
     );
     if (duplicates.length) {
-      return res
-        .status(409)
-        .json({ message: "Plan already exists for this role and billing cycle" });
+      return res.status(409).json({
+        message:
+          "This plan name already exists for the selected partner type and billing period. Change the plan name or billing period.",
+      });
     }
 
     const nextDuration = toInt(duration);
-    const nextPrice = toInt(price);
-    const nextCycle = billing_cycle || oldPlan.billing_cycle || "monthly";
 
-    if (!VALID_BILLING_CYCLES.has(nextCycle)) {
+    if (!VALID_BILLING_CYCLES.has(nextCycle) && !isTrial) {
       return res.status(400).json({ message: "Invalid billing_cycle" });
     }
     if (!nextDuration || nextDuration < 1) {
       return res.status(400).json({ message: "duration must be >= 1" });
     }
-    if (!nextPrice || nextPrice < 1) {
-      return res.status(400).json({ message: "price must be >= 1" });
+
+    let nextBase;
+    let nextGst;
+    let nextPrice;
+    if (isTrial) {
+      nextBase = 0;
+      nextGst = 0;
+      nextPrice = 0;
+    } else {
+      if (base_price == null && price == null) {
+        return res.status(400).json({
+          message: "base_price (or price) is required for paid plans",
+        });
+      }
+      const pricing = resolvePlanPricingFromBody({ base_price, price });
+      if (!pricing || !pricing.base || pricing.base < 1) {
+        return res.status(400).json({ message: "base_price must be >= 1" });
+      }
+      nextBase = pricing.base;
+      nextGst = pricing.gst;
+      nextPrice = pricing.total;
     }
 
     const billingChanged =
-      Number(oldPlan.price) !== nextPrice ||
-      Number(oldPlan.duration) !== nextDuration ||
-      String(oldPlan.billing_cycle) !== String(nextCycle);
+      !isTrial &&
+      (Number(oldPlan.price) !== nextPrice ||
+        Number(oldPlan.base_price || 0) !== nextBase ||
+        Number(oldPlan.duration) !== nextDuration ||
+        String(oldPlan.billing_cycle) !== String(nextCycle));
 
-    let razorpay_plan_id = oldPlan.razorpay_plan_id || null;
-    let syncMeta = { synced: Boolean(razorpay_plan_id), razorpay_plan_id };
+    let razorpay_plan_id = isTrial ? null : oldPlan.razorpay_plan_id || null;
+    let syncMeta = {
+      synced: Boolean(razorpay_plan_id),
+      razorpay_plan_id,
+    };
 
-    if (isRazorpayConfigured() && (billingChanged || !razorpay_plan_id)) {
+    if (
+      !isTrial &&
+      isRazorpayConfigured() &&
+      (billingChanged || !razorpay_plan_id)
+    ) {
       const rz = await createRazorpayPlanForSubscriptionPlanTable({
         role: oldPlan.role,
         planName: plan_name,
@@ -270,13 +416,27 @@ export const updatePlan = async (req, res) => {
       } else {
         syncMeta = { synced: false, reason: rz.reason, razorpay_plan_id };
       }
+    } else if (isTrial) {
+      syncMeta = { synced: false, reason: "Trial plans do not use Razorpay" };
     }
 
     await dbPromise.query(
       `UPDATE subscription_plans
-       SET plan_name = ?, duration = ?, price = ?, billing_cycle = ?, status = ?, razorpay_plan_id = ?
+       SET plan_name = ?, duration = ?, price = ?, base_price = ?, gst_amount = ?,
+           billing_cycle = ?, status = ?, razorpay_plan_id = ?, plan_type = ?
        WHERE id = ?`,
-      [plan_name, nextDuration, nextPrice, nextCycle, status || "Active", razorpay_plan_id, id],
+      [
+        plan_name,
+        nextDuration,
+        nextPrice,
+        nextBase,
+        nextGst,
+        nextCycle,
+        status || "Active",
+        razorpay_plan_id,
+        plan_type,
+        id,
+      ],
     );
     if (Array.isArray(feature_ids)) {
       const cleanFeatureIds = normalizeFeatureIds(feature_ids);

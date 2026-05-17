@@ -2,13 +2,10 @@ import db from "#db";
 import moment from "moment-timezone";
 import bcrypt from "bcryptjs";
 import sendEmail from "#utils/nodeMailer.js";
-import { verifyRazorpayPayment } from "../../shared/controllers/paymentController.js";
 import fs from "fs";
 import path from "path";
 import sendProjectPartnerChangeEmail from "#utils/sendProjectPartnerChangeEmail.js";
 import { uploadToS3 } from "#utils/imageUpload.js";
-import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
-
 const saltRounds = 10;
 export const getAll = (req, res) => {
   const partnerLister = req.params.partnerlister;
@@ -162,19 +159,20 @@ export const getById = async (req, res) => {
 
     const [history] = await db.promise().query(
       `SELECT 
-        id,
-        plan,
-        amount,
-        start_date,
-        end_date,
-        payment_type,
-        payment_id,
-        screenshot,
-        status
-      FROM subscriptions
-      WHERE territorypartnerid = ?
-      ORDER BY start_date DESC`,
-      [territoryPartner.id]
+        us.id,
+        sp.duration AS plan,
+        us.final_amount AS amount,
+        us.start_date,
+        us.end_date,
+        us.payment_type,
+        us.razorpay_subscription_id AS payment_id,
+        NULL AS screenshot,
+        us.status
+      FROM user_subscriptions us
+      LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
+      WHERE us.user_id = ? AND us.role = 'territory'
+      ORDER BY us.start_date DESC`,
+      [territoryPartner.id],
     );
 
     /* Attach history */
@@ -831,255 +829,12 @@ export const status = (req, res) => {
   );
 };
 
-/* ---------- PLAN DURATION CONFIG ---------- */
-
-const PLAN_MONTHS = {
-  1: 1,
-  2: 2,
-  3: 3,
-  4: 4,
-  6: 6,
-  9: 9,
-  12: 12,
-  18: 18,
-  24: 24,
-};
-
 export const updatePaymentId = async (req, res) => {
-  try {
-    const partnerid = req.params.id;
-
-    const { amount, paymentid, paymentType, plan, mode, startDate, endDate } =
-      req.body;
-
-    if (!partnerid) {
-      return res.status(400).json({ message: "Invalid Partner ID" });
-    }
-
-    if (!amount || !paymentType) {
-      return res.status(400).json({
-        message: "Amount and Payment Type are required",
-      });
-    }
-
-    const allowedTypes = ["razorpay", "upi", "cash", "cheque", "direct"];
-
-    if (!allowedTypes.includes(paymentType)) {
-      return res.status(400).json({
-        message: "Invalid payment type",
-      });
-    }
-
-    /* ---------- Razorpay Validation ---------- */
-
-    if (paymentType === "razorpay") {
-      if (!paymentid) {
-        return res.status(400).json({
-          message: "Payment ID required for Razorpay",
-        });
-      }
-
-      const isValid = await verifyRazorpayPayment(paymentid, amount);
-
-      if (!isValid) {
-        return res.status(400).json({
-          message: "Invalid Razorpay Payment",
-        });
-      }
-    }
-
-    /* ---------- Upload Screenshot ---------- */
-
-    let screenshotUrl = null;
-
-    if (req.file) {
-      const compressedImage = await convertSingleImageToWebp(req.file);
-
-      if (compressedImage) {
-        screenshotUrl = await uploadToS3(compressedImage);
-      }
-    }
-
-    /* ---------- Get Territory Partner ---------- */
-
-    const [partnerResult] = await db
-      .promise()
-      .query("SELECT * FROM territorypartner WHERE id = ?", [partnerid]);
-
-    if (partnerResult.length === 0) {
-      return res.status(404).json({
-        message: "Territory Partner not found",
-      });
-    }
-
-    const partner = partnerResult[0];
-    const email = partner.email;
-
-    let username = partner.username;
-    let password = null;
-    let hashedPassword = partner.password;
-
-    let isNewPartner = false;
-
-    /* ---------- Create Login if not exists ---------- */
-
-    if (!partner.username || !partner.password) {
-      isNewPartner = true;
-
-      const extractNameFromEmail = (email) => {
-        const namePart = email.split("@")[0];
-        const lettersOnly = namePart.match(/[a-zA-Z]+/);
-
-        if (!lettersOnly) return "User";
-
-        const name = lettersOnly[0].toLowerCase();
-        return name.charAt(0).toUpperCase() + name.slice(1);
-      };
-
-      username = extractNameFromEmail(email);
-
-      const generatePassword = () => {
-        const chars =
-          "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
-
-        let password = "";
-
-        for (let i = 0; i < 8; i++) {
-          password += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-
-        return password;
-      };
-
-      password = generatePassword();
-      hashedPassword = await bcrypt.hash(password, 10);
-    }
-
-    /* ---------- Calculate Subscription Dates ---------- */
-
-    let subStartDate;
-    let subEndDate;
-
-    if (mode === "manual") {
-      if (!startDate || !endDate) {
-        return res.status(400).json({
-          message: "Start and End date required for manual mode",
-        });
-      }
-
-      subStartDate = moment(startDate).tz("Asia/Kolkata").toDate();
-      subEndDate = moment(endDate).tz("Asia/Kolkata").toDate();
-    } else {
-      const months = PLAN_MONTHS[plan];
-
-      if (!months) {
-        return res.status(400).json({
-          message: "Invalid plan",
-        });
-      }
-
-      /* ---------- Get Last Subscription ---------- */
-
-      const [lastSub] = await db.promise().query(
-        `SELECT * FROM subscriptions
-         WHERE territorypartnerid = ?
-         ORDER BY end_date DESC
-         LIMIT 1`,
-        [partnerid],
-      );
-
-      if (lastSub.length > 0 && moment(lastSub[0].end_date).isAfter(moment())) {
-        subStartDate = moment(lastSub[0].end_date).tz("Asia/Kolkata").toDate();
-      } else {
-        subStartDate = moment().tz("Asia/Kolkata").toDate();
-      }
-
-      subEndDate = moment(subStartDate)
-        .add(months, "months")
-        .tz("Asia/Kolkata")
-        .toDate();
-    }
-
-    /* ---------- Expire Previous Active Subscription ---------- */
-
-    await db.promise().query(
-      `UPDATE subscriptions
-       SET status = 'Expired'
-       WHERE territorypartnerid = ?
-       AND status = 'Active'`,
-      [partnerid],
-    );
-
-    /* ---------- Insert New Subscription ---------- */
-
-    await db.promise().query(
-      `INSERT INTO subscriptions
-      (territorypartnerid, mode, plan, amount, start_date, end_date, payment_id, payment_type, screenshot, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        partnerid,
-        mode,
-        plan,
-        amount,
-        subStartDate,
-        subEndDate,
-        paymentid || null,
-        paymentType,
-        screenshotUrl,
-        "Active",
-      ],
-    );
-
-    /* ---------- Update Territory Partner ---------- */
-
-    await db.promise().query(
-      `UPDATE territorypartner
-       SET paymentstatus = ?, 
-           paymentid = ?, 
-           amount = ?, 
-           username = ?, 
-           password = ?, 
-           loginstatus = "Active"
-       WHERE id = ?`,
-      [
-        "Success",
-        paymentid || null,
-        amount,
-        username,
-        hashedPassword,
-        partnerid,
-      ],
-    );
-
-    /* ---------- Send Email ONLY if New Partner ---------- */
-
-    if (isNewPartner) {
-      await sendEmail(
-        email,
-        username,
-        password,
-        "Territory Partner",
-        "https://territory.reparv.in",
-      );
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Subscription updated successfully",
-      partner: {
-        id: partnerid,
-        email,
-        username,
-      },
-    });
-  } catch (error) {
-    console.error("Update Payment Error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
-  }
+  return res.status(410).json({
+    success: false,
+    message:
+      "Admin-recorded subscriptions are disabled. Territory partners subscribe via the app: POST /api/subscription/payment/create-subscription (Razorpay Subscriptions checkout).",
+  });
 };
 
 export const fetchFollowUpList = (req, res) => {

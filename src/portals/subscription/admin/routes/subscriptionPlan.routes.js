@@ -6,7 +6,7 @@ import {
   getPlansByPartnerType,
   getPlanById,
   updatePlan,
-} from "../controllers/planController.js";
+} from "../controllers/subscriptionPlan.controller.js";
 
 const router = express.Router();
 

@@ -17,8 +17,8 @@ import frontendNewsRoute from "../portals/frontend/routes/newsRoute.js";
 import frontendSeoRoutes from "../portals/frontend/routes/seoData.routes.js";
 import frontendProjectPartnerRoutes from "../portals/frontend/routes/projectPartnerRoutes.js";
 import paymentRoutes from "../portals/shared/routes/paymentRoutes.js";
-import subscriptionAutopayRoutes from "../portals/subscription/routes/subscriptionAutopayRoutes.js";
-import redeemRoutes from "../portals/shared/routes/redeemRoutes.js";
+import subscriptionCheckoutRoutes from "../portals/subscription/checkout/subscriptionCheckout.routes.js";
+import publicPartnerPlansRoutes from "../portals/subscription/routes/publicPartnerPlans.routes.js";
 import accountCancellation from "../portals/shared/routes/accountCancellationRoutes.js";
 import geocodeRoutes from "../portals/shared/routes/geocodeRoutes.js";
 import s3Routes from "../portals/shared/routes/s3Routes.js";
@@ -47,8 +47,8 @@ export function mountPublicRoutes(app) {
   app.use("/frontend/project-partner", frontendProjectPartnerRoutes);
 
   app.use("/api/payment", paymentRoutes);
-  app.use("/api/subscription/payment", subscriptionAutopayRoutes);
-  app.use("/api/redeem", redeemRoutes);
+  app.use("/api/subscription/partner-plans", publicPartnerPlansRoutes);
+  app.use("/api/subscription/payment", subscriptionCheckoutRoutes);
   app.use("/api/partner/account", accountCancellation);
   app.use("/api/map", geocodeRoutes);
   app.use("/api/s3", s3Routes);
