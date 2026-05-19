@@ -6,8 +6,9 @@ import fs from "fs";
 import path from "path";
 import sendProjectPartnerChangeEmail from "#utils/sendProjectPartnerChangeEmail.js";
 import { uploadToS3 } from "#utils/imageUpload.js";
+import { attachSubscriptionsToPartners } from "../../subscription/utils/partnerSubscriptionAttach.js";
 const saltRounds = 10;
-export const getAll = (req, res) => {
+export const getAll = async (req, res) => {
   const partnerLister = req.params.partnerlister;
 
   if (!partnerLister) {
@@ -91,11 +92,8 @@ export const getAll = (req, res) => {
     `;
   }
 
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error("Error fetching partners:", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
+  try {
+    const [result] = await db.promise().query(sql);
 
     const formatted = result.map((row) => ({
       ...row,
@@ -107,8 +105,17 @@ export const getAll = (req, res) => {
         : null,
     }));
 
-    res.json(formatted);
-  });
+    const withSubs = await attachSubscriptionsToPartners(
+      formatted,
+      "territory",
+      (row) => row.id,
+    );
+
+    res.json(withSubs);
+  } catch (err) {
+    console.error("Error fetching partners:", err);
+    return res.status(500).json({ message: "Database error", error: err });
+  }
 };
 
 // **Fetch All**

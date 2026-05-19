@@ -4,10 +4,15 @@ import {
   isRazorpayConfigured,
 } from "#utils/subscriptionRazorpayPlan.js";
 import { resolvePlanPricingFromBody } from "../../utils/gstCalculation.js";
+import {
+  createEnterprisePlanGroup,
+  updateEnterprisePlanGroup,
+  deleteEnterprisePlanGroup,
+} from "../../services/subscriptionPlanEnterprise.service.js";
 
 const VALID_ROLES = new Set(["sales", "territory", "project"]);
 const VALID_BILLING_CYCLES = new Set(["monthly", "yearly"]);
-const VALID_PLAN_TYPES = new Set(["paid", "trial"]);
+const VALID_PLAN_TYPES = new Set(["paid", "trial", "enterprise"]);
 
 const normalizePlanType = (value) => {
   const t = String(value || "paid").toLowerCase();
@@ -121,6 +126,7 @@ export const getPlansByPartnerType = async (req, res) => {
       LEFT JOIN plan_feature_mapping pfm ON pfm.plan_id = sp.id
       LEFT JOIN subscription_feature sf ON sf.id = pfm.feature_id
       WHERE sp.role = ? AND sp.status = 'Active'
+        AND LOWER(COALESCE(sp.plan_type, 'paid')) != 'enterprise'
       GROUP BY sp.id
       ORDER BY CASE WHEN sp.plan_type = 'trial' THEN 0 ELSE 1 END, sp.price ASC`,
       [role],
@@ -172,22 +178,13 @@ export const createPlan = async (req, res) => {
     } = req.body;
 
     const plan_type = normalizePlanType(planTypeRaw);
-    const isTrial = plan_type === "trial";
 
-    // #region agent log
-    fetch("http://127.0.0.1:7873/ingest/e030798b-abf2-42c8-b0a1-b6795e79c4b6", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ab9682" },
-      body: JSON.stringify({
-        sessionId: "ab9682",
-        hypothesisId: "D",
-        location: "subscriptionPlan.controller.js:createPlan",
-        message: "createPlan",
-        data: { role, plan_type, isTrial, duration: toInt(duration) },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
+    if (plan_type === "enterprise") {
+      const result = await createEnterprisePlanGroup(req.body);
+      return res.status(201).json(result);
+    }
+
+    const isTrial = plan_type === "trial";
 
     if (!VALID_ROLES.has(role)) {
       return res.status(400).json({ message: "Invalid role" });
@@ -244,7 +241,7 @@ export const createPlan = async (req, res) => {
     let razorpay_plan_id = null;
     let syncMeta = { synced: false };
 
-    if (!isTrial && isRazorpayConfigured()) {
+    if (!isTrial && plan_type !== "enterprise" && isRazorpayConfigured()) {
       const rz = await createRazorpayPlanForSubscriptionPlanTable({
         role,
         planName: plan_name,
@@ -321,11 +318,6 @@ export const updatePlan = async (req, res) => {
     } = req.body;
 
     if (!id) return res.status(400).json({ message: "Invalid id" });
-    if (!plan_name || !duration) {
-      return res.status(400).json({
-        message: "plan_name and duration are required",
-      });
-    }
 
     const [rows] = await dbPromise.query(
       "SELECT * FROM subscription_plans WHERE id = ?",
@@ -336,6 +328,24 @@ export const updatePlan = async (req, res) => {
     }
     const oldPlan = rows[0];
     const plan_type = normalizePlanType(planTypeRaw ?? oldPlan.plan_type);
+
+    if (
+      plan_type === "enterprise" ||
+      String(oldPlan.plan_type).toLowerCase() === "enterprise"
+    ) {
+      if (!plan_name) {
+        return res.status(400).json({ message: "plan_name is required" });
+      }
+      const result = await updateEnterprisePlanGroup(oldPlan, req.body);
+      return res.status(200).json(result);
+    }
+
+    if (!plan_name || !duration) {
+      return res.status(400).json({
+        message: "plan_name and duration are required",
+      });
+    }
+
     const isTrial = plan_type === "trial";
 
     const nextCycle = isTrial
@@ -469,18 +479,27 @@ export const deletePlan = async (req, res) => {
     if (!id) return res.status(400).json({ message: "Invalid id" });
 
     const [rows] = await dbPromise.query(
-      "SELECT id, razorpay_plan_id FROM subscription_plans WHERE id = ?",
+      "SELECT * FROM subscription_plans WHERE id = ?",
       [id],
     );
     if (!rows.length) {
       return res.status(404).json({ message: "Subscription plan not found" });
     }
 
+    const planRow = rows[0];
+    if (String(planRow.plan_type).toLowerCase() === "enterprise") {
+      const result = await deleteEnterprisePlanGroup(planRow);
+      return res.status(200).json({
+        message: "Enterprise plan group deleted successfully",
+        ...result,
+      });
+    }
+
     await dbPromise.query("DELETE FROM plan_feature_mapping WHERE plan_id = ?", [id]);
     await dbPromise.query("DELETE FROM subscription_plans WHERE id = ?", [id]);
     return res.status(200).json({
       message: "Subscription plan deleted successfully",
-      razorpay_plan_id: rows[0].razorpay_plan_id || null,
+      razorpay_plan_id: planRow.razorpay_plan_id || null,
       note: "Razorpay plans are immutable and cannot be deleted via API.",
     });
   } catch (error) {

@@ -5,6 +5,7 @@ import {
   syncPaymentsFromRazorpay,
 } from "../../services/recurringPayment.service.js";
 import { cancelUserSubscription } from "../../services/subscriptionCancel.service.js";
+import { assignEnterpriseSubscription } from "../../services/subscriptionEnterpriseAssign.service.js";
 import { CANONICAL_USER_SUBSCRIPTION_IDS_SQL } from "../../utils/userSubscriptionCanonical.js";
 
 const ROLE_LABELS = {
@@ -27,6 +28,7 @@ export const listUserSubscriptions = async (req, res) => {
   try {
     const role = String(req.query.role || "").trim().toLowerCase();
     const status = String(req.query.status || "").trim().toLowerCase();
+    const planType = String(req.query.plan_type || "").trim().toLowerCase();
     const search = String(req.query.search || "").trim();
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
@@ -44,6 +46,10 @@ export const listUserSubscriptions = async (req, res) => {
     ) {
       where.push("LOWER(us.status) = ?");
       params.push(status);
+    }
+    if (planType && ["paid", "trial", "enterprise"].includes(planType)) {
+      where.push("LOWER(sp.plan_type) = ?");
+      params.push(planType);
     }
     if (search) {
       const like = `%${search}%`;
@@ -71,9 +77,14 @@ export const listUserSubscriptions = async (req, res) => {
          SUM(LOWER(us.status) = 'cancelled') AS cancelled,
          SUM(LOWER(us.status) = 'expired') AS expired,
          SUM(LOWER(us.status) = 'halted') AS halted,
-         SUM(LOWER(us.status) = 'trial') AS trial
+         SUM(LOWER(us.status) = 'trial') AS trial,
+         SUM(
+           LOWER(us.status) = 'active'
+           AND LOWER(COALESCE(sp.plan_type, 'paid')) = 'enterprise'
+         ) AS enterprise_active
        FROM user_subscriptions us
        INNER JOIN (${CANONICAL_USER_SUBSCRIPTION_IDS_SQL}) canonical ON canonical.id = us.id
+       LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
        ${summaryWhereSql}`,
       summaryParams,
     );
@@ -110,6 +121,7 @@ export const listUserSubscriptions = async (req, res) => {
         sp.plan_name,
         sp.duration AS plan_duration,
         sp.billing_cycle,
+        sp.plan_type,
         sp.price AS plan_price,
         CASE us.role
           WHEN 'project' THEN pp.fullname
@@ -162,6 +174,7 @@ export const listUserSubscriptions = async (req, res) => {
         expired: Number(sum.expired) || 0,
         halted: Number(sum.halted) || 0,
         trial: Number(sum.trial) || 0,
+        enterprise_active: Number(sum.enterprise_active) || 0,
       },
       data,
     });
@@ -247,6 +260,23 @@ async function loadGstInvoicesForPayments(paymentRows) {
     throw err;
   }
 }
+
+/**
+ * POST /admin/subscription/user-subscriptions/assign
+ * Body: { user_id, role, plan_id?, plan_name?, billing_cycle, final_amount?, start_date? }
+ */
+export const assignEnterpriseSubscriptionAdmin = async (req, res) => {
+  try {
+    const result = await assignEnterpriseSubscription(req.body || {});
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("assignEnterpriseSubscriptionAdmin:", error);
+    return res.status(error?.statusCode || 500).json({
+      success: false,
+      message: error?.message || "Failed to assign enterprise subscription",
+    });
+  }
+};
 
 /**
  * POST /admin/subscription/user-subscriptions/:id/cancel

@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  assignEnterpriseSubscriptionAdmin,
   cancelUserSubscriptionAdmin,
   getUserSubscriptionInvoices,
   getUserSubscriptionPayments,
@@ -10,6 +11,7 @@ import {
 const router = express.Router();
 
 router.get("/", listUserSubscriptions);
+router.post("/assign", assignEnterpriseSubscriptionAdmin);
 router.post("/:id/cancel", cancelUserSubscriptionAdmin);
 router.get("/:id/payments", getUserSubscriptionPayments);
 router.post("/:id/payments/sync", syncUserSubscriptionPayments);
