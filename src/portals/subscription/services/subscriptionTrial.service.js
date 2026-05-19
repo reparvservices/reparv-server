@@ -168,5 +168,61 @@ export async function activatePartnerTrial({ userId, role, planId }) {
   }).catch(() => {});
   // #endregion
 
+  const daysLeft = Math.max(
+    0,
+    Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
+  );
+  result.daysLeft = daysLeft;
+
   return result;
+}
+
+/**
+ * Trial flags for partner apps (used by subscription / compare screens).
+ */
+export async function getPartnerTrialStatus({ userId, role }) {
+  const uid = Number.parseInt(userId, 10);
+  const roleNorm = String(role || "").toLowerCase();
+
+  if (!VALID_ROLES.has(roleNorm) || !uid) {
+    const e = new Error("Invalid user id or role");
+    e.statusCode = 400;
+    throw e;
+  }
+
+  const [trialRows] = await dbPromise.query(
+    `SELECT id FROM user_subscriptions
+     WHERE user_id = ? AND role = ? AND LOWER(status) = 'trial'
+     LIMIT 1`,
+    [uid, roleNorm],
+  );
+  const trialUsed = trialRows.length > 0;
+
+  const latest = await loadLatestSubscription(uid, roleNorm);
+  const statusLower = String(latest?.status || "").toLowerCase();
+  const end = latest?.end_date ? new Date(latest.end_date) : null;
+  const now = new Date();
+
+  let trialActive = false;
+  let daysLeft = 0;
+
+  if (
+    statusLower === "trial" &&
+    end &&
+    end > now &&
+    isPartnerSubscriptionAccessActive(latest)
+  ) {
+    trialActive = true;
+    daysLeft = Math.max(
+      0,
+      Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
+    );
+  }
+
+  return {
+    success: true,
+    trialUsed,
+    trialActive,
+    daysLeft,
+  };
 }

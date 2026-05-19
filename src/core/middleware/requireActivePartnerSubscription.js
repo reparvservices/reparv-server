@@ -4,6 +4,8 @@ import { isPartnerSubscriptionAccessActive } from "../../portals/subscription/ut
 const EXEMPT_PREFIXES = [
   "/project-partner/login",
   "/project-partner/subscription",
+  "/project-partner/profile",
+  "/projectpartner/subscription",
   "/sales/login",
   "/sales/subscription",
   "/territory-partner/login",
@@ -11,6 +13,9 @@ const EXEMPT_PREFIXES = [
 ];
 
 const GATED_PREFIXES = ["/project-partner/", "/sales/", "/territory-partner/"];
+
+/** Safe read methods — allow browse without subscription (feature-lock UX). */
+const BROWSE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 function resolvePartner(req) {
   if (req.projectPartnerUser?.id) {
@@ -54,6 +59,11 @@ export async function requireActivePartnerSubscription(req, res, next) {
 
     const partner = resolvePartner(req);
     if (!partner) {
+      return next();
+    }
+
+    const method = (req.method || "GET").toUpperCase();
+    if (BROWSE_METHODS.has(method)) {
       return next();
     }
 

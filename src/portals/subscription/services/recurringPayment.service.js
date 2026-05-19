@@ -61,6 +61,20 @@ export async function findUserSubscriptionByRazorpayId(razorpaySubscriptionId) {
   return rows[0] || null;
 }
 
+/** Latest subscription row for a partner (used after one-time order checkout). */
+export async function findUserSubscriptionByUserRole(userId, role) {
+  const [rows] = await dbPromise.query(
+    `SELECT us.*, sp.plan_name, sp.duration AS plan_duration, sp.billing_cycle
+     FROM user_subscriptions us
+     LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
+     WHERE us.user_id = ? AND us.role = ?
+     ORDER BY us.updated_at DESC, us.id DESC
+     LIMIT 1`,
+    [userId, role],
+  );
+  return rows[0] || null;
+}
+
 export async function getNextChargeNumber(userSubscriptionId) {
   const [rows] = await dbPromise.query(
     `SELECT COUNT(*) AS cnt FROM subscription_recurring_payments
@@ -91,9 +105,12 @@ export async function upsertRecurringPayment({
   failureReason = null,
   paidAt = null,
 }) {
-  if (!userSubscriptionId || !razorpayPaymentId || !razorpaySubscriptionId) {
-    throw new Error("userSubscriptionId, razorpayPaymentId and razorpaySubscriptionId are required");
+  if (!userSubscriptionId || !razorpayPaymentId) {
+    throw new Error("userSubscriptionId and razorpayPaymentId are required");
   }
+
+  const ledgerSubscriptionRef =
+    razorpaySubscriptionId || `one_time_${razorpayPaymentId}`;
 
   const amount =
     amountRupees != null ? Number(amountRupees) : paiseToRupees(amountPaise);
@@ -132,7 +149,7 @@ export async function upsertRecurringPayment({
       userSubscriptionId,
       razorpayPaymentId,
       razorpayInvoiceId,
-      razorpaySubscriptionId,
+      ledgerSubscriptionRef,
       amount,
       paise,
       currency,

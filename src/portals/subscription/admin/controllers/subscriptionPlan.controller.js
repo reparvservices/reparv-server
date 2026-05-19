@@ -116,7 +116,7 @@ export const getPlansByPartnerType = async (req, res) => {
         sp.billing_cycle,
         sp.status,
         sp.plan_type,
-        COALESCE(GROUP_CONCAT(DISTINCT sf.name ORDER BY sf.id SEPARATOR ','), '') AS features
+        COALESCE(GROUP_CONCAT(DISTINCT sf.name ORDER BY sf.id SEPARATOR '||'), '') AS features
       FROM subscription_plans sp
       LEFT JOIN plan_feature_mapping pfm ON pfm.plan_id = sp.id
       LEFT JOIN subscription_feature sf ON sf.id = pfm.feature_id
@@ -129,7 +129,7 @@ export const getPlansByPartnerType = async (req, res) => {
     const shaped = rows.map((r) => {
       const featureNames = r.features
         ? String(r.features)
-            .split(",")
+            .split("||")
             .map((s) => s.trim())
             .filter(Boolean)
         : [];
