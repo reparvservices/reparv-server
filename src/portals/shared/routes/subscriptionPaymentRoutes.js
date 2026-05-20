@@ -1,9 +1,5 @@
-import express from "express";
-import { createOrder, verifyPayment } from "../controllers/subscriptionPaymentController.js";
-
-const router = express.Router();
-
-router.post("/create-order", createOrder);
-router.post("/verify-payment", verifyPayment);
-
-export default router;
+/**
+ * Backward-compatible re-export.
+ * Canonical router: `portals/subscription/checkout/subscriptionCheckout.routes.js`.
+ */
+export { default } from "../../subscription/checkout/subscriptionCheckout.routes.js";

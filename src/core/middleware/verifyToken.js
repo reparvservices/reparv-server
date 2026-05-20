@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 
 const publicRoutes = [
   "/admin/login",
+  "/admin/setup/create-user",
   "/builder/login",
   "/employee/login",
   "/promoter/login",
@@ -31,7 +32,6 @@ const publicRoutes = [
   "/admin/territorypartner/add",
   "/admin/territorypartner/status",
   "/admin/territorypartner/assignlogin",
-  "/admin/subscription/pricing",
   "/admin/marketing-content",
   "/admin/apk",
   "/api/payment/create-order",
@@ -60,7 +60,6 @@ const publicRoutes = [
   "/sales/flat",
   "/salesapp/flats",
   "/salesapp/subscription",
-  "/salesapp/subscription/validate",
   "/territoryapp/user",
   "/territoryapp/subscription",
   "/upload",
@@ -151,12 +150,52 @@ const cookieMap = {
   token: "user",
 };
 
+function readBearerToken(req) {
+  const header = req.headers?.authorization || req.headers?.Authorization;
+  if (!header || typeof header !== "string") return null;
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
+/** Map decoded JWT to partner user key from request path (mobile Bearer auth). */
+function assignPartnerFromBearer(req, decoded, path) {
+  if (
+    path.startsWith("/project-partner/") ||
+    path.startsWith("/projectpartner")
+  ) {
+    req.projectPartnerUser = decoded;
+    return true;
+  }
+  if (path.startsWith("/sales/") || path.startsWith("/salesapp/")) {
+    req.salesUser = decoded;
+    return true;
+  }
+  if (
+    path.startsWith("/territory-partner/") ||
+    path.startsWith("/territoryapp/")
+  ) {
+    req.territoryUser = decoded;
+    return true;
+  }
+  if (decoded.freeProjectPartner !== undefined) {
+    req.projectPartnerUser = decoded;
+    return true;
+  }
+  if (decoded.projectpartnerid !== undefined && decoded.state !== undefined) {
+    req.territoryUser = decoded;
+    return true;
+  }
+  req.salesUser = decoded;
+  return true;
+}
+
 export function verifyToken(req, res, next) {
   if (publicRoutes.some((route) => req.path.startsWith(route))) {
     return next();
   }
 
   let atLeastOneValid = false;
+  const path = req.path || "";
 
   for (const [cookieName, userKey] of Object.entries(cookieMap)) {
     const token = req.cookies?.[cookieName];
@@ -168,6 +207,20 @@ export function verifyToken(req, res, next) {
       atLeastOneValid = true;
     } catch (error) {
       console.warn(`Invalid token for ${cookieName}:`, error.message);
+    }
+  }
+
+  if (!atLeastOneValid) {
+    const bearer = readBearerToken(req);
+    if (bearer) {
+      try {
+        const decoded = jwt.verify(bearer, process.env.JWT_SECRET);
+        if (assignPartnerFromBearer(req, decoded, path)) {
+          atLeastOneValid = true;
+        }
+      } catch (error) {
+        console.warn("Invalid Bearer token:", error.message);
+      }
     }
   }
 

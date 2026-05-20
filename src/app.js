@@ -7,10 +7,12 @@ import path from "path";
 import metaLeadRoutes from "./portals/metalead/routes/metalead.routes.js";
 import "./portals/metalead/controllers/metalead.controller.js";
 import whatsappChatWebhookRoutes from "./portals/webhooks/routes/whatsappChatWebhookRoutes.js";
+import razorpayWebhookRoutes from "./portals/webhooks/routes/razorpayWebhookRoutes.js";
 import { resolveWhatsappWebhookVerifyToken } from "./portals/webhooks/controllers/whatsappChatWebhookController.js";
 
 import { attachCors } from "./core/http/cors.js";
 import { verifyToken } from "./core/middleware/verifyToken.js";
+import { requireActivePartnerSubscription } from "./core/middleware/requireActivePartnerSubscription.js";
 import { mountPublicRoutes } from "./http/mountPublicRoutes.js";
 import { mountProtectedRoutes } from "./http/mountProtectedRoutes.js";
 
@@ -39,6 +41,13 @@ attachCors(app);
 
 // dont remove it form this place other wise it will not work
 app.use("/meta", metaLeadRoutes);
+
+/** Razorpay signs the raw body — mount before express.json() */
+app.use(
+  "/webhooks/razorpay",
+  express.raw({ type: "application/json" }),
+  razorpayWebhookRoutes,
+);
 
 app.use(express.json({ limit: bodyLimit }));
 
@@ -106,6 +115,7 @@ app.get("/get-cookie", (req, res) => {
 mountPublicRoutes(app);
 
 app.use(verifyToken);
+app.use(requireActivePartnerSubscription);
 mountProtectedRoutes(app);
 
 export default app;

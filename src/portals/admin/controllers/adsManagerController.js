@@ -57,14 +57,15 @@ export const getAll = (req, res) => {
           // STEP 2: Fetch subscription
           const subSql = `
             SELECT 
-              s.plan,
-              s.planId,
-              s.start_date AS startDate,
-              s.end_date AS endDate,
-              s.created_at AS subscriptionCreatedAt
-            FROM subscriptions s
-            WHERE s.projectpartnerid = ?
-            ORDER BY s.created_at DESC
+              sp.duration AS plan,
+              us.plan_id AS planId,
+              us.start_date AS startDate,
+              us.end_date AS endDate,
+              us.created_at AS subscriptionCreatedAt
+            FROM user_subscriptions us
+            LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
+            WHERE us.user_id = ? AND us.role = 'project'
+            ORDER BY us.created_at DESC, us.id DESC
             LIMIT 1
           `;
 
@@ -101,7 +102,7 @@ export const getAll = (req, res) => {
 
             // STEP 3: Fetch planName
             db.query(
-              `SELECT planName FROM subscriptionPricing WHERE id = ? LIMIT 1`,
+              `SELECT plan_name AS planName FROM subscription_plans WHERE id = ? LIMIT 1`,
               [subscription.planId],
               (err3, planResult) => {
                 const planName =
@@ -245,14 +246,15 @@ export const getByPropertyId = (req, res) => {
     // STEP 2: Fetch latest subscription
     const subSql = `
       SELECT 
-        s.plan,
-        s.planId,
-        s.start_date AS startDate,
-        s.end_date AS endDate,
-        s.created_at AS subscriptionCreatedAt
-      FROM subscriptions s
-      WHERE s.projectpartnerid = ?
-      ORDER BY s.created_at DESC
+        sp.duration AS plan,
+        us.plan_id AS planId,
+        us.start_date AS startDate,
+        us.end_date AS endDate,
+        us.created_at AS subscriptionCreatedAt
+      FROM user_subscriptions us
+      LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
+      WHERE us.user_id = ? AND us.role = 'project'
+      ORDER BY us.created_at DESC, us.id DESC
       LIMIT 1
     `;
 
@@ -284,7 +286,7 @@ export const getByPropertyId = (req, res) => {
 
       // STEP 3: Fetch plan name
       db.query(
-        `SELECT planName FROM subscriptionPricing WHERE id = ? LIMIT 1`,
+        `SELECT plan_name AS planName FROM subscription_plans WHERE id = ? LIMIT 1`,
         [subscription.planId],
         (err3, planResult) => {
           const planName =
@@ -338,17 +340,25 @@ export const fetchProjectPartnerData = (req, res) => {
   const sql = `
     SELECT 
       p.*, 
-      s.plan,
-      s.planId,
-      s.start_date AS startDate,
-      s.end_date AS endDate,
-      s.created_at AS subscriptionCreatedAt
+      sp.duration AS plan,
+      us.plan_id AS planId,
+      us.start_date AS startDate,
+      us.end_date AS endDate,
+      us.created_at AS subscriptionCreatedAt
     FROM projectpartner p
-    LEFT JOIN subscriptions s
-      ON p.id = s.projectpartnerid
+    LEFT JOIN (
+      SELECT u1.*
+      FROM user_subscriptions u1
+      INNER JOIN (
+        SELECT user_id, MAX(id) AS max_id
+        FROM user_subscriptions
+        WHERE role = 'project'
+        GROUP BY user_id
+      ) t ON t.user_id = u1.user_id AND t.max_id = u1.id
+    ) us ON us.user_id = p.id
+    LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
     WHERE p.id = ? AND p.status = 'Active'
-    ORDER BY s.created_at DESC
-    LIMIT 1;
+    LIMIT 1
   `;
 
   db.query(sql, [id], (err, result) => {
@@ -377,8 +387,8 @@ export const fetchProjectPartnerData = (req, res) => {
       return res.json(formatted);
     }
 
-    // Fetch planName from subscriptionPricing
-    const planQuery = `SELECT planName FROM subscriptionPricing WHERE id = ? LIMIT 1`;
+    // Fetch planName from subscription_plans
+    const planQuery = `SELECT plan_name AS planName FROM subscription_plans WHERE id = ? LIMIT 1`;
 
     db.query(planQuery, [row.planId], (err2, planResult) => {
       if (err2) {
@@ -412,10 +422,10 @@ export const fetchProjectPartnerData = (req, res) => {
 // **Fetch Unique Plan Names**
 export const getUniqueSubscriptionPlans = (req, res) => {
   const sql = `
-    SELECT DISTINCT planName
-    FROM subscriptionPricing
-    WHERE partnerType = 'Project Partner' AND planName IS NOT NULL AND planName != ''
-    ORDER BY planName ASC
+    SELECT DISTINCT plan_name AS planName
+    FROM subscription_plans
+    WHERE role = 'project' AND status = 'Active' AND plan_name IS NOT NULL AND plan_name != ''
+    ORDER BY plan_name ASC
   `;
 
   db.query(sql, (err, result) => {
