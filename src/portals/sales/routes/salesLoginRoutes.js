@@ -59,7 +59,7 @@ router.post("/login", async (req, res) => {
       name: user.fullname,
       contact: user.contact,
       adharId: user.adharno,
-      role: "Sales Person",
+      role: "Sales Partner",
       state: user.state,
       city: user.city,
       projectpartnerid: user.projectpartnerid,
