@@ -8,6 +8,7 @@ import { cancelUserSubscription } from "../../services/subscriptionCancel.servic
 import { assignEnterpriseSubscription } from "../../services/subscriptionEnterpriseAssign.service.js";
 import { CANONICAL_USER_SUBSCRIPTION_IDS_SQL } from "../../utils/userSubscriptionCanonical.js";
 import { PLAN_TYPE_SELECT_SQL } from "../../utils/planTypeSql.js";
+import { shapeUserSubscriptionRow } from "../../utils/subscriptionDisplay.js";
 
 const ROLE_LABELS = {
   project: "Project Partner",
@@ -23,7 +24,7 @@ const formatDt = (v) => {
 
 /**
  * GET /admin/subscription/user-subscriptions
- * Query: role, status, search, limit, offset
+ * Query: role, status, search, limit, offset, include_all (1 = every row, not one per user)
  */
 export const listUserSubscriptions = async (req, res) => {
   try {
@@ -31,8 +32,16 @@ export const listUserSubscriptions = async (req, res) => {
     const status = String(req.query.status || "").trim().toLowerCase();
     const planType = String(req.query.plan_type || "").trim().toLowerCase();
     const search = String(req.query.search || "").trim();
+    const includeAll =
+      req.query.include_all === "1" ||
+      req.query.include_all === "true" ||
+      req.query.view === "all";
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+    const canonicalJoin = includeAll
+      ? ""
+      : `INNER JOIN (${CANONICAL_USER_SUBSCRIPTION_IDS_SQL}) canonical ON canonical.id = us.id`;
 
     const where = [];
     const params = [];
@@ -41,12 +50,17 @@ export const listUserSubscriptions = async (req, res) => {
       where.push("us.role = ?");
       params.push(role);
     }
-    if (
+    if (status === "trial") {
+      where.push(`LOWER((${PLAN_TYPE_SELECT_SQL})) = 'trial'`);
+    } else if (
       status &&
-      ["active", "pending", "expired", "cancelled", "halted", "trial"].includes(status)
+      ["active", "pending", "expired", "cancelled", "halted"].includes(status)
     ) {
       where.push("LOWER(us.status) = ?");
       params.push(status);
+      if (status === "active") {
+        where.push(`LOWER((${PLAN_TYPE_SELECT_SQL})) NOT IN ('trial', 'enterprise')`);
+      }
     }
     if (planType && ["paid", "trial", "enterprise"].includes(planType)) {
       where.push(`LOWER((${PLAN_TYPE_SELECT_SQL})) = ?`);
@@ -73,18 +87,21 @@ export const listUserSubscriptions = async (req, res) => {
     const [summaryRows] = await dbPromise.query(
       `SELECT
          COUNT(*) AS total,
-         SUM(LOWER(us.status) = 'active') AS active,
+         SUM(LOWER((${PLAN_TYPE_SELECT_SQL})) = 'trial') AS trial,
+         SUM(
+           LOWER(us.status) = 'active'
+           AND LOWER((${PLAN_TYPE_SELECT_SQL})) NOT IN ('trial', 'enterprise')
+         ) AS active,
          SUM(LOWER(us.status) = 'pending') AS pending,
          SUM(LOWER(us.status) = 'cancelled') AS cancelled,
          SUM(LOWER(us.status) = 'expired') AS expired,
          SUM(LOWER(us.status) = 'halted') AS halted,
-         SUM(LOWER(us.status) = 'trial') AS trial,
          SUM(
-           LOWER(us.status) = 'active'
+           LOWER(us.status) IN ('active', 'trial')
            AND LOWER((${PLAN_TYPE_SELECT_SQL})) = 'enterprise'
          ) AS enterprise_active
        FROM user_subscriptions us
-       INNER JOIN (${CANONICAL_USER_SUBSCRIPTION_IDS_SQL}) canonical ON canonical.id = us.id
+       ${canonicalJoin}
        LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
        ${summaryWhereSql}`,
       summaryParams,
@@ -93,7 +110,7 @@ export const listUserSubscriptions = async (req, res) => {
     const [countRows] = await dbPromise.query(
       `SELECT COUNT(*) AS total
        FROM user_subscriptions us
-       INNER JOIN (${CANONICAL_USER_SUBSCRIPTION_IDS_SQL}) canonical ON canonical.id = us.id
+       ${canonicalJoin}
        LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
        LEFT JOIN projectpartner pp ON us.role = 'project' AND pp.id = us.user_id
        LEFT JOIN salespersons s ON us.role = 'sales' AND s.salespersonsid = us.user_id
@@ -140,7 +157,7 @@ export const listUserSubscriptions = async (req, res) => {
           WHEN 'territory' THEN tp.contact
         END AS user_contact
       FROM user_subscriptions us
-      INNER JOIN (${CANONICAL_USER_SUBSCRIPTION_IDS_SQL}) canonical ON canonical.id = us.id
+      ${canonicalJoin}
       LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
       LEFT JOIN projectpartner pp ON us.role = 'project' AND pp.id = us.user_id
       LEFT JOIN salespersons s ON us.role = 'sales' AND s.salespersonsid = us.user_id
@@ -151,15 +168,17 @@ export const listUserSubscriptions = async (req, res) => {
       [...params, limit, offset],
     );
 
-    const data = rows.map((r) => ({
-      ...r,
-      role_label: ROLE_LABELS[r.role] || r.role,
-      start_date: formatDt(r.start_date),
-      next_billing_date: formatDt(r.next_billing_date),
-      end_date: formatDt(r.end_date),
-      created_at: formatDt(r.created_at),
-      updated_at: formatDt(r.updated_at),
-    }));
+    const data = rows.map((r) =>
+      shapeUserSubscriptionRow({
+        ...r,
+        role_label: ROLE_LABELS[r.role] || r.role,
+        start_date: formatDt(r.start_date),
+        next_billing_date: formatDt(r.next_billing_date),
+        end_date: formatDt(r.end_date),
+        created_at: formatDt(r.created_at),
+        updated_at: formatDt(r.updated_at),
+      }),
+    );
 
     const sum = summaryRows[0] || {};
     return res.status(200).json({
@@ -167,6 +186,7 @@ export const listUserSubscriptions = async (req, res) => {
       total: countRows[0]?.total ?? 0,
       limit,
       offset,
+      include_all: includeAll,
       summary: {
         total: Number(sum.total) || 0,
         active: Number(sum.active) || 0,

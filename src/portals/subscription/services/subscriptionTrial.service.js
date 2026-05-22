@@ -3,6 +3,20 @@ import { isPartnerSubscriptionAccessActive } from "../utils/subscriptionAccess.j
 
 const VALID_ROLES = new Set(["sales", "territory", "project"]);
 
+/** Matches admin trial plans and legacy names like "Free Trail". */
+export function isTrialPlanRecord(plan) {
+  if (!plan) return false;
+  const type = String(plan.plan_type || "paid").toLowerCase();
+  const name = String(plan.plan_name || "").toLowerCase();
+  const price = Number(plan.price);
+  if (type === "trial") return true;
+  if (/trial|trail/.test(name)) return true;
+  if (Number.isFinite(price) && price <= 0 && /free|trial|trail/.test(name)) {
+    return true;
+  }
+  return false;
+}
+
 function addTrialDays(startDate, days) {
   const end = new Date(startDate);
   end.setDate(end.getDate() + Math.max(1, Number(days) || 1));
@@ -30,21 +44,6 @@ export async function activatePartnerTrial({ userId, role, planId }) {
   const pid = Number.parseInt(planId, 10);
   const roleNorm = String(role || "").toLowerCase();
 
-  // #region agent log
-  fetch("http://127.0.0.1:7873/ingest/e030798b-abf2-42c8-b0a1-b6795e79c4b6", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ab9682" },
-    body: JSON.stringify({
-      sessionId: "ab9682",
-      hypothesisId: "B",
-      location: "subscriptionTrial.service.js:activatePartnerTrial:entry",
-      message: "activatePartnerTrial called",
-      data: { uid, pid, roleNorm },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-
   if (!VALID_ROLES.has(roleNorm) || !uid || !pid) {
     const e = new Error("userId, role, and plan_id are required");
     e.statusCode = 400;
@@ -52,7 +51,7 @@ export async function activatePartnerTrial({ userId, role, planId }) {
   }
 
   const [planRows] = await dbPromise.query(
-    `SELECT id, plan_name, duration, plan_type, status
+    `SELECT id, plan_name, duration, plan_type, status, price
      FROM subscription_plans
      WHERE id = ? AND role = ?`,
     [pid, roleNorm],
@@ -63,7 +62,7 @@ export async function activatePartnerTrial({ userId, role, planId }) {
     e.statusCode = 404;
     throw e;
   }
-  if (String(plan.plan_type || "paid").toLowerCase() !== "trial") {
+  if (!isTrialPlanRecord(plan)) {
     const e = new Error("Selected plan is not a free trial plan");
     e.statusCode = 400;
     throw e;
@@ -75,34 +74,38 @@ export async function activatePartnerTrial({ userId, role, planId }) {
   }
 
   const existing = await loadLatestSubscription(uid, roleNorm);
+  const existingStatus = String(existing?.status || "").toLowerCase();
+
   if (existing && isPartnerSubscriptionAccessActive(existing)) {
-    const e = new Error("You already have an active subscription or trial");
+    const existingPlanType = String(existing.plan_type || "").toLowerCase();
+    if (existingStatus === "trial" || existingPlanType === "trial") {
+      const e = new Error("You already have an active free trial.");
+      e.statusCode = 400;
+      throw e;
+    }
+    const e = new Error(
+      "You already have an active paid subscription. Cancel it first or wait until it ends.",
+    );
     e.statusCode = 400;
     throw e;
   }
 
   const [trialUsed] = await dbPromise.query(
-    `SELECT id FROM user_subscriptions
-     WHERE user_id = ? AND role = ? AND LOWER(status) = 'trial'
+    `SELECT us.id
+     FROM user_subscriptions us
+     INNER JOIN subscription_plans sp ON sp.id = us.plan_id
+     WHERE us.user_id = ? AND us.role = ?
+       AND (
+         LOWER(us.status) = 'trial'
+         OR LOWER(sp.plan_type) = 'trial'
+       )
      LIMIT 1`,
     [uid, roleNorm],
   );
   if (trialUsed.length) {
-    // #region agent log
-    fetch("http://127.0.0.1:7873/ingest/e030798b-abf2-42c8-b0a1-b6795e79c4b6", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ab9682" },
-      body: JSON.stringify({
-        sessionId: "ab9682",
-        hypothesisId: "C",
-        location: "subscriptionTrial.service.js:trialUsed",
-        message: "trial blocked - already used",
-        data: { uid, roleNorm },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    const e = new Error("Free trial has already been used for this account");
+    const e = new Error(
+      "Free trial has already been used on this account. Choose a paid plan to continue.",
+    );
     e.statusCode = 400;
     throw e;
   }
@@ -111,70 +114,57 @@ export async function activatePartnerTrial({ userId, role, planId }) {
   const start = new Date();
   const end = addTrialDays(start, trialDays);
 
-  await dbPromise.query(
-    `INSERT INTO user_subscriptions
-       (user_id, role, plan_id, payment_type, razorpay_subscription_id,
-        start_date, end_date, next_billing_date, status, discount_amount, final_amount,
-        created_at, updated_at)
-     VALUES (?, ?, ?, 'manual', NULL, ?, ?, NULL, 'trial', 0, 0, NOW(), NOW())
-     ON DUPLICATE KEY UPDATE
-       plan_id = VALUES(plan_id),
-       payment_type = 'manual',
-       razorpay_subscription_id = NULL,
-       start_date = VALUES(start_date),
-       end_date = VALUES(end_date),
-       next_billing_date = NULL,
-       status = 'trial',
-       discount_amount = 0,
-       final_amount = 0,
-       updated_at = NOW()`,
-    [uid, roleNorm, pid, start, end],
-  );
+  if (existing?.id) {
+    await dbPromise.query(
+      `UPDATE user_subscriptions SET
+         plan_id = ?,
+         payment_type = 'manual',
+         razorpay_subscription_id = NULL,
+         start_date = ?,
+         end_date = ?,
+         next_billing_date = NULL,
+         status = 'active',
+         discount_amount = 0,
+         final_amount = 0,
+         updated_at = NOW()
+       WHERE id = ?`,
+      [pid, start, end, existing.id],
+    );
+  } else {
+    await dbPromise.query(
+      `INSERT INTO user_subscriptions
+         (user_id, role, plan_id, payment_type, razorpay_subscription_id,
+          start_date, end_date, next_billing_date, status, discount_amount, final_amount,
+          created_at, updated_at)
+       VALUES (?, ?, ?, 'manual', NULL, ?, ?, NULL, 'active', 0, 0, NOW(), NOW())`,
+      [uid, roleNorm, pid, start, end],
+    );
+  }
 
-  const [updated] = await dbPromise.query(
-    `SELECT id, status, start_date, end_date, plan_id
-     FROM user_subscriptions
-     WHERE user_id = ? AND role = ?
-     LIMIT 1`,
-    [uid, roleNorm],
-  );
-
-  const result = {
-    success: true,
-    message: `Free trial started. Access until ${end.toISOString()}.`,
-    trial_days: trialDays,
-    plan_name: plan.plan_name,
-    end_date: end,
-    subscription: updated[0] || null,
-  };
-
-  // #region agent log
-  fetch("http://127.0.0.1:7873/ingest/e030798b-abf2-42c8-b0a1-b6795e79c4b6", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ab9682" },
-    body: JSON.stringify({
-      sessionId: "ab9682",
-      hypothesisId: "E",
-      location: "subscriptionTrial.service.js:success",
-      message: "trial activated",
-      data: {
-        uid,
-        planId: pid,
-        status: updated[0]?.status,
-        end_date: updated[0]?.end_date,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
+  const updated = await loadLatestSubscription(uid, roleNorm);
 
   const daysLeft = Math.max(
     0,
     Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
   );
-  result.daysLeft = daysLeft;
 
-  return result;
+  return {
+    success: true,
+    message: `Free trial started. You have ${daysLeft} day${daysLeft === 1 ? "" : "s"} of full access.`,
+    trial_days: trialDays,
+    plan_name: plan.plan_name,
+    end_date: end,
+    daysLeft,
+    subscription: updated
+      ? {
+          id: updated.id,
+          status: updated.status,
+          start_date: updated.start_date,
+          end_date: updated.end_date,
+          plan_id: updated.plan_id,
+        }
+      : null,
+  };
 }
 
 /**
@@ -191,15 +181,20 @@ export async function getPartnerTrialStatus({ userId, role }) {
   }
 
   const [trialRows] = await dbPromise.query(
-    `SELECT id FROM user_subscriptions
-     WHERE user_id = ? AND role = ? AND LOWER(status) = 'trial'
+    `SELECT us.id
+     FROM user_subscriptions us
+     INNER JOIN subscription_plans sp ON sp.id = us.plan_id
+     WHERE us.user_id = ? AND us.role = ?
+       AND (
+         LOWER(us.status) = 'trial'
+         OR LOWER(sp.plan_type) = 'trial'
+       )
      LIMIT 1`,
     [uid, roleNorm],
   );
   const trialUsed = trialRows.length > 0;
 
   const latest = await loadLatestSubscription(uid, roleNorm);
-  const statusLower = String(latest?.status || "").toLowerCase();
   const end = latest?.end_date ? new Date(latest.end_date) : null;
   const now = new Date();
 
@@ -207,10 +202,10 @@ export async function getPartnerTrialStatus({ userId, role }) {
   let daysLeft = 0;
 
   if (
-    statusLower === "trial" &&
     end &&
     end > now &&
-    isPartnerSubscriptionAccessActive(latest)
+    isPartnerSubscriptionAccessActive(latest) &&
+    String(latest?.plan_type || "").toLowerCase() === "trial"
   ) {
     trialActive = true;
     daysLeft = Math.max(

@@ -39,8 +39,9 @@ export const buildPartnerSubscriptionHandler =
 
       let sub = rows[0];
       const statusLower = String(sub.status || "").toLowerCase();
+      const planTypeTrial = String(sub.plan_type || "").toLowerCase() === "trial";
       const trialEnded =
-        statusLower === "trial" &&
+        (statusLower === "trial" || planTypeTrial) &&
         sub.end_date &&
         new Date(sub.end_date) < new Date();
 
