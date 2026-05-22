@@ -13,9 +13,14 @@ export async function createSubscriptionCheckout(req, res) {
     const result = await startPartnerRecurringSubscription(req.body);
     return res.status(200).json(result);
   } catch (error) {
+    console.error("createSubscriptionCheckout:", error?.message || error);
+    const message =
+      error?.error?.description ||
+      error?.message ||
+      "Failed to create subscription";
     return res.status(error?.statusCode || 500).json({
       success: false,
-      message: error?.message || "Failed to create subscription",
+      message,
       ...(error?.meta || {}),
     });
   }

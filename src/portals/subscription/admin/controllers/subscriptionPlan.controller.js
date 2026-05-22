@@ -119,6 +119,7 @@ export const getPlansByPartnerType = async (req, res) => {
         sp.price AS totalPrice,
         sp.billing_cycle,
         sp.status,
+        sp.razorpay_plan_id,
         (${PLAN_TYPE_FROM_PLAN_SQL}) AS plan_type,
         COALESCE(GROUP_CONCAT(DISTINCT sf.name ORDER BY sf.id SEPARATOR '||'), '') AS features
       FROM subscription_plans sp
@@ -138,8 +139,9 @@ export const getPlansByPartnerType = async (req, res) => {
             .map((s) => s.trim())
             .filter(Boolean)
         : [];
+      const { razorpay_plan_id: rzPlanId, ...plan } = r;
       return {
-        ...r,
+        ...plan,
         basePrice: r.basePrice ?? Math.round(Number(r.totalPrice || 0) / 1.18),
         gstAmount:
           r.gstAmount ??
@@ -149,6 +151,7 @@ export const getPlansByPartnerType = async (req, res) => {
         plan_type: r.plan_type || "paid",
         planType: r.plan_type || "paid",
         isTrial: String(r.plan_type || "").toLowerCase() === "trial",
+        autopayAvailable: Boolean(rzPlanId),
         planDuration: planDurationLabel(
           r.duration,
           r.billing_cycle,

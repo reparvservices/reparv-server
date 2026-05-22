@@ -7,11 +7,22 @@ import crypto from "crypto";
 import db from "#db";
 import sendSubscriptionEmail from "#utils/subscriptionMailer.js";
 import {
+  createRazorpayPlanForSubscriptionPlanTable,
+  isRazorpayConfigured,
+} from "#utils/subscriptionRazorpayPlan.js";
+import { isTrialPlanRecord } from "../services/subscriptionTrial.service.js";
+import {
   findUserSubscriptionByRazorpayId,
   findUserSubscriptionByUserRole,
   upsertRecurringPayment,
   paymentEntityToRecord,
 } from "../services/recurringPayment.service.js";
+import {
+  upsertPendingRecurringRow,
+  activateRecurringSubscriptionRow,
+  upsertPendingOrderRow,
+  activateOrderSubscriptionRow,
+} from "../utils/userSubscriptionUpsert.js";
 
 /** Persist payment ledger + GST invoice (same as subscription autopay verify). */
 async function recordPartnerCheckoutPayment({
@@ -88,7 +99,7 @@ async function loadPaidPartnerPlan(localPlanId, role) {
     e.statusCode = 404;
     throw e;
   }
-  if (String(planRow.plan_type || "paid").toLowerCase() === "trial") {
+  if (isTrialPlanRecord(planRow)) {
     const e = new Error(
       "This is a free trial plan. Use trial activation instead of payment checkout.",
     );
@@ -101,6 +112,53 @@ async function loadPaidPartnerPlan(localPlanId, role) {
     throw e;
   }
   return planRow;
+}
+
+/** Ensure `subscription_plans.razorpay_plan_id` exists and is valid in Razorpay. */
+async function ensureRazorpayPlanId(planRow, role) {
+  if (planRow.razorpay_plan_id) {
+    try {
+      await razorpay.plans.fetch(planRow.razorpay_plan_id);
+      return planRow.razorpay_plan_id;
+    } catch {
+      console.warn(
+        `Stale razorpay_plan_id for plan ${planRow.id}; creating a new Razorpay plan.`,
+      );
+    }
+  }
+
+  if (!isRazorpayConfigured()) {
+    const e = new Error(
+      "Razorpay is not configured on the server. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.",
+    );
+    e.statusCode = 503;
+    throw e;
+  }
+
+  const synced = await createRazorpayPlanForSubscriptionPlanTable({
+    role,
+    planName: planRow.plan_name,
+    price: planRow.price,
+    billingCycle: planRow.billing_cycle,
+    duration: planRow.duration,
+    localPlanId: planRow.id,
+  });
+
+  if (!synced?.planId) {
+    const e = new Error(
+      synced?.reason ||
+        "Could not create Razorpay plan for autopay. Re-save the plan in Reparv Admin.",
+    );
+    e.statusCode = 400;
+    throw e;
+  }
+
+  await dbQuery(
+    `UPDATE subscription_plans SET razorpay_plan_id = ? WHERE id = ?`,
+    [synced.planId, planRow.id],
+  );
+
+  return synced.planId;
 }
 
 function parseCheckoutIdentity(payload) {
@@ -148,19 +206,13 @@ export async function startPartnerPaymentOrder(payload) {
     },
   });
 
-  await dbQuery(
-    `INSERT INTO user_subscriptions
-     (user_id, role, plan_id, payment_type, status, discount_amount, final_amount, created_at, updated_at)
-     VALUES (?, ?, ?, 'manual', 'pending', ?, ?, NOW(), NOW())
-     ON DUPLICATE KEY UPDATE
-       plan_id = VALUES(plan_id),
-       payment_type = 'manual',
-       discount_amount = VALUES(discount_amount),
-       final_amount = VALUES(final_amount),
-       status = IF(LOWER(status) = 'active', 'active', 'pending'),
-       updated_at = NOW()`,
-    [userId, role, localPlanId, discountAmount, computedFinalAmount],
-  );
+  await upsertPendingOrderRow({
+    userId,
+    role,
+    planId: localPlanId,
+    discountAmount,
+    finalAmount: computedFinalAmount,
+  });
 
   return {
     success: true,
@@ -222,32 +274,15 @@ export async function completePartnerPaymentOrder(payload) {
   const computedFinalAmount =
     finalAmount > 0 ? finalAmount : safeInt(planRow.price) || 0;
 
-  await dbQuery(
-    `INSERT INTO user_subscriptions
-     (user_id, role, plan_id, payment_type, razorpay_subscription_id, start_date, next_billing_date, end_date, status, discount_amount, final_amount, updated_at)
-     VALUES (?, ?, ?, 'manual', NULL, ?, ?, ?, 'active', ?, ?, NOW())
-     ON DUPLICATE KEY UPDATE
-       plan_id = VALUES(plan_id),
-       payment_type = 'manual',
-       razorpay_subscription_id = NULL,
-       start_date = VALUES(start_date),
-       next_billing_date = VALUES(next_billing_date),
-       end_date = VALUES(end_date),
-       status = 'active',
-       discount_amount = VALUES(discount_amount),
-       final_amount = VALUES(final_amount),
-       updated_at = NOW()`,
-    [
-      userId,
-      role,
-      localPlanId,
-      startDate,
-      endDate,
-      endDate,
-      discountAmount,
-      computedFinalAmount,
-    ],
-  );
+  await activateOrderSubscriptionRow({
+    userId,
+    role,
+    planId: localPlanId,
+    startDate,
+    endDate,
+    discountAmount,
+    finalAmount: computedFinalAmount,
+  });
 
   try {
     const subRow = await findUserSubscriptionByUserRole(userId, role);
@@ -304,38 +339,59 @@ export async function startPartnerRecurringSubscription(payload) {
   }
 
   const planRow = await loadPaidPartnerPlan(localPlanId, role);
-  if (!planRow.razorpay_plan_id) {
-    const e = new Error("Razorpay plan id missing for this plan. Re-sync plan first.");
-    e.statusCode = 400;
-    throw e;
-  }
+  const razorpayPlanId = await ensureRazorpayPlanId(planRow, role);
 
   const duration = Math.max(1, safeInt(planRow.duration) || 1);
-  const rzSubscription = await razorpay.subscriptions.create({
-    plan_id: planRow.razorpay_plan_id,
-    total_count: duration,
-    customer_notify: 1,
-    notes: {
-      local_plan_id: String(planRow.id),
-      local_user_id: String(userId),
+  let rzSubscription;
+  try {
+    rzSubscription = await razorpay.subscriptions.create({
+      plan_id: razorpayPlanId,
+      total_count: duration,
+      customer_notify: 1,
+      notes: {
+        local_plan_id: String(planRow.id),
+        local_user_id: String(userId),
+        role,
+      },
+    });
+  } catch (rzErr) {
+    const rzMsg =
+      rzErr?.error?.description ||
+      rzErr?.message ||
+      "Razorpay could not create subscription";
+    const invalidPlan =
+      /invalid|could not be found|does not exist/i.test(String(rzMsg));
+    if (!invalidPlan || planRow.razorpay_plan_id === razorpayPlanId) {
+      const e = new Error(rzMsg);
+      e.statusCode = rzErr?.statusCode || 502;
+      throw e;
+    }
+    const freshPlanId = await ensureRazorpayPlanId(
+      { ...planRow, razorpay_plan_id: null },
       role,
-    },
-  });
+    );
+    rzSubscription = await razorpay.subscriptions.create({
+      plan_id: freshPlanId,
+      total_count: duration,
+      customer_notify: 1,
+      notes: {
+        local_plan_id: String(planRow.id),
+        local_user_id: String(userId),
+        role,
+      },
+    });
+  }
 
   const now = new Date();
-  await dbQuery(
-    `INSERT INTO user_subscriptions
-     (user_id, role, plan_id, payment_type, razorpay_subscription_id, status, discount_amount, final_amount, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, NOW(), NOW())
-     ON DUPLICATE KEY UPDATE
-       payment_type = VALUES(payment_type),
-       razorpay_subscription_id = VALUES(razorpay_subscription_id),
-       discount_amount = VALUES(discount_amount),
-       final_amount = VALUES(final_amount),
-       status = IF(LOWER(status) = 'active', 'active', 'pending'),
-       updated_at = NOW()`,
-    [userId, role, localPlanId, paymentType, rzSubscription.id, discountAmount, finalAmount],
-  );
+  await upsertPendingRecurringRow({
+    userId,
+    role,
+    planId: localPlanId,
+    paymentType,
+    razorpaySubscriptionId: rzSubscription.id,
+    discountAmount,
+    finalAmount,
+  });
 
   return {
     success: true,
@@ -418,31 +474,17 @@ export async function completePartnerRecurringSubscription(payload) {
     );
   const computedFinalAmount = finalAmount > 0 ? finalAmount : safeInt(planRow.price) || 0;
 
-  await dbQuery(
-    `INSERT INTO user_subscriptions
-     (user_id, role, plan_id, payment_type, razorpay_subscription_id, start_date, next_billing_date, end_date, status, discount_amount, final_amount, updated_at)
-     VALUES (?, ?, ?, 'auto', ?, ?, ?, ?, 'active', ?, ?, NOW())
-     ON DUPLICATE KEY UPDATE
-       razorpay_subscription_id = VALUES(razorpay_subscription_id),
-       start_date = VALUES(start_date),
-       next_billing_date = VALUES(next_billing_date),
-       end_date = VALUES(end_date),
-       status = VALUES(status),
-       discount_amount = VALUES(discount_amount),
-       final_amount = VALUES(final_amount),
-       updated_at = NOW()`,
-    [
-      userId,
-      role,
-      localPlanId,
-      subscriptionId,
-      startDate,
-      nextBillingDate,
-      endDate,
-      discountAmount,
-      computedFinalAmount,
-    ],
-  );
+  await activateRecurringSubscriptionRow({
+    userId,
+    role,
+    planId: localPlanId,
+    razorpaySubscriptionId: subscriptionId,
+    startDate,
+    nextBillingDate,
+    endDate,
+    discountAmount,
+    finalAmount: computedFinalAmount,
+  });
 
   try {
     const subRow = await findUserSubscriptionByRazorpayId(subscriptionId);
