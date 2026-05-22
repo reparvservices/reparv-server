@@ -11,7 +11,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "TZ=Asia/Kolkata node src/server.js",
-    "dev": "TZ=Asia/Kolkata nodemon src/server.js"
+    "dev": "TZ=Asia/Kolkata nodemon src/server.js",
+    "import-meta-leads": "node src/portals/metalead/scripts/import-meta-leads-csv.js"
   },
   "keywords": [],
   "author": "",
