@@ -97,6 +97,27 @@ export const getImages = (req, res) => {
   });
 };
 
+const query = (sql, params) =>
+  new Promise((resolve, reject) =>
+    db.query(sql, params, (err, result) => (err ? reject(err) : resolve(result)))
+  );
+ 
+const beginTransaction = () =>
+  new Promise((resolve, reject) =>
+    db.beginTransaction((err) => (err ? reject(err) : resolve()))
+  );
+ 
+const commitTransaction = () =>
+  new Promise((resolve, reject) =>
+    db.commit((err) => (err ? reject(err) : resolve()))
+  );
+ 
+const rollbackTransaction = () =>
+  new Promise((resolve, reject) =>
+    db.rollback((err) => (err ? reject(err) : resolve()))
+  );
+ 
+
 export const addProperty = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -117,133 +138,143 @@ export const addProperty = async (req, res) => {
       city,
     } = req.body;
 
+    /* ---------- VALIDATE REQUIRED FIELDS ---------- */
+    if (!propertyName || !city) {
+      return res.status(400).json({ message: "propertyName and city are required" });
+    }
+
     /* ---------- DUPLICATE PROPERTY CHECK ---------- */
-    db.query(
+    const dupRows = await query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",
-      [propertyName],
-      async (err, result) => {
-        if (err)
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-
-        if (result.length > 0) {
-          return res
-            .status(409)
-            .json({ message: "Property name already exists!" });
-        }
-
-        /* ---------- CONVERT IMAGES TO WebP ---------- */
-        const files = await convertImagesToWebp(req.files);
-
-        /* ---------- UPLOAD IMAGES TO S3 (FIELD-WISE) ---------- */
-        const uploadFieldToS3 = async (field) => {
-          if (!files || !files[field]) return null;
-
-          const urls = [];
-          for (const file of files[field]) {
-            const url = await uploadToS3(file);
-            urls.push(url);
-          }
-          return JSON.stringify(urls);
-        };
-
-        const frontView = await uploadFieldToS3("frontView");
-        const sideView = await uploadFieldToS3("sideView");
-        const kitchenView = await uploadFieldToS3("kitchenView");
-        const hallView = await uploadFieldToS3("hallView");
-        const bedroomView = await uploadFieldToS3("bedroomView");
-        const bathroomView = await uploadFieldToS3("bathroomView");
-        const balconyView = await uploadFieldToS3("balconyView");
-        const nearestLandmark = await uploadFieldToS3("nearestLandmark");
-        const developedAmenities = await uploadFieldToS3("developedAmenities");
-
-        /* ---------- INSERT PROPERTY ---------- */
-        const insertSQL = `
-          INSERT INTO properties (
-            guestUserId, propertyCategory,
-            propertyName, totalSalesPrice,
-            totalOfferPrice, builtUpArea, carpetArea,
-            state, city,
-            frontView, sideView, kitchenView, hallView,
-            bedroomView, bathroomView, balconyView,
-            nearestLandmark, developedAmenities,
-            updated_at, created_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-
-        const values = [
-          partnerId,
-          propertyCategory,
-          propertyName,
-          totalSalesPrice,
-          totalOfferPrice,
-          builtUpArea,
-          carpetArea,
-          state,
-          city,
-          frontView,
-          sideView,
-          kitchenView,
-          hallView,
-          bedroomView,
-          bathroomView,
-          balconyView,
-          nearestLandmark,
-          developedAmenities,
-          currentdate,
-          currentdate,
-        ];
-
-        db.query(insertSQL, values, (err, insertResult) => {
-          if (err)
-            return res
-              .status(500)
-              .json({ message: "Insert failed", error: err });
-
-          const newPropertyId = insertResult.insertId;
-
-          /* ---------- GENERATE propertyCityId ---------- */
-          db.query(
-            "SELECT cityNACL FROM cities WHERE city = ? LIMIT 1",
-            [city],
-            (err2, cityResult) => {
-              if (err2)
-                return res
-                  .status(500)
-                  .json({ message: "City lookup failed", error: err2 });
-
-              if (cityResult.length === 0)
-                return res
-                  .status(404)
-                  .json({ message: "City not found in database" });
-
-              const cityNACL = cityResult[0].cityNACL;
-              const propertyCityId = `${cityNACL}-${newPropertyId}`;
-
-              db.query(
-                "UPDATE properties SET propertyCityId = ? WHERE propertyid = ?",
-                [propertyCityId, newPropertyId],
-                (err3) => {
-                  if (err3)
-                    return res.status(500).json({
-                      message: "Failed to update propertyCityId",
-                      error: err3,
-                    });
-
-                  return res.status(201).json({
-                    message: "Property added successfully",
-                    id: newPropertyId,
-                    propertyCityId,
-                  });
-                }
-              );
-            }
-          );
-        });
-      }
+      [propertyName]
     );
+    if (dupRows.length > 0) {
+      return res.status(409).json({ message: "Property name already exists!" });
+    }
+
+    /* ---------- CITY LOOKUP (mandatory before insert) ---------- */
+    const cityRows = await query(
+      "SELECT cityNACL FROM cities WHERE city = ? LIMIT 1",
+      [city]
+    );
+    if (cityRows.length === 0) {
+      return res.status(404).json({ message: "City not found in database" });
+    }
+    const cityNACL = cityRows[0].cityNACL;
+
+    /* ---------- CONVERT IMAGES TO WebP ---------- */
+    const files = await convertImagesToWebp(req.files);
+
+    /* ---------- UPLOAD IMAGES TO S3 (FIELD-WISE) ---------- */
+    const uploadFieldToS3 = async (field) => {
+      if (!files || !files[field]) return null;
+      const urls = [];
+      for (const file of files[field]) {
+        const url = await uploadToS3(file);
+        urls.push(url);
+      }
+      return JSON.stringify(urls);
+    };
+
+    const [
+      frontView,
+      sideView,
+      kitchenView,
+      hallView,
+      bedroomView,
+      bathroomView,
+      balconyView,
+      nearestLandmark,
+      developedAmenities,
+    ] = await Promise.all([
+      uploadFieldToS3("frontView"),
+      uploadFieldToS3("sideView"),
+      uploadFieldToS3("kitchenView"),
+      uploadFieldToS3("hallView"),
+      uploadFieldToS3("bedroomView"),
+      uploadFieldToS3("bathroomView"),
+      uploadFieldToS3("balconyView"),
+      uploadFieldToS3("nearestLandmark"),
+      uploadFieldToS3("developedAmenities"),
+    ]);
+
+    /* ---------- INSERT + propertyCityId IN TRANSACTION ---------- */
+    await beginTransaction();
+
+    let newPropertyId;
+    try {
+      const insertSQL = `
+        INSERT INTO properties (
+          guestUserId, propertyCategory,
+          propertyName, totalSalesPrice,
+          totalOfferPrice, builtUpArea, carpetArea,
+          state, city,
+          frontView, sideView, kitchenView, hallView,
+          bedroomView, bathroomView, balconyView,
+          nearestLandmark, developedAmenities,
+          updated_at, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      const insertResult = await query(insertSQL, [
+        partnerId,
+        propertyCategory,
+        propertyName,
+        totalSalesPrice,
+        totalOfferPrice,
+        builtUpArea,
+        carpetArea,
+        state,
+        city,
+        frontView,
+        sideView,
+        kitchenView,
+        hallView,
+        bedroomView,
+        bathroomView,
+        balconyView,
+        nearestLandmark,
+        developedAmenities,
+        currentdate,
+        currentdate,
+      ]);
+
+      newPropertyId = insertResult.insertId;
+
+      if (!newPropertyId) {
+        throw new Error("Insert did not return a valid insertId");
+      }
+
+      /* ---------- GENERATE & STORE propertyCityId ---------- */
+      const propertyCityId = `${cityNACL}-${newPropertyId}`;
+
+      const updateResult = await query(
+        "UPDATE properties SET propertyCityId = ? WHERE propertyid = ?",
+        [propertyCityId, newPropertyId]
+      );
+
+      if (updateResult.affectedRows === 0) {
+        throw new Error("Failed to store propertyCityId — no rows updated");
+      }
+
+      await commitTransaction();
+
+      return res.status(201).json({
+        message: "Property added successfully",
+        id: newPropertyId,
+        propertyCityId,
+      });
+
+    } catch (txError) {
+      await rollbackTransaction();
+      console.error("Transaction rolled back:", txError);
+      return res.status(500).json({
+        message: txError.message || "Failed to save property",
+        error: txError,
+      });
+    }
+
   } catch (error) {
     console.error("Add property error:", error);
     return res.status(500).json({

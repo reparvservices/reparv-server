@@ -401,176 +401,158 @@ export const addProperty = async (req, res) => {
 };
 
 export const v2AddProperty = async (req, res) => {
-  try {
-    const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-    const partnerId = req.projectPartnerUser?.id;
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+  const partnerId = req.projectPartnerUser?.id;
 
-    if (!partnerId) {
-      return res.status(401).json({ message: "Unauthorized Access" });
+  if (!partnerId) {
+    return res.status(401).json({ message: "Unauthorized Access" });
+  }
+
+  const {
+    propertyCategory,
+    propertyName,
+    totalSalesPrice,
+    totalOfferPrice,
+    builtUpArea,
+    carpetArea,
+    state,
+    city,
+    pincode,
+    address,
+    latitude,
+    longitude,
+    projectBy,
+    contact,
+    email,
+
+    frontView = [],
+    sideView = [],
+    kitchenView = [],
+    hallView = [],
+    bedroomView = [],
+    bathroomView = [],
+    balconyView = [],
+    nearestLandmark = [],
+    developedAmenities = [],
+  } = req.body;
+
+  if (!propertyCategory || !propertyName || !state || !city) {
+    return res.status(400).json({
+      message: "Property name, category, city, and state are required",
+    });
+  }
+
+  try {
+    // 1. Duplicate check
+    const [existing] = await db
+      .promise()
+      .query("SELECT propertyid FROM properties WHERE propertyName = ?", [
+        propertyName,
+      ]);
+
+    if (existing.length > 0) {
+      return res.status(409).json({ message: "Property name already exists!" });
     }
 
-    const {
-      propertyCategory,
-      propertyName,
-      totalSalesPrice,
-      totalOfferPrice,
-      builtUpArea,
-      carpetArea,
-      state,
-      city,
-      pincode,
-      address,
-      latitude,
-      longitude,
-      projectBy,
-      contact,
-      email,
+    // 2. City lookup BEFORE insert (mandatory — propertyCityId cannot be generated without it)
+    const [cityResult] = await db
+      .promise()
+      .query("SELECT cityNACL FROM cities WHERE city = ? LIMIT 1", [city]);
 
-      // images coming from frontend as URLs
-      frontView = [],
-      sideView = [],
-      kitchenView = [],
-      hallView = [],
-      bedroomView = [],
-      bathroomView = [],
-      balconyView = [],
-      nearestLandmark = [],
-      developedAmenities = [],
-    } = req.body;
+    if (!cityResult.length) {
+      return res.status(404).json({ message: "City not found in database" });
+    }
 
-    /* Required validation */
-    if (!propertyCategory || !propertyName || !state || !city) {
-      return res.status(400).json({
-        message: "Property name, category, city, and state are required",
+    const cityNACL = cityResult[0].cityNACL;
+
+    // 3. Insert + propertyCityId update inside a transaction
+    const conn = await db.promise().getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const insertSQL = `
+        INSERT INTO properties (
+          projectpartnerid, propertyCategory,
+          propertyName, totalSalesPrice,
+          totalOfferPrice, builtUpArea, carpetArea,
+          state, city, pincode, address, latitude, longitude,
+          projectBy, contact, email,
+          frontView, sideView, kitchenView, hallView,
+          bedroomView, bathroomView, balconyView,
+          nearestLandmark, developedAmenities, seoSlug,
+          updated_at, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      const [insertResult] = await conn.query(insertSQL, [
+        partnerId,
+        propertyCategory,
+        propertyName,
+        totalSalesPrice || null,
+        totalOfferPrice || null,
+        builtUpArea || null,
+        carpetArea || null,
+        state,
+        city,
+        pincode || null,
+        address || null,
+        latitude || null,
+        longitude || null,
+        projectBy || null,
+        contact || null,
+        email || null,
+        JSON.stringify(frontView),
+        JSON.stringify(sideView),
+        JSON.stringify(kitchenView),
+        JSON.stringify(hallView),
+        JSON.stringify(bedroomView),
+        JSON.stringify(bathroomView),
+        JSON.stringify(balconyView),
+        JSON.stringify(nearestLandmark),
+        JSON.stringify(developedAmenities),
+        toSlug(propertyName),
+        currentdate,
+        currentdate,
+      ]);
+
+      const newPropertyId = insertResult.insertId;
+      if (!newPropertyId)
+        throw new Error("Insert did not return a valid insertId");
+
+      const propertyCityId = `${cityNACL}-${newPropertyId}`;
+
+      const [updateResult] = await conn.query(
+        "UPDATE properties SET propertyCityId = ? WHERE propertyid = ?",
+        [propertyCityId, newPropertyId],
+      );
+
+      if (updateResult.affectedRows === 0) {
+        throw new Error("Failed to store propertyCityId — no rows updated");
+      }
+
+      await conn.commit();
+      conn.release();
+
+      return res.status(201).json({
+        message: "Property added successfully",
+        id: newPropertyId,
+        propertyCityId,
+      });
+    } catch (txError) {
+      await conn.rollback();
+      conn.release();
+      console.error("v2AddProperty transaction rolled back:", txError);
+      return res.status(500).json({
+        message: txError.message || "Failed to save property",
+        error: txError.message,
       });
     }
-
-    /* ---------- DUPLICATE CHECK ---------- */
-    db.query(
-      "SELECT propertyid FROM properties WHERE propertyName = ?",
-      [propertyName],
-      (err, result) => {
-        if (err) {
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err });
-        }
-
-        if (result.length > 0) {
-          return res.status(409).json({
-            message: "Property name already exists!",
-          });
-        }
-
-        /* ---------- INSERT PROPERTY ---------- */
-        const insertSQL = `
-          INSERT INTO properties (
-            projectpartnerid, propertyCategory,
-            propertyName, totalSalesPrice,
-            totalOfferPrice, builtUpArea, carpetArea,
-            state, city, pincode, address, latitude, longitude,
-            projectBy, contact, email,
-            frontView, sideView, kitchenView, hallView,
-            bedroomView, bathroomView, balconyView,
-            nearestLandmark, developedAmenities, seoSlug,
-            updated_at, created_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-
-        const values = [
-          partnerId,
-          propertyCategory,
-          propertyName,
-          totalSalesPrice,
-          totalOfferPrice,
-          builtUpArea,
-          carpetArea,
-          state,
-          city,
-          pincode,
-          address,
-          latitude,
-          longitude,
-          projectBy,
-          contact,
-          email,
-
-          // store URLs as JSON
-          JSON.stringify(frontView),
-          JSON.stringify(sideView),
-          JSON.stringify(kitchenView),
-          JSON.stringify(hallView),
-          JSON.stringify(bedroomView),
-          JSON.stringify(bathroomView),
-          JSON.stringify(balconyView),
-          JSON.stringify(nearestLandmark),
-          JSON.stringify(developedAmenities),
-
-          toSlug(propertyName),
-          currentdate,
-          currentdate,
-        ];
-
-        db.query(insertSQL, values, (err, insertResult) => {
-          if (err) {
-            return res.status(500).json({
-              message: "Insert failed",
-              error: err,
-            });
-          }
-
-          const newPropertyId = insertResult.insertId;
-
-          /* ---------- GENERATE propertyCityId ---------- */
-          db.query(
-            "SELECT cityNACL FROM cities WHERE city = ? LIMIT 1",
-            [city],
-            (err2, cityResult) => {
-              if (err2) {
-                return res.status(500).json({
-                  message: "City lookup failed",
-                  error: err2,
-                });
-              }
-
-              if (cityResult.length === 0) {
-                return res.status(404).json({
-                  message: "City not found in database",
-                });
-              }
-
-              const cityNACL = cityResult[0].cityNACL;
-              const propertyCityId = `${cityNACL}-${newPropertyId}`;
-
-              db.query(
-                "UPDATE properties SET propertyCityId = ? WHERE propertyid = ?",
-                [propertyCityId, newPropertyId],
-                (err3) => {
-                  if (err3) {
-                    return res.status(500).json({
-                      message: "Failed to update propertyCityId",
-                      error: err3,
-                    });
-                  }
-
-                  return res.status(201).json({
-                    message: "Property added successfully",
-                    id: newPropertyId,
-                    propertyCityId,
-                  });
-                },
-              );
-            },
-          );
-        });
-      },
-    );
   } catch (error) {
-    console.error("Add property error:", error);
+    console.error("v2AddProperty error:", error);
     return res.status(500).json({
-      message: "Server error",
-      error,
+      message: "Internal server error",
+      error: error.message || error,
     });
   }
 };
@@ -1972,7 +1954,9 @@ export const v2UpdateImages = async (req, res) => {
       async (err, result) => {
         if (err) {
           console.error("DB error:", err);
-          return res.status(500).json({ message: "Database error", error: err });
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
         }
 
         if (result.length === 0) {
@@ -2023,14 +2007,16 @@ export const v2UpdateImages = async (req, res) => {
         db.query(updateSQL, values, async (err) => {
           if (err) {
             console.error("Update error:", err);
-            return res.status(500).json({ message: "Update failed", error: err });
+            return res
+              .status(500)
+              .json({ message: "Update failed", error: err });
           }
 
           res.status(200).json({
             message: "Property images updated successfully",
           });
         });
-      }
+      },
     );
   } catch (err) {
     console.error("Update error:", err);

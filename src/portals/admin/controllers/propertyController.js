@@ -79,9 +79,7 @@ export const getAll = (req, res) => {
       GROUP BY properties.propertyid
       ORDER BY properties.created_at DESC
     `;
-  }
-
-  else if (propertyLister === "Project Partner") {
+  } else if (propertyLister === "Project Partner") {
     sql = `
       SELECT 
         properties.*,
@@ -113,9 +111,7 @@ export const getAll = (req, res) => {
       GROUP BY properties.propertyid
       ORDER BY properties.created_at DESC
     `;
-  }
-
-  else if (propertyLister === "Guest User") {
+  } else if (propertyLister === "Guest User") {
     sql = `
       SELECT 
         properties.*,
@@ -147,9 +143,7 @@ export const getAll = (req, res) => {
       GROUP BY properties.propertyid
       ORDER BY properties.created_at DESC
     `;
-  }
-
-  else if (propertyLister === "Onboarding Partner") {
+  } else if (propertyLister === "Onboarding Partner") {
     sql = `
       SELECT 
         properties.*,
@@ -181,9 +175,7 @@ export const getAll = (req, res) => {
       GROUP BY properties.propertyid
       ORDER BY properties.created_at DESC
     `;
-  }
-
-  else {
+  } else {
     sql = `
       SELECT 
         properties.*,
@@ -224,8 +216,14 @@ export const getAll = (req, res) => {
       calls: Number(row.calls) || 0,
       calls: Number(row.shares) || 0,
       whatsapp: Number(row.whatsapp) || 0,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -294,8 +292,14 @@ export const getAllOld = (req, res) => {
     }
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -406,6 +410,291 @@ export const checkPropertyName = (req, res) => {
 };
 
 export const addProperty = async (req, res) => {
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
+  const {
+    builderid,
+    projectBy,
+    possessionDate,
+    propertyCategory,
+    propertyApprovedBy,
+    propertyName,
+    address,
+    state,
+    city,
+    pincode,
+    location,
+    distanceFromCityCenter,
+    latitude,
+    longitude,
+    totalSalesPrice,
+    totalOfferPrice,
+    stampDuty,
+    gst,
+    advocateFee,
+    msebWater,
+    maintenance,
+    other,
+    tags,
+    propertyType,
+    builtYear,
+    ownershipType,
+    builtUpArea,
+    carpetArea,
+    parkingAvailability,
+    totalFloors,
+    floorNo,
+    loanAvailability,
+    propertyFacing,
+    reraRegistered,
+    furnishing,
+    waterSupply,
+    powerBackup,
+    locationFeature,
+    sizeAreaFeature,
+    parkingFeature,
+    terraceFeature,
+    ageOfPropertyFeature,
+    amenitiesFeature,
+    propertyStatusFeature,
+    smartHomeFeature,
+    securityBenefit,
+    primeLocationBenefit,
+    rentalIncomeBenefit,
+    qualityBenefit,
+    capitalAppreciationBenefit,
+    ecofriendlyBenefit,
+  } = req.body;
+
+  if (!propertyCategory || !propertyName || !city) {
+    return res.status(400).json({ message: "Required fields missing" });
+  }
+
+  try {
+    // 1. Duplicate check
+    const [exists] = await db
+      .promise()
+      .query("SELECT propertyid FROM properties WHERE propertyName = ?", [
+        propertyName,
+      ]);
+
+    if (exists.length > 0) {
+      return res.status(409).json({ message: "Property name already exists" });
+    }
+
+    // 2. City lookup BEFORE insert (mandatory — propertyCityId cannot be generated without it)
+    const [cityResult] = await db
+      .promise()
+      .query("SELECT cityNACL FROM cities WHERE city = ? LIMIT 1", [city]);
+
+    if (!cityResult.length) {
+      return res.status(404).json({ message: "City not found in database" });
+    }
+
+    const cityNACL = cityResult[0].cityNACL;
+
+    // 3. Computed fields
+    const registrationFees =
+      totalOfferPrice > 3000000
+        ? (30000 / totalOfferPrice) * 100
+        : ["RentalFlat", "RentalShop", "RentalOffice"].includes(
+              propertyCategory,
+            )
+          ? 0
+          : 1;
+
+    const calculateEMI = (price) => {
+      const r = 0.08 / 12;
+      const n = 240;
+      return Math.round(
+        (price * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1),
+      );
+    };
+    const emi = calculateEMI(Number(totalOfferPrice));
+
+    const formattedPossessionDate = possessionDate
+      ? moment(possessionDate).format("YYYY-MM-DD")
+      : null;
+
+    const propertyTypeJson = JSON.stringify(
+      Array.isArray(propertyType)
+        ? propertyType
+        : String(propertyType)
+            .split(",")
+            .map((i) => i.trim())
+            .filter(Boolean),
+    );
+
+    // 4. Convert uploaded images to WebP then upload to S3
+    const files = await convertImagesToWebp(req.files);
+
+    const uploadImagesToS3 = async (fieldFiles) => {
+      if (!fieldFiles) return null;
+      const urls = [];
+      for (const file of fieldFiles) {
+        urls.push(await uploadToS3(file));
+      }
+      return JSON.stringify(urls);
+    };
+
+    const [
+      frontView,
+      sideView,
+      kitchenView,
+      hallView,
+      bedroomView,
+      bathroomView,
+      balconyView,
+      nearestLandmark,
+      developedAmenities,
+    ] = await Promise.all([
+      uploadImagesToS3(files.frontView),
+      uploadImagesToS3(files.sideView),
+      uploadImagesToS3(files.kitchenView),
+      uploadImagesToS3(files.hallView),
+      uploadImagesToS3(files.bedroomView),
+      uploadImagesToS3(files.bathroomView),
+      uploadImagesToS3(files.balconyView),
+      uploadImagesToS3(files.nearestLandmark),
+      uploadImagesToS3(files.developedAmenities),
+    ]);
+
+    // 5. Insert + propertyCityId update inside a transaction
+    const conn = await db.promise().getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const insertSQL = `
+        INSERT INTO properties (
+          builderid, projectBy, possessionDate, propertyCategory,
+          propertyApprovedBy, propertyName, address, state, city, pincode,
+          location, distanceFromCityCenter, latitude, longitude,
+          totalSalesPrice, totalOfferPrice, emi, stampDuty, registrationFee,
+          gst, advocateFee, msebWater, maintenance, other, tags,
+          propertyType, builtYear, ownershipType, builtUpArea, carpetArea,
+          parkingAvailability, totalFloors, floorNo, loanAvailability,
+          propertyFacing, reraRegistered, furnishing, waterSupply, powerBackup,
+          locationFeature, sizeAreaFeature, parkingFeature, terraceFeature,
+          ageOfPropertyFeature, amenitiesFeature, propertyStatusFeature,
+          smartHomeFeature, securityBenefit, primeLocationBenefit,
+          rentalIncomeBenefit, qualityBenefit, capitalAppreciationBenefit,
+          ecofriendlyBenefit,
+          frontView, sideView, kitchenView, hallView, bedroomView,
+          bathroomView, balconyView, nearestLandmark, developedAmenities,
+          seoSlug, created_at, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `;
+
+      const [result] = await conn.query(insertSQL, [
+        builderid,
+        projectBy,
+        formattedPossessionDate,
+        propertyCategory,
+        propertyApprovedBy,
+        propertyName,
+        address,
+        state,
+        city,
+        pincode,
+        location,
+        distanceFromCityCenter,
+        latitude,
+        longitude,
+        totalSalesPrice,
+        totalOfferPrice,
+        emi,
+        stampDuty,
+        registrationFees,
+        gst,
+        advocateFee,
+        msebWater,
+        maintenance,
+        other,
+        tags,
+        propertyTypeJson,
+        builtYear,
+        ownershipType,
+        builtUpArea,
+        carpetArea,
+        parkingAvailability,
+        totalFloors,
+        floorNo,
+        loanAvailability,
+        propertyFacing,
+        reraRegistered,
+        furnishing,
+        waterSupply,
+        powerBackup,
+        locationFeature,
+        sizeAreaFeature,
+        parkingFeature,
+        terraceFeature,
+        ageOfPropertyFeature,
+        amenitiesFeature,
+        propertyStatusFeature,
+        smartHomeFeature,
+        securityBenefit,
+        primeLocationBenefit,
+        rentalIncomeBenefit,
+        qualityBenefit,
+        capitalAppreciationBenefit,
+        ecofriendlyBenefit,
+        frontView,
+        sideView,
+        kitchenView,
+        hallView,
+        bedroomView,
+        bathroomView,
+        balconyView,
+        nearestLandmark,
+        developedAmenities,
+        toSlug(propertyName),
+        currentdate,
+        currentdate,
+      ]);
+
+      const newPropertyId = result.insertId;
+      if (!newPropertyId)
+        throw new Error("Insert did not return a valid insertId");
+
+      const propertyCityId = `${cityNACL}-${newPropertyId}`;
+
+      const [updateResult] = await conn.query(
+        "UPDATE properties SET propertyCityId = ? WHERE propertyid = ?",
+        [propertyCityId, newPropertyId],
+      );
+
+      if (updateResult.affectedRows === 0) {
+        throw new Error("Failed to store propertyCityId — no rows updated");
+      }
+
+      await conn.commit();
+      conn.release();
+
+      return res.status(201).json({
+        message: "Property added successfully",
+        id: newPropertyId,
+        propertyCityId,
+      });
+    } catch (txError) {
+      await conn.rollback();
+      conn.release();
+      console.error("addProperty transaction rolled back:", txError);
+      return res.status(500).json({
+        message: txError.message || "Failed to save property",
+        error: txError.message,
+      });
+    }
+  } catch (error) {
+    console.error("addProperty error:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      error: error.message || error,
+    });
+  }
+};
+
+export const addPropertyOlder = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
@@ -487,17 +776,17 @@ export const addProperty = async (req, res) => {
       totalOfferPrice > 3000000
         ? (30000 / totalOfferPrice) * 100
         : ["RentalFlat", "RentalShop", "RentalOffice"].includes(
-            propertyCategory
-          )
-        ? 0
-        : 1;
+              propertyCategory,
+            )
+          ? 0
+          : 1;
 
     /* EMI */
     const calculateEMI = (price) => {
       const r = 0.08 / 12;
       const n = 240;
       return Math.round(
-        (price * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
+        (price * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1),
       );
     };
     const emi = calculateEMI(Number(totalOfferPrice));
@@ -514,7 +803,7 @@ export const addProperty = async (req, res) => {
         : String(propertyType)
             .split(",")
             .map((i) => i.trim())
-            .filter(Boolean)
+            .filter(Boolean),
     );
 
     /* Upload images to S3 */
@@ -627,7 +916,7 @@ export const addProperty = async (req, res) => {
         developedAmenities,
         toSlug(propertyName),
         currentdate,
-        currentdate
+        currentdate,
       ]);
 
     return res.status(201).json({
@@ -743,7 +1032,7 @@ export const update = async (req, res) => {
     registrationFees = (30000 / totalOfferPrice) * 100;
   } else {
     registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
-      propertyCategory
+      propertyCategory,
     )
       ? 0
       : 1;
@@ -765,11 +1054,11 @@ export const update = async (req, res) => {
   const propertyTypeArray = Array.isArray(propertyType)
     ? propertyType
     : typeof propertyType === "string"
-    ? propertyType
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean)
-    : [];
+      ? propertyType
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
   const propertyTypeJson = JSON.stringify(propertyTypeArray);
 
   try {
@@ -968,7 +1257,7 @@ export const del = (req, res) => {
           error: s3Error,
         });
       }
-    }
+    },
   );
 };
 
@@ -1009,9 +1298,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1052,9 +1341,9 @@ export const approve = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1095,9 +1384,9 @@ export const hotDeal = (req, res) => {
           res
             .status(200)
             .json({ message: "Property change into hot deal successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1138,9 +1427,9 @@ export const reparvAssured = (req, res) => {
           res.status(200).json({
             message: "Property reparv assured status change successfully",
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1186,7 +1475,7 @@ export const setTopPicks = async (req, res) => {
           updated_at = NOW()
         WHERE propertyid = ?
       `,
-      [topPicksStatus, bannerUrl, propertyId]
+      [topPicksStatus, bannerUrl, propertyId],
     );
 
     return res.status(200).json({
@@ -1263,9 +1552,9 @@ export const changePropertyLocation = (req, res) => {
           res
             .status(200)
             .json({ message: "Property Location Change Successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1342,9 +1631,9 @@ export const uploadBrochureAndVideo = (req, res) => {
             videoPath: videoPath || oldVideo,
             videoLink: videoLink || oldVideoLink,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1369,7 +1658,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
       .promise()
       .query(
         "SELECT brochureFile, videoLink FROM properties WHERE propertyid = ?",
-        [propertyId]
+        [propertyId],
       );
 
     if (!rows.length) {
@@ -1399,7 +1688,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
         SET brochureFile = ?, videoLink = ?, updated_at = NOW()
         WHERE propertyid = ?
       `,
-      [brochureUrl, finalVideoLink, propertyId]
+      [brochureUrl, finalVideoLink, propertyId],
     );
 
     return res.status(200).json({
@@ -1463,7 +1752,8 @@ export const deleteBrochureFile = async (req, res) => {
 
 //* ADD Seo Details */
 export const seoDetails = (req, res) => {
-  const { seoSlug, pageTitle, seoTittle, seoDescription, propertyDescription } = req.body;
+  const { seoSlug, pageTitle, seoTittle, seoDescription, propertyDescription } =
+    req.body;
   if (!seoSlug || !seoTittle || !seoDescription || !propertyDescription) {
     return res.status(401).json({ message: "All Field Are Required" });
   }
@@ -1483,7 +1773,14 @@ export const seoDetails = (req, res) => {
 
       db.query(
         "UPDATE properties SET seoSlug = ?, pageTitle = ?, seoTittle = ?, seoDescription = ?, propertyDescription = ? WHERE propertyid = ?",
-        [seoSlug, pageTitle, seoTittle, seoDescription, propertyDescription, Id],
+        [
+          seoSlug,
+          pageTitle,
+          seoTittle,
+          seoDescription,
+          propertyDescription,
+          Id,
+        ],
         (err, result) => {
           if (err) {
             console.error("Error While Add Seo Details:", err);
@@ -1492,9 +1789,9 @@ export const seoDetails = (req, res) => {
               .json({ message: "Database error", error: err });
           }
           res.status(200).json({ message: "Seo Details Add successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1538,9 +1835,9 @@ export const changeProjectPartner = async (req, res) => {
           return res.status(200).json({
             message: `Property assigned successfully to ${projectPartner}`,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1576,9 +1873,9 @@ export const addRejectReason = (req, res) => {
           res
             .status(200)
             .json({ message: "Property Reject Reason Add successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1683,7 +1980,7 @@ export const setPropertyCommission = (req, res) => {
           .status(200)
           .json({ message: "Property commission saved successfully" });
       });
-    }
+    },
   );
 };
 
@@ -1748,7 +2045,7 @@ export const updateImages = async (req, res) => {
       if (!compressedFiles[field]?.length) return null;
 
       const urls = await Promise.all(
-        compressedFiles[field].map((file) => uploadToS3(file))
+        compressedFiles[field].map((file) => uploadToS3(file)),
       );
 
       return JSON.stringify(urls);
@@ -1863,9 +2160,9 @@ export const deleteImages = async (req, res) => {
             res.status(200).json({
               message: "Images deleted successfully from S3",
             });
-          }
+          },
         );
-      }
+      },
     );
   } catch (error) {
     console.error("S3 delete error:", error);
@@ -1946,7 +2243,7 @@ export const additionalInfoAdd = (req, res) => {
         message: "Additional Info added successfully",
         Id: insertResult.insertId,
       });
-    }
+    },
   );
 };
 
@@ -2038,7 +2335,7 @@ export const editAdditionalInfo = (req, res) => {
   }
 
   const updateSQL = `UPDATE propertiesinfo SET ${updateFields.join(
-    ", "
+    ", ",
   )} WHERE propertyinfoid = ?`;
 
   updateValues.push(Id);
