@@ -1,5 +1,6 @@
 import dbPromise from "#db/promise";
 import { addPlanDuration } from "../utils/planDuration.js";
+import { ensureEnterpriseActivationInvoice } from "./enterpriseActivationInvoice.service.js";
 
 const VALID_ROLES = new Set(["sales", "territory", "project"]);
 const VALID_BILLING_CYCLES = new Set(["monthly", "yearly"]);
@@ -117,6 +118,20 @@ export async function assignEnterpriseSubscription(body = {}) {
 
   await syncLegacyPaymentStatus(r, uid);
 
+  const [subRows] = await dbPromise.query(
+    `SELECT id FROM user_subscriptions WHERE user_id = ? AND role = ? LIMIT 1`,
+    [uid, r],
+  );
+  const userSubscriptionId = subRows[0]?.id;
+  let activationInvoice = null;
+  if (userSubscriptionId) {
+    try {
+      activationInvoice = await ensureEnterpriseActivationInvoice(userSubscriptionId);
+    } catch (err) {
+      console.error("[enterprise-assign] activation invoice:", err.message);
+    }
+  }
+
   return {
     success: true,
     message: "Enterprise subscription assigned successfully",
@@ -131,6 +146,8 @@ export async function assignEnterpriseSubscription(body = {}) {
       start_date: start.toISOString(),
       end_date: end.toISOString(),
       final_amount: amount,
+      user_subscription_id: userSubscriptionId || null,
+      activation_invoice: activationInvoice,
     },
   };
 }

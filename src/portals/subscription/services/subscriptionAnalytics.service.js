@@ -1,5 +1,10 @@
 import dbPromise from "#db/promise";
 import { CANONICAL_USER_SUBSCRIPTION_IDS_SQL } from "../utils/userSubscriptionCanonical.js";
+import {
+  REVENUE_PAYMENT_JOIN_SQL,
+  SUBSCRIPTION_STARTED_STATUS_SQL,
+} from "../utils/subscriptionAnalyticsSql.js";
+import { PLAN_TYPE_SELECT_SQL } from "../utils/planTypeSql.js";
 
 const MONTH_LABELS = [
   "Jan",
@@ -31,22 +36,24 @@ function parseMonth(raw) {
 
 async function revenueInRange(start, end) {
   const [rows] = await dbPromise.query(
-    `SELECT COALESCE(SUM(amount), 0) AS total
-     FROM subscription_recurring_payments
-     WHERE status IN ('captured', 'authorized')
-       AND COALESCE(paid_at, created_at) >= ?
-       AND COALESCE(paid_at, created_at) < ?`,
+    `SELECT COALESCE(SUM(rp.amount), 0) AS total
+     ${REVENUE_PAYMENT_JOIN_SQL}
+       AND COALESCE(rp.paid_at, rp.created_at) >= ?
+       AND COALESCE(rp.paid_at, rp.created_at) < ?`,
     [start, end],
   );
   let total = Number(rows[0]?.total) || 0;
   if (total > 0) return total;
 
   const [fallback] = await dbPromise.query(
-    `SELECT COALESCE(SUM(IFNULL(final_amount, 0)), 0) AS total
-     FROM user_subscriptions
-     WHERE created_at >= ? AND created_at < ?
-       AND LOWER(status) NOT IN ('trial', 'pending')
-       AND IFNULL(final_amount, 0) > 0`,
+    `SELECT COALESCE(SUM(IFNULL(us.final_amount, 0)), 0) AS total
+     FROM user_subscriptions us
+     LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
+     WHERE us.created_at >= ? AND us.created_at < ?
+       AND LOWER(us.status) = 'active'
+       AND (us.end_date IS NULL OR us.end_date >= NOW())
+       AND LOWER((${PLAN_TYPE_SELECT_SQL})) NOT IN ('trial', 'enterprise')
+       AND IFNULL(us.final_amount, 0) > 0`,
     [start, end],
   );
   return Number(fallback[0]?.total) || 0;
@@ -76,43 +83,47 @@ export async function getSubscriptionAnalytics({ year: yearRaw, month: monthRaw 
          SUM(LOWER(us.status) = 'cancelled') AS cancelled,
          SUM(LOWER(us.status) = 'expired') AS expired,
          SUM(LOWER(us.status) = 'halted') AS halted,
-         SUM(CASE WHEN us.created_at >= ? AND us.created_at < ? THEN 1 ELSE 0 END) AS started_this_year
+         SUM(CASE
+           WHEN us.created_at >= ? AND us.created_at < ?
+             AND ${SUBSCRIPTION_STARTED_STATUS_SQL}
+           THEN 1 ELSE 0
+         END) AS started_this_year
        FROM user_subscriptions us
        INNER JOIN (${CANONICAL_USER_SUBSCRIPTION_IDS_SQL}) canonical ON canonical.id = us.id`,
       [yearStart, yearEnd],
     ),
     dbPromise.query(
-      `SELECT MONTH(created_at) AS m, COUNT(*) AS cnt
-       FROM user_subscriptions
-       WHERE created_at >= ? AND created_at < ?
-       GROUP BY MONTH(created_at)`,
+      `SELECT MONTH(us.created_at) AS m, COUNT(*) AS cnt
+       FROM user_subscriptions us
+       WHERE us.created_at >= ? AND us.created_at < ?
+         AND ${SUBSCRIPTION_STARTED_STATUS_SQL}
+       GROUP BY MONTH(us.created_at)`,
       [yearStart, yearEnd],
     ),
     dbPromise.query(
-      `SELECT MONTH(COALESCE(paid_at, created_at)) AS m,
-              COALESCE(SUM(amount), 0) AS revenue
-       FROM subscription_recurring_payments
-       WHERE status IN ('captured', 'authorized')
-         AND COALESCE(paid_at, created_at) >= ?
-         AND COALESCE(paid_at, created_at) < ?
-       GROUP BY MONTH(COALESCE(paid_at, created_at))`,
+      `SELECT MONTH(COALESCE(rp.paid_at, rp.created_at)) AS m,
+              COALESCE(SUM(rp.amount), 0) AS revenue
+       ${REVENUE_PAYMENT_JOIN_SQL}
+         AND COALESCE(rp.paid_at, rp.created_at) >= ?
+         AND COALESCE(rp.paid_at, rp.created_at) < ?
+       GROUP BY MONTH(COALESCE(rp.paid_at, rp.created_at))`,
       [yearStart, yearEnd],
     ),
     dbPromise.query(
-      `SELECT YEAR(created_at) AS y, COUNT(*) AS cnt
-       FROM user_subscriptions
-       WHERE created_at >= DATE_SUB(?, INTERVAL 5 YEAR)
-       GROUP BY YEAR(created_at)
+      `SELECT YEAR(us.created_at) AS y, COUNT(*) AS cnt
+       FROM user_subscriptions us
+       WHERE us.created_at >= DATE_SUB(?, INTERVAL 5 YEAR)
+         AND ${SUBSCRIPTION_STARTED_STATUS_SQL}
+       GROUP BY YEAR(us.created_at)
        ORDER BY y ASC`,
       [`${year}-12-31`],
     ),
     dbPromise.query(
-      `SELECT YEAR(COALESCE(paid_at, created_at)) AS y,
-              COALESCE(SUM(amount), 0) AS revenue
-       FROM subscription_recurring_payments
-       WHERE status IN ('captured', 'authorized')
-         AND COALESCE(paid_at, created_at) >= DATE_SUB(?, INTERVAL 5 YEAR)
-       GROUP BY YEAR(COALESCE(paid_at, created_at))
+      `SELECT YEAR(COALESCE(rp.paid_at, rp.created_at)) AS y,
+              COALESCE(SUM(rp.amount), 0) AS revenue
+       ${REVENUE_PAYMENT_JOIN_SQL}
+         AND COALESCE(rp.paid_at, rp.created_at) >= DATE_SUB(?, INTERVAL 5 YEAR)
+       GROUP BY YEAR(COALESCE(rp.paid_at, rp.created_at))
        ORDER BY y ASC`,
       [`${year}-12-31`],
     ),
@@ -203,7 +214,7 @@ export async function getSubscriptionAnalytics({ year: yearRaw, month: monthRaw 
          us.end_date,
          us.created_at,
          sp.plan_name,
-         sp.plan_type,
+         (${PLAN_TYPE_SELECT_SQL}) AS plan_type,
          CASE us.role
            WHEN 'project' THEN pp.fullname
            WHEN 'sales' THEN s.fullname
@@ -220,6 +231,7 @@ export async function getSubscriptionAnalytics({ year: yearRaw, month: monthRaw 
        LEFT JOIN salespersons s ON us.role = 'sales' AND s.salespersonsid = us.user_id
        LEFT JOIN territorypartner tp ON us.role = 'territory' AND tp.id = us.user_id
        WHERE us.created_at >= ? AND us.created_at < ?
+         AND ${SUBSCRIPTION_STARTED_STATUS_SQL}
        ORDER BY us.created_at DESC
        LIMIT 200`,
       [monthStart, nextMonth],

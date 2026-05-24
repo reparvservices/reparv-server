@@ -7,6 +7,8 @@
 import dbPromise from "#db/promise";
 import razorpay from "#utils/razorpayClient.js";
 import { refreshSubscriptionBillingState } from "./recurringPayment.service.js";
+import { cancelEnterpriseSubscription } from "./subscriptionEnterpriseCancel.service.js";
+import { PLAN_TYPE_SELECT_SQL } from "../utils/planTypeSql.js";
 
 const tsToDate = (unixSeconds) => {
   if (!unixSeconds) return null;
@@ -73,7 +75,11 @@ async function applyLocalCancelState(subId, rzSub, { cancelAtCycleEnd }) {
 async function loadSubscription({ userId, role, userSubscriptionId }) {
   if (userSubscriptionId) {
     const [rows] = await dbPromise.query(
-      `SELECT * FROM user_subscriptions WHERE id = ? LIMIT 1`,
+      `SELECT us.*, (${PLAN_TYPE_SELECT_SQL}) AS plan_type
+       FROM user_subscriptions us
+       LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
+       WHERE us.id = ?
+       LIMIT 1`,
       [userSubscriptionId],
     );
     return rows[0] || null;
@@ -134,6 +140,13 @@ export async function cancelUserSubscription({
 
   const rzSubId = sub.razorpay_subscription_id;
   if (!rzSubId) {
+    const planType = String(sub.plan_type || "").toLowerCase();
+    if (planType === "enterprise") {
+      return cancelEnterpriseSubscription({
+        userSubscriptionId: sub.id,
+        cancelAtCycleEnd,
+      });
+    }
     const e = new Error("No Razorpay subscription linked to this record");
     e.statusCode = 400;
     throw e;

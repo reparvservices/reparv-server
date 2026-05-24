@@ -1,6 +1,7 @@
 import db from "#db";
 import moment from "moment-timezone";
 import { isPartnerSubscriptionAccessActive } from "../utils/subscriptionAccess.js";
+import { hasPartnerConsumedTrial } from "../utils/partnerTrialConsumed.js";
 
 const formatStatus = (s) =>
   s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
@@ -23,16 +24,24 @@ export const buildPartnerSubscriptionHandler =
       LIMIT 1
     `;
 
-    db.query(sql, [userId, role], (err, rows) => {
+    db.query(sql, [userId, role], async (err, rows) => {
       if (err) {
         console.error("DB Error:", err);
         return res.status(500).json({ success: false, message: "Server error" });
+      }
+
+      let trialUsed = false;
+      try {
+        trialUsed = await hasPartnerConsumedTrial(userId, role);
+      } catch (trialErr) {
+        console.warn("hasPartnerConsumedTrial:", trialErr?.message || trialErr);
       }
 
       if (!rows.length) {
         return res.json({
           success: true,
           active: false,
+          trial_used: trialUsed,
           message: "No subscription found",
         });
       }
@@ -52,6 +61,7 @@ export const buildPartnerSubscriptionHandler =
           () => {},
         );
         sub = { ...sub, status: "expired" };
+        trialUsed = true;
       }
 
       const active = isPartnerSubscriptionAccessActive(sub);
@@ -68,6 +78,7 @@ export const buildPartnerSubscriptionHandler =
       return res.json({
         success: true,
         active,
+        trial_used: trialUsed,
         plan: sub.duration,
         plan_id: sub.plan_id,
         plan_name: sub.plan_name,

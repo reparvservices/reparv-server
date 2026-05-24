@@ -3,6 +3,7 @@ import dbPromise from "#db/promise";
 import moment from "moment-timezone";
 import { CANONICAL_USER_SUBSCRIPTION_IDS_SQL } from "../../subscription/utils/userSubscriptionCanonical.js";
 import { PLAN_TYPE_SELECT_SQL } from "../../subscription/utils/planTypeSql.js";
+import { REVENUE_PAYMENT_JOIN_SQL } from "../../subscription/utils/subscriptionAnalyticsSql.js";
 
 const COUNT_QUERY = `
       SELECT
@@ -172,11 +173,10 @@ async function subscriptionRevenueThisMonth() {
     const start = moment.tz("Asia/Kolkata").startOf("month").format("YYYY-MM-DD HH:mm:ss");
     const end = moment.tz("Asia/Kolkata").endOf("month").add(1, "second").format("YYYY-MM-DD HH:mm:ss");
     const [rows] = await dbPromise.query(
-      `SELECT COALESCE(SUM(amount), 0) AS total
-       FROM subscription_recurring_payments
-       WHERE status IN ('captured', 'authorized')
-         AND COALESCE(paid_at, created_at) >= ?
-         AND COALESCE(paid_at, created_at) < ?`,
+      `SELECT COALESCE(SUM(rp.amount), 0) AS total
+       ${REVENUE_PAYMENT_JOIN_SQL}
+         AND COALESCE(rp.paid_at, rp.created_at) >= ?
+         AND COALESCE(rp.paid_at, rp.created_at) < ?`,
       [start, end],
     );
     return Number(rows[0]?.total) || 0;

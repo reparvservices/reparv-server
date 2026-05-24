@@ -45,6 +45,13 @@ export function formatPaymentTypeLabel(paymentType, planType) {
   return pay || "—";
 }
 
+/** Admin-assigned enterprise plan only (not trial/pending checkout manual rows). */
+export function isEnterprisePlanSubscription(row) {
+  if (!row) return false;
+  if (row.is_enterprise === true) return true;
+  return String(row.plan_type || "").toLowerCase() === "enterprise";
+}
+
 export function shapeUserSubscriptionRow(row) {
   const planType = String(row.plan_type || "paid").toLowerCase();
   return {

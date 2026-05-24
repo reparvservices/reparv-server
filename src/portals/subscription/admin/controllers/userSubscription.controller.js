@@ -6,9 +6,13 @@ import {
 } from "../../services/recurringPayment.service.js";
 import { cancelUserSubscription } from "../../services/subscriptionCancel.service.js";
 import { assignEnterpriseSubscription } from "../../services/subscriptionEnterpriseAssign.service.js";
+import { ensureEnterpriseActivationInvoice } from "../../services/enterpriseActivationInvoice.service.js";
 import { CANONICAL_USER_SUBSCRIPTION_IDS_SQL } from "../../utils/userSubscriptionCanonical.js";
 import { PLAN_TYPE_SELECT_SQL } from "../../utils/planTypeSql.js";
-import { shapeUserSubscriptionRow } from "../../utils/subscriptionDisplay.js";
+import {
+  isEnterprisePlanSubscription,
+  shapeUserSubscriptionRow,
+} from "../../utils/subscriptionDisplay.js";
 
 const ROLE_LABELS = {
   project: "Project Partner",
@@ -99,7 +103,8 @@ export const listUserSubscriptions = async (req, res) => {
          SUM(
            LOWER(us.status) IN ('active', 'trial')
            AND LOWER((${PLAN_TYPE_SELECT_SQL})) = 'enterprise'
-         ) AS enterprise_active
+         ) AS enterprise_active,
+         SUM(LOWER((${PLAN_TYPE_SELECT_SQL})) = 'enterprise') AS enterprise_total
        FROM user_subscriptions us
        ${canonicalJoin}
        LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
@@ -196,6 +201,7 @@ export const listUserSubscriptions = async (req, res) => {
         halted: Number(sum.halted) || 0,
         trial: Number(sum.trial) || 0,
         enterprise_active: Number(sum.enterprise_active) || 0,
+        enterprise_total: Number(sum.enterprise_total) || 0,
       },
       data,
     });
@@ -211,8 +217,9 @@ export const listUserSubscriptions = async (req, res) => {
 async function loadSubscriptionRow(id) {
   const [rows] = await dbPromise.query(
     `SELECT us.id, us.user_id, us.role, us.razorpay_subscription_id, us.status,
-            us.final_amount, us.next_billing_date, us.start_date, us.end_date,
+            us.payment_type, us.final_amount, us.next_billing_date, us.start_date, us.end_date,
             sp.plan_name, sp.price AS plan_price,
+            (${PLAN_TYPE_SELECT_SQL}) AS plan_type,
             CASE us.role
               WHEN 'project' THEN pp.fullname
               WHEN 'sales' THEN s.fullname
@@ -346,7 +353,21 @@ export const getUserSubscriptionPayments = async (req, res) => {
 
     let payments = [];
     let summary = {};
+    let enterpriseInvoiceHint = null;
     try {
+      if (
+        isEnterprisePlanSubscription(row) &&
+        String(row.status || "").toLowerCase() === "active"
+      ) {
+        try {
+          enterpriseInvoiceHint = await ensureEnterpriseActivationInvoice(id);
+          if (enterpriseInvoiceHint?.skipped) {
+            enterpriseInvoiceHint = null;
+          }
+        } catch (invErr) {
+          console.warn("ensureEnterpriseActivationInvoice:", invErr?.message || invErr);
+        }
+      }
       payments = await listPaymentsForSubscription(id);
       summary = await getPaymentSummary(id);
     } catch (dbErr) {
@@ -380,12 +401,69 @@ export const getUserSubscriptionPayments = async (req, res) => {
         total_paid_inr: Number(summary.total_paid_inr) || 0,
       },
       payments: payments.map((p) => formatPaymentRow(p, gstMap)),
+      enterprise_invoice: enterpriseInvoiceHint,
     });
   } catch (error) {
     console.error("getUserSubscriptionPayments:", error);
     return res.status(500).json({
       success: false,
       message: error?.message || "Failed to fetch payments",
+    });
+  }
+};
+
+/**
+ * POST /admin/subscription/user-subscriptions/:id/payments/enterprise-invoice
+ * Create or fetch GST invoice for admin-assigned enterprise activation.
+ */
+export const ensureEnterpriseActivationInvoiceAdmin = async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Invalid id" });
+    }
+
+    const row = await loadSubscriptionRow(id);
+    if (!row) {
+      return res.status(404).json({ success: false, message: "Subscription not found" });
+    }
+
+    const result = await ensureEnterpriseActivationInvoice(id);
+    if (result.skipped) {
+      return res.status(400).json({
+        success: false,
+        message:
+          result.reason === "zero_amount"
+            ? "No charge amount on this subscription — invoice not applicable"
+            : result.reason === "not_enterprise"
+              ? "Only enterprise subscriptions support activation invoices"
+              : result.reason === "not_active"
+                ? "Subscription must be active before generating an enterprise invoice"
+                : "Could not create enterprise activation invoice",
+        result,
+      });
+    }
+
+    const payments = await listPaymentsForSubscription(id);
+    const summary = await getPaymentSummary(id);
+    const gstMap = await loadGstInvoicesForPayments(payments);
+
+    return res.status(200).json({
+      success: true,
+      result,
+      summary: {
+        total_charges: Number(summary.total_charges) || 0,
+        success_count: Number(summary.success_count) || 0,
+        failed_count: Number(summary.failed_count) || 0,
+        total_paid_inr: Number(summary.total_paid_inr) || 0,
+      },
+      payments: payments.map((p) => formatPaymentRow(p, gstMap)),
+    });
+  } catch (error) {
+    console.error("ensureEnterpriseActivationInvoiceAdmin:", error);
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to generate enterprise invoice",
     });
   }
 };

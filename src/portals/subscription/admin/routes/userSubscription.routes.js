@@ -3,6 +3,7 @@ import {
   assignEnterpriseSubscriptionAdmin,
   cancelUserSubscriptionAdmin,
   getUserSubscriptionInvoices,
+  ensureEnterpriseActivationInvoiceAdmin,
   getUserSubscriptionPayments,
   listUserSubscriptions,
   syncUserSubscriptionPayments,
@@ -14,6 +15,7 @@ router.get("/", listUserSubscriptions);
 router.post("/assign", assignEnterpriseSubscriptionAdmin);
 router.post("/:id/cancel", cancelUserSubscriptionAdmin);
 router.get("/:id/payments", getUserSubscriptionPayments);
+router.post("/:id/payments/enterprise-invoice", ensureEnterpriseActivationInvoiceAdmin);
 router.post("/:id/payments/sync", syncUserSubscriptionPayments);
 router.get("/:id/invoices", getUserSubscriptionInvoices);
 
