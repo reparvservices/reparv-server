@@ -137,6 +137,12 @@ export const SUMMARY_CASE_SQL = `
 
 export function buildPartnerListQueries(options) {
   const { whereSql, params } = buildPartnerListWhere(options);
+  const { whereSql: summaryWhereSql, params: summaryParams } = buildPartnerListWhere({
+    search: options.search,
+    dateFrom: options.dateFrom,
+    dateTo: options.dateTo,
+    filter: "",
+  });
   const limit = options.limit;
   const offset = options.offset;
 
@@ -171,12 +177,18 @@ export function buildPartnerListQueries(options) {
       COUNT(*) AS total,
       ${SUMMARY_CASE_SQL}
     ${PARTNER_LIST_FROM_SQL}
-    ${whereSql}
+    ${summaryWhereSql}
   `;
 
   const listParams = [...params, limit, offset];
   const countParams = [...params];
-  const summaryParams = [...params];
 
-  return { listSql, countSql, summarySql, listParams, countParams, summaryParams };
+  return {
+    listSql,
+    countSql,
+    summarySql,
+    listParams,
+    countParams,
+    summaryParams,
+  };
 }
