@@ -23,12 +23,15 @@ export async function attachSubscriptionsToPartners(partners, role, getUserId) {
 
   const [rows] = await dbPromise.query(
     `SELECT
+      us.id,
       us.user_id,
       us.status,
       us.start_date,
       us.end_date,
+      us.final_amount,
       sp.plan_name,
       sp.billing_cycle,
+      sp.duration AS plan_duration,
       ${PLAN_TYPE_SELECT_SQL} AS plan_type
     FROM user_subscriptions us
     INNER JOIN (${CANONICAL_USER_SUBSCRIPTION_IDS_SQL}) canonical ON canonical.id = us.id

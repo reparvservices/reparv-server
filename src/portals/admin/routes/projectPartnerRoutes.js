@@ -3,6 +3,7 @@ import multer from "multer";
 import path from "path";
 import {
   getAll,
+  listProjectPartners,
   getAllActive,
   add,
   edit,
@@ -33,6 +34,7 @@ const upload = multer({
   },
 });
 router.get("/active", getAllActive);
+router.get("/list", listProjectPartners);
 router.get("/get/in/:city", getAllByCity);
 router.get("/get/:id", getById);
 router.get("/:partnerlister", getAll);

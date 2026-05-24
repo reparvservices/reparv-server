@@ -5,8 +5,125 @@ import sendEmail from "#utils/nodeMailer.js";
 import { deleteFromS3, uploadToS3 } from "#utils/imageUpload.js";
 import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
 import { attachSubscriptionsToPartners } from "../../subscription/utils/partnerSubscriptionAttach.js";
+import { enrichPartnerWithSubscription } from "../../subscription/utils/subscriptionBucket.js";
+import { buildPartnerListQueries } from "../../subscription/utils/partnerListQuery.js";
+import dbPromise from "#db/promise";
 
 const saltRounds = 10;
+
+const formatPartnerListRow = (row) => {
+  const sub = row.subscription_id
+    ? {
+        id: row.subscription_id,
+        status: row.subscription_status,
+        plan_name: row.subscription_plan_name,
+        billing_cycle: row.subscription_billing_cycle,
+        plan_type: row.subscription_plan_type,
+        plan_duration: row.subscription_plan_duration,
+        end_date: row.subscription_end_date,
+        start_date: row.subscription_start_date,
+        final_amount: row.subscription_final_amount,
+      }
+    : null;
+
+  const {
+    subscription_id: _sid,
+    subscription_status: _ss,
+    subscription_plan_name: _spn,
+    subscription_billing_cycle: _sbc,
+    subscription_plan_type: _spt,
+    subscription_plan_duration: _spd,
+    subscription_end_date: _sed,
+    subscription_start_date: _ssd,
+    subscription_final_amount: _sfa,
+    ...partner
+  } = row;
+
+  const enriched = enrichPartnerWithSubscription(partner, sub);
+
+  return {
+    ...enriched,
+    created_at: moment
+      .utc(enriched.created_at)
+      .tz("Asia/Kolkata")
+      .format("DD MMM YYYY | hh:mm A"),
+    updated_at: enriched.updated_at
+      ? moment.utc(enriched.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
+      : null,
+    followUp: enriched.followUp || null,
+    followUpDate: enriched.followUpDate
+      ? moment(enriched.followUpDate).format("DD MMM YYYY | hh:mm A")
+      : null,
+    subscription_start_date: sub?.start_date || null,
+    subscription_end_date: sub?.end_date || null,
+  };
+};
+
+/**
+ * GET /admin/projectpartner/list
+ * Query: limit, offset, search, filter, date_from, date_to
+ */
+export const listProjectPartners = async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 500);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    const search = String(req.query.search || "").trim();
+    const filter = String(req.query.filter || "").trim();
+
+    let dateFrom = null;
+    let dateTo = null;
+    if (req.query.date_from) {
+      const d = new Date(req.query.date_from);
+      if (!Number.isNaN(d.getTime())) {
+        d.setHours(0, 0, 0, 0);
+        dateFrom = d;
+      }
+    }
+    if (req.query.date_to) {
+      const d = new Date(req.query.date_to);
+      if (!Number.isNaN(d.getTime())) {
+        d.setHours(23, 59, 59, 999);
+        dateTo = d;
+      }
+    }
+
+    const { listSql, countSql, summarySql, listParams, countParams, summaryParams } =
+      buildPartnerListQueries({ search, filter, dateFrom, dateTo, limit, offset });
+
+    const [[countRows], [summaryRows], [listRows]] = await Promise.all([
+      dbPromise.query(countSql, countParams),
+      dbPromise.query(summarySql, summaryParams),
+      dbPromise.query(listSql, listParams),
+    ]);
+
+    const total = Number(countRows[0]?.total) || 0;
+    const sum = summaryRows[0] || {};
+    const data = listRows.map(formatPartnerListRow);
+
+    return res.status(200).json({
+      success: true,
+      total,
+      limit,
+      offset,
+      summary: {
+        total: Number(sum.total) || 0,
+        trial: Number(sum.trial) || 0,
+        paid: Number(sum.paid) || 0,
+        enterprise: Number(sum.enterprise) || 0,
+        pending: Number(sum.pending) || 0,
+        unpaid: Number(sum.unpaid) || 0,
+        follow_up: Number(sum.follow_up) || 0,
+      },
+      data,
+    });
+  } catch (err) {
+    console.error("listProjectPartners:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch project partners",
+    });
+  }
+};
 
 export const getAll = async (req, res) => {
   const partnerLister = req.params.partnerlister;
