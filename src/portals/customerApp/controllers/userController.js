@@ -25,6 +25,13 @@ const transporter = nodemailer.createTransport({
 });
 
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000);
+
+/** Static credentials for Apple App Review — never expires */
+const APPLE_REVIEW_PHONE = "9867546352";
+const APPLE_REVIEW_OTP = "506072";
+
+const isAppleReviewAccount = (contact) =>
+  String(contact) === APPLE_REVIEW_PHONE;
 export const add = (req, res) => {
   try {
     const { fullname, contact } = req.body;
@@ -45,7 +52,7 @@ export const add = (req, res) => {
       });
     }
 
-    const isBypassNumber = contact === "9867546352";
+    const isBypassNumber = isAppleReviewAccount(contact);
 
     const otp = Math.floor(100000 + Math.random() * 900000);
     const otpExpiry = moment().add(5, "minutes").format("YYYY-MM-DD HH:mm:ss");
@@ -202,19 +209,29 @@ export const verifyOtp = (req, res) => {
       }
 
       const user = users[0];
+      const isReviewLogin = isAppleReviewAccount(user.contact);
 
-      if (user.otp !== otp) {
-        return res.status(401).json({
-          success: false,
-          message: "Invalid OTP",
-        });
-      }
+      if (isReviewLogin) {
+        if (String(otp) !== APPLE_REVIEW_OTP) {
+          return res.status(401).json({
+            success: false,
+            message: "Invalid OTP",
+          });
+        }
+      } else {
+        if (String(user.otp) !== String(otp)) {
+          return res.status(401).json({
+            success: false,
+            message: "Invalid OTP",
+          });
+        }
 
-      if (moment().isAfter(moment(user.otp_expires_at))) {
-        return res.status(401).json({
-          success: false,
-          message: "OTP expired",
-        });
+        if (moment().isAfter(moment(user.otp_expires_at))) {
+          return res.status(401).json({
+            success: false,
+            message: "OTP expired",
+          });
+        }
       }
 
       const token = jwt.sign(
@@ -223,8 +240,8 @@ export const verifyOtp = (req, res) => {
         { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
       );
 
-      // ✅ Skip clearing OTP for this number
-      if (user.contact !== "9867546352") {
+      // Keep static OTP available for Apple review account
+      if (!isReviewLogin) {
         db.query(
           "UPDATE guestUsers SET otp=NULL, otp_expires_at=NULL WHERE id=?",
           [user.id],
@@ -258,6 +275,13 @@ export const resendOtp = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Contact is required",
+      });
+    }
+
+    if (isAppleReviewAccount(contact)) {
+      return res.status(200).json({
+        success: true,
+        message: "OTP resent successfully",
       });
     }
 
