@@ -254,15 +254,17 @@ export const add = async (req, res) => {
   }
 };
 
-/// **Edit News**
+/** Edit News */
 export const edit = async (req, res) => {
   try {
     const newsId = req.params.id;
+
     if (!newsId) {
       return res.status(400).json({ message: "Invalid News ID" });
     }
 
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+
     const { type, title, description, content, state, city } = req.body;
 
     /* ---------- VALIDATION ---------- */
@@ -276,20 +278,6 @@ export const edit = async (req, res) => {
 
     if (!cleanTitle || !cleanDescription || !cleanContent) {
       return res.status(400).json({ message: "Invalid input values" });
-    }
-
-    /* ---------- SEO SLUG ---------- */
-    let seoSlug = toSlug(cleanTitle);
-
-    const [existing] = await db
-      .promise()
-      .query(`SELECT id FROM news WHERE seoSlug = ? AND id != ?`, [
-        seoSlug,
-        newsId,
-      ]);
-
-    if (existing.length > 0) {
-      seoSlug = `${seoSlug}-${Date.now()}`;
     }
 
     /* ---------- IMAGE UPLOAD (COMPRESS → S3) ---------- */
@@ -313,7 +301,6 @@ export const edit = async (req, res) => {
         title = ?,
         description = ?,
         content = ?,
-        seoSlug = ?,
         state = ?,
         city = ?,
         updated_at = ?
@@ -324,7 +311,6 @@ export const edit = async (req, res) => {
       cleanTitle,
       cleanDescription,
       cleanContent,
-      seoSlug,
       state,
       city,
       currentdate,
@@ -350,6 +336,7 @@ export const edit = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating news:", error);
+
     return res.status(500).json({ message: "Server error" });
   }
 };
