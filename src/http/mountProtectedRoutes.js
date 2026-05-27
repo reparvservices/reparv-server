@@ -26,6 +26,7 @@ import subscriptionFeatureRoutes from "../portals/subscription/admin/routes/subs
 import userSubscriptionRoutes from "../portals/subscription/admin/routes/userSubscription.routes.js";
 import gstInvoiceRoutes from "../portals/subscription/admin/routes/gstInvoice.routes.js";
 import subscriptionAnalyticsRoutes from "../portals/subscription/admin/routes/subscriptionAnalytics.routes.js";
+import financeCashFlowRoutes from "../portals/finance/admin/routes/cashFlow.routes.js";
 import propertytypeRoutes from "../portals/admin/routes/propertytypeRoutes.js";
 import enquirerRoutes from "../portals/admin/routes/enquirerRoutes.js";
 import callEnquirerRoutes from "../portals/admin/routes/callEnquirerRoutes.js";
@@ -256,6 +257,7 @@ export function mountProtectedRoutes(app) {
   app.use("/admin/subscription/user-subscriptions", userSubscriptionRoutes);
   app.use("/admin/subscription/gst-invoices", gstInvoiceRoutes);
   app.use("/admin/subscription/analytics", subscriptionAnalyticsRoutes);
+  app.use("/admin/finance", financeCashFlowRoutes);
   app.use("/admin/propertytypes", propertytypeRoutes);
   app.use("/admin/enquirers", enquirerRoutes);
   app.use("/admin/call-enquirers", callEnquirerRoutes);
