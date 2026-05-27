@@ -304,7 +304,7 @@ export const addProperty = async (req, res) => {
         // ✅ Values now correctly match the SQL column order above
         const values = [
           customerid, // customerid
-          null, // guestUserId (not sent from client)
+          customerid, // guestUserId (not sent from client)
           property_type, // propertyType
           property_type, // propertyCategory (same as type, adjust if needed)
           property_name, // propertyName
