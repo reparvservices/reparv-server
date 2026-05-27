@@ -220,6 +220,7 @@ export const addProperty = async (req, res) => {
   try {
     const {
       property_type,
+      bhk_type,
       property_name,
       price,
       ownername,
@@ -305,7 +306,7 @@ export const addProperty = async (req, res) => {
         const values = [
           customerid, // customerid
           customerid, // guestUserId (not sent from client)
-          property_type, // propertyType
+          bhk_type || null, // propertyType
           property_type, // propertyCategory (same as type, adjust if needed)
           property_name, // propertyName
           price, // totalSalesPrice
@@ -389,7 +390,6 @@ export const addProperty = async (req, res) => {
   }
 };
 
-/* ---------- UPDATE PROPERTY ---------- */
 export const updateProperty = async (req, res) => {
   try {
     const { propertyid } = req.params;
@@ -400,6 +400,7 @@ export const updateProperty = async (req, res) => {
 
     const {
       property_type,
+      bhk_type,
       property_name,
       price,
       ownername,
@@ -409,22 +410,36 @@ export const updateProperty = async (req, res) => {
       state,
       city,
       address,
-      frontView,
-      sideView,
-      kitchenView,
-      hallView,
-      bedroomView,
-      bathroomView,
-      balconyView,
-      nearestLandmark,
-      developedAmenities,
     } = req.body;
+
     console.log(req.body);
 
-    /* ---------- CHECK DUPLICATE NAME ---------- */
+    // ── Image fields — only pick ones actually sent in this request ──
+    const IMAGE_KEYS = [
+      "frontView",
+      "sideView",
+      "kitchenView",
+      "hallView",
+      "bedroomView",
+      "bathroomView",
+      "balconyView",
+      "nearestLandmark",
+      "developedAmenities",
+    ];
+
+    const sentImages = {};
+    IMAGE_KEYS.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        const val = req.body[key];
+        sentImages[key] = val
+          ? JSON.stringify(Array.isArray(val) ? val : [val])
+          : null;
+      }
+    });
+
+    /* ── Duplicate name check ── */
     db.query(
-      `SELECT propertyid FROM properties 
-       WHERE propertyName = ? AND propertyid != ?`,
+      `SELECT propertyid FROM properties WHERE propertyName = ? AND propertyid != ?`,
       [property_name, propertyid],
       async (err, exists) => {
         if (err) {
@@ -438,7 +453,7 @@ export const updateProperty = async (req, res) => {
             .json({ message: "Property name already exists!" });
         }
 
-        /* ---------- PARSE AREAS ---------- */
+        /* ── Parse areas ── */
         let parsedAreas = [];
         try {
           if (typeof areas === "string") parsedAreas = JSON.parse(areas);
@@ -455,38 +470,29 @@ export const updateProperty = async (req, res) => {
           parsedAreas.find((a) => a?.label?.toLowerCase().includes("carpet"))
             ?.value || null;
 
-        /* ---------- UPDATE QUERY ---------- */
-        const updateSQL = `
-          UPDATE properties SET
-            propertyType = ?,
-            propertyCategory = ?,
-            propertyName = ?,
-            totalSalesPrice = ?,
-            totalOfferPrice = ?,
-            contact = ?,
-            projectBy = ?,
-            state = ?,
-            city = ?,
-            address = ?,
-            builtUpArea = ?,
-            carpetArea = ?,
-            frontView = ?,
-            sideView = ?,
-            kitchenView = ?,
-            hallView = ?,
-            bedroomView = ?,
-            bathroomView = ?,
-            balconyView = ?,
-            nearestLandmark = ?,
-            developedAmenities = ?,
-            seoSlug = ?,
-            updated_at = NOW()
-          WHERE propertyid = ?
-        `;
+        /* ── Build dynamic SET clause ──
+           Core fields are always updated.
+           Image columns are only added to SET if they were sent.        ── */
+        const coreFields = [
+          "propertyType = ?",
+          "propertyCategory = ?",
+          "propertyName = ?",
+          "totalSalesPrice = ?",
+          "totalOfferPrice = ?",
+          "contact = ?",
+          "projectBy = ?",
+          "state = ?",
+          "city = ?",
+          "address = ?",
+          "builtUpArea = ?",
+          "carpetArea = ?",
+          "seoSlug = ?",
+          "updated_at = NOW()",
+        ];
 
-        const values = [
-          property_type,
-          property_type,
+        const coreValues = [
+          bhk_type || null,
+          property_type || null,
           property_name,
           price,
           ofprice,
@@ -497,53 +503,20 @@ export const updateProperty = async (req, res) => {
           address,
           builtUpArea,
           carpetArea,
-          // ✅ Store arrays as JSON strings
-          frontView
-            ? JSON.stringify(Array.isArray(frontView) ? frontView : [frontView])
-            : null,
-          sideView
-            ? JSON.stringify(Array.isArray(sideView) ? sideView : [sideView])
-            : null,
-          kitchenView
-            ? JSON.stringify(
-                Array.isArray(kitchenView) ? kitchenView : [kitchenView],
-              )
-            : null,
-          hallView
-            ? JSON.stringify(Array.isArray(hallView) ? hallView : [hallView])
-            : null,
-          bedroomView
-            ? JSON.stringify(
-                Array.isArray(bedroomView) ? bedroomView : [bedroomView],
-              )
-            : null,
-          bathroomView
-            ? JSON.stringify(
-                Array.isArray(bathroomView) ? bathroomView : [bathroomView],
-              )
-            : null,
-          balconyView
-            ? JSON.stringify(
-                Array.isArray(balconyView) ? balconyView : [balconyView],
-              )
-            : null,
-          nearestLandmark
-            ? JSON.stringify(
-                Array.isArray(nearestLandmark)
-                  ? nearestLandmark
-                  : [nearestLandmark],
-              )
-            : null,
-          developedAmenities
-            ? JSON.stringify(
-                Array.isArray(developedAmenities)
-                  ? developedAmenities
-                  : [developedAmenities],
-              )
-            : null,
           toSlug(property_name),
-          propertyid,
         ];
+
+        // Append only the image columns that were actually sent
+        const imageSetClauses = Object.keys(sentImages).map((k) => `${k} = ?`);
+        const imageValues = Object.values(sentImages);
+
+        const updateSQL = `
+          UPDATE properties SET
+            ${[...coreFields, ...imageSetClauses].join(",\n            ")}
+          WHERE propertyid = ?
+        `;
+
+        const values = [...coreValues, ...imageValues, propertyid];
 
         db.query(updateSQL, values, (err, result) => {
           if (err) {
@@ -565,9 +538,7 @@ export const updateProperty = async (req, res) => {
     );
   } catch (error) {
     console.error("Update error:", error);
-    return res.status(500).json({
-      message: "Server error",
-    });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 //**Change status */

@@ -275,6 +275,7 @@ export const update = async (req, res) => {
     propertyVideo,
   } = req.body;
 
+  console.log("Update payload:", req.body);
   // Validation
   if (!propertyCategory) {
     console.log("propertyCategory is missing");
