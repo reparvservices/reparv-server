@@ -73,6 +73,7 @@ router.post(
   addProperty,
 );
 router.put("/update/:propertyid", updateProperty);
+router.put("/edit/:id", update);
 // New add route — supports extraImages + lat/lng in body
 router.post("/add", addPropertyNew);
 
