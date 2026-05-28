@@ -242,53 +242,79 @@ export const addProperty = async (req, res) => {
       developedAmenities,
     } = req.body;
 
-    console.log(req.body);
+    console.log("[addProperty] body:", req.body);
 
-    // Basic validation
     if (!property_name || !customerid) {
-      return res.status(400).json({
-        success: false,
-        message: "Required fields missing",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Required fields missing" });
     }
 
-    /* ---------- CHECK DUPLICATE PROPERTY ---------- */
+    /* ---------- DUPLICATE CHECK ---------- */
     db.query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",
       [property_name],
-      async (err, result) => {
-        if (err) {
-          console.error(err);
+      (selectErr, selectResult) => {
+        // ← removed async
+        if (selectErr) {
+          console.error("[addProperty] SELECT error:", selectErr); // ← log real error
           return res
             .status(500)
             .json({ success: false, message: "Database error" });
         }
 
-        if (result.length > 0) {
-          return res.status(409).json({
-            success: false,
-            message: "Property name already exists",
-          });
+        if (selectResult.length > 0) {
+          return res
+            .status(409)
+            .json({ success: false, message: "Property name already exists" });
         }
 
-        /* ---------- PARSE AREAS SAFELY ---------- */
+        /* ---------- PARSE AREAS ---------- */
         let parsedAreas = [];
         try {
           if (typeof areas === "string") parsedAreas = JSON.parse(areas);
           else if (Array.isArray(areas)) parsedAreas = areas;
         } catch (e) {
-          console.warn("Invalid areas JSON:", areas);
+          console.warn("[addProperty] Invalid areas JSON:", areas);
         }
 
-        const builtUpArea =
-          parsedAreas.find((a) => a?.label?.toLowerCase().includes("built-up"))
-            ?.value || null;
+        console.log("[addProperty] parsedAreas:", parsedAreas); // ← debug
 
-        const carpetArea =
-          parsedAreas.find((a) => a?.label?.toLowerCase().includes("carpet"))
-            ?.value || null;
+        const FARM_TYPES = ["FarmLand", "FarmHouse"];
+        const isFarm = FARM_TYPES.includes(property_type);
 
-        /* ---------- INSERT PROPERTY ---------- */
+        let builtUpArea = null;
+        let carpetArea = null;
+
+        if (isFarm) {
+          const landEntry = parsedAreas.find((a) =>
+            a?.label?.toLowerCase().includes("land"),
+          );
+          if (landEntry) {
+            builtUpArea = `${landEntry.value} ${landEntry.unit || "Acre"}`;
+          }
+        } else {
+          builtUpArea =
+            parsedAreas.find((a) =>
+              a?.label?.toLowerCase().includes("built-up"),
+            )?.value || null;
+          carpetArea =
+            parsedAreas.find((a) => a?.label?.toLowerCase().includes("carpet"))
+              ?.value || null;
+        }
+
+        console.log(
+          "[addProperty] builtUpArea:",
+          builtUpArea,
+          "| carpetArea:",
+          carpetArea,
+        ); // ← debug
+
+        /* ---------- IMAGE HELPER ---------- */
+        const imgJson = (v) =>
+          v ? JSON.stringify(Array.isArray(v) ? v : [v]) : null;
+
+        /* ---------- INSERT ---------- */
         const insertSQL = `
           INSERT INTO properties (
             customerid, guestUserId, propertyType, propertyCategory, propertyName,
@@ -302,91 +328,61 @@ export const addProperty = async (req, res) => {
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
         `;
 
-        // ✅ Values now correctly match the SQL column order above
         const values = [
-          customerid, // customerid
-          customerid, // guestUserId (not sent from client)
-          bhk_type || null, // propertyType
-          property_type, // propertyCategory (same as type, adjust if needed)
-          property_name, // propertyName
-          price, // totalSalesPrice
-          ofprice, // totalOfferPrice
-          contact, // contact
-          ownername, // projectBy
-          state, // state
-          city, // city
-          address, // address
-          builtUpArea, // builtUpArea
-          carpetArea, // carpetArea
-          // ✅ Image views stored as JSON arrays
-          frontView
-            ? JSON.stringify(Array.isArray(frontView) ? frontView : [frontView])
-            : null,
-          sideView
-            ? JSON.stringify(Array.isArray(sideView) ? sideView : [sideView])
-            : null,
-          kitchenView
-            ? JSON.stringify(
-                Array.isArray(kitchenView) ? kitchenView : [kitchenView],
-              )
-            : null,
-          hallView
-            ? JSON.stringify(Array.isArray(hallView) ? hallView : [hallView])
-            : null,
-          bedroomView
-            ? JSON.stringify(
-                Array.isArray(bedroomView) ? bedroomView : [bedroomView],
-              )
-            : null,
-          bathroomView
-            ? JSON.stringify(
-                Array.isArray(bathroomView) ? bathroomView : [bathroomView],
-              )
-            : null,
-          balconyView
-            ? JSON.stringify(
-                Array.isArray(balconyView) ? balconyView : [balconyView],
-              )
-            : null,
-          nearestLandmark
-            ? JSON.stringify(
-                Array.isArray(nearestLandmark)
-                  ? nearestLandmark
-                  : [nearestLandmark],
-              )
-            : null,
-          developedAmenities
-            ? JSON.stringify(
-                Array.isArray(developedAmenities)
-                  ? developedAmenities
-                  : [developedAmenities],
-              )
-            : null,
-          toSlug(property_name), // seoSlug
+          customerid,
+          customerid,
+          bhk_type || null,
+          property_type,
+          property_name,
+          price,
+          ofprice,
+          contact,
+          ownername,
+          state,
+          city,
+          address,
+          builtUpArea,
+          carpetArea,
+          imgJson(frontView),
+          imgJson(sideView),
+          imgJson(kitchenView),
+          imgJson(hallView),
+          imgJson(bedroomView),
+          imgJson(bathroomView),
+          imgJson(balconyView),
+          imgJson(nearestLandmark),
+          imgJson(developedAmenities),
+          toSlug(property_name),
         ];
 
-        db.query(insertSQL, values, (err, result) => {
-          if (err) {
-            console.error("Insert error:", err);
-            return res
-              .status(500)
-              .json({ success: false, message: "Insert failed" });
+        console.log("[addProperty] INSERT values:", values); // ← debug
+        console.log("[addProperty] value count:", values.length); // must be 24
+
+        db.query(insertSQL, values, (insertErr, insertResult) => {
+          if (insertErr) {
+            console.error("[addProperty] INSERT error:", insertErr); // ← THE key log
+            return res.status(500).json({
+              success: false,
+              message: "Insert failed",
+              detail: insertErr.message,
+            });
           }
 
+          console.log(
+            "[addProperty] Inserted propertyid:",
+            insertResult.insertId,
+          );
           return res.status(201).json({
             success: true,
             message: "Property added successfully",
-            propertyid: result.insertId,
+            propertyid: insertResult.insertId,
           });
         });
       },
     );
   } catch (error) {
-    console.error("Add property error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    console.error("[addProperty] Outer error:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
@@ -412,9 +408,9 @@ export const updateProperty = async (req, res) => {
       address,
     } = req.body;
 
-    console.log(req.body);
+    console.log("[updateProperty] body:", req.body);
 
-    // ── Image fields — only pick ones actually sent in this request ──
+    // ── Image fields — only pick ones actually sent ──
     const IMAGE_KEYS = [
       "frontView",
       "sideView",
@@ -441,9 +437,10 @@ export const updateProperty = async (req, res) => {
     db.query(
       `SELECT propertyid FROM properties WHERE propertyName = ? AND propertyid != ?`,
       [property_name, propertyid],
-      async (err, exists) => {
+      (err, exists) => {
+        // ← removed async (not needed)
         if (err) {
-          console.error(err);
+          console.error("[updateProperty] SELECT error:", err);
           return res.status(500).json({ message: "Database error" });
         }
 
@@ -459,20 +456,46 @@ export const updateProperty = async (req, res) => {
           if (typeof areas === "string") parsedAreas = JSON.parse(areas);
           else if (Array.isArray(areas)) parsedAreas = areas;
         } catch (e) {
-          console.warn("Invalid areas JSON:", areas);
+          console.warn("[updateProperty] Invalid areas JSON:", areas);
         }
 
-        const builtUpArea =
-          parsedAreas.find((a) => a?.label?.toLowerCase().includes("built-up"))
-            ?.value || null;
+        console.log("[updateProperty] parsedAreas:", parsedAreas);
 
-        const carpetArea =
-          parsedAreas.find((a) => a?.label?.toLowerCase().includes("carpet"))
-            ?.value || null;
+        // ── Farm type detection (mirrors addProperty + frontend)
+        const FARM_TYPES = ["FarmLand", "FarmHouse"];
+        const isFarm = FARM_TYPES.includes(property_type);
 
-        /* ── Build dynamic SET clause ──
-           Core fields are always updated.
-           Image columns are only added to SET if they were sent.        ── */
+        let builtUpArea = null;
+        let carpetArea = null;
+
+        if (isFarm) {
+          // Farm: [{label:'Total Land Area', value:'2000', unit:'Acre'}]
+          // Store as "2000 Acre" — same format as addProperty
+          const landEntry = parsedAreas.find((a) =>
+            a?.label?.toLowerCase().includes("land"),
+          );
+          if (landEntry) {
+            builtUpArea = `${landEntry.value} ${landEntry.unit || "Acre"}`;
+          }
+          // carpetArea stays null for farm
+        } else {
+          builtUpArea =
+            parsedAreas.find((a) =>
+              a?.label?.toLowerCase().includes("built-up"),
+            )?.value || null;
+          carpetArea =
+            parsedAreas.find((a) => a?.label?.toLowerCase().includes("carpet"))
+              ?.value || null;
+        }
+
+        console.log(
+          "[updateProperty] builtUpArea:",
+          builtUpArea,
+          "| carpetArea:",
+          carpetArea,
+        );
+
+        /* ── Build dynamic SET clause ── */
         const coreFields = [
           "propertyType = ?",
           "propertyCategory = ?",
@@ -506,7 +529,6 @@ export const updateProperty = async (req, res) => {
           toSlug(property_name),
         ];
 
-        // Append only the image columns that were actually sent
         const imageSetClauses = Object.keys(sentImages).map((k) => `${k} = ?`);
         const imageValues = Object.values(sentImages);
 
@@ -518,10 +540,14 @@ export const updateProperty = async (req, res) => {
 
         const values = [...coreValues, ...imageValues, propertyid];
 
-        db.query(updateSQL, values, (err, result) => {
-          if (err) {
-            console.error("Update error:", err);
-            return res.status(500).json({ message: "Update failed" });
+        console.log("[updateProperty] values:", values);
+
+        db.query(updateSQL, values, (updateErr, result) => {
+          if (updateErr) {
+            console.error("[updateProperty] UPDATE error:", updateErr);
+            return res
+              .status(500)
+              .json({ message: "Update failed", detail: updateErr.message });
           }
 
           if (result.affectedRows === 0) {
@@ -537,7 +563,7 @@ export const updateProperty = async (req, res) => {
       },
     );
   } catch (error) {
-    console.error("Update error:", error);
+    console.error("[updateProperty] Outer error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };
