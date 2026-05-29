@@ -69,7 +69,7 @@ router.post(
     { name: "bathroomView", maxCount: 3 },
     { name: "balconyView", maxCount: 3 },
   ]),
-  addProperty
+  addProperty,
 );
 
 router.put(
@@ -85,7 +85,7 @@ router.put(
     { name: "bathroomView", maxCount: 3 },
     { name: "balconyView", maxCount: 3 },
   ]),
-  update
+  update,
 );
 
 router.put(
@@ -101,7 +101,7 @@ router.put(
     { name: "bathroomView", maxCount: 3 },
     { name: "balconyView", maxCount: 3 },
   ]),
-  updateImages
+  updateImages,
 );
 
 router.put("/status/:id", status);
@@ -114,7 +114,7 @@ const topPicksUpload = multer({
   fileFilter: (req, file, cb) => {
     if (!file) return cb(null, true);
 
-    const allowed = ["image/jpeg", "image/png", "image/jpg", "image/webp",];
+    const allowed = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
     if (!allowed.includes(file.mimetype)) {
       return cb(new Error("Invalid banner image format"));
     }
@@ -124,7 +124,7 @@ const topPicksUpload = multer({
 router.put(
   "/set/top-picks/:id",
   topPicksUpload.single("topPicksBanner"),
-  setTopPicks
+  setTopPicks,
 );
 
 router.put("/seo/:id", seoDetails);
@@ -146,7 +146,7 @@ router.post(
     { name: "satbara", maxCount: 1 },
     { name: "ebill", maxCount: 1 },
   ]),
-  additionalInfoAdd
+  additionalInfoAdd,
 );
 
 router.put(
@@ -159,7 +159,7 @@ router.put(
     { name: "satbara", maxCount: 1 },
     { name: "ebill", maxCount: 1 },
   ]),
-  editAdditionalInfo
+  editAdditionalInfo,
 );
 
 /* ================= LOCATION ================= */
@@ -168,8 +168,18 @@ router.put("/location/edit/:id", changePropertyLocation);
 
 /* ================= BROCHURE UPLOAD ================= */
 const brochureUpload = multer({
-  storage: memoryStorage,
-  limits: { fileSize: 300 * 1024 * 1024 }, // 300MB
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, "/uploads"); // OS temp dir — cleaned up automatically
+    },
+    filename: (req, file, cb) => {
+      const unique = `${Date.now()}-${file.originalname}`;
+      cb(null, unique);
+    },
+  }),
+  limits: {
+    fileSize: 300 * 1024 * 1024, // 300MB
+  },
   fileFilter: (req, file, cb) => {
     const allowedTypes = [
       "image/jpeg",
@@ -179,7 +189,7 @@ const brochureUpload = multer({
     ];
     if (!allowedTypes.includes(file.mimetype)) {
       return cb(
-        new Error("Only JPG, PNG, WEBP images or PDF files are allowed.")
+        new Error("Only JPG, PNG, WEBP images or PDF files are allowed."),
       );
     }
     cb(null, true);
@@ -189,7 +199,7 @@ const brochureUpload = multer({
 router.put(
   "/brochure/upload/:id",
   brochureUpload.single("brochureFile"),
-  uploadBrochureAndVideoLink
+  uploadBrochureAndVideoLink,
 );
 
 router.delete("/brochure/delete/:id", deleteBrochureFile);
@@ -218,12 +228,12 @@ router.get("/additionalinfo/get/:id", fetchAdditionalInfo);
 router.post(
   "/additionalinfo/flat/csv/add/:propertyid",
   uploadCsvMiddleware,
-  addCsvFileForFlat
+  addCsvFileForFlat,
 );
 router.post(
   "/additionalinfo/plot/csv/add/:propertyid",
   uploadCsvMiddleware,
-  addCsvFileForPlot
+  addCsvFileForPlot,
 );
 
 router.use((err, req, res, next) => {

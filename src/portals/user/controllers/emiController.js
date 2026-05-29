@@ -28,18 +28,13 @@ export const getAll = (req, res) => {
       return res.status(500).json({ message: "Database error" });
     }
 
-    // Format dates
     const formattedRows = rows.map((row) => ({
       ...row,
       created_at: row.created_at
         ? moment(row.created_at).format("DD MMM YYYY")
         : null,
-      // updated_at: row.updated_at
-      //   ? moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
-      //   : null,
     }));
 
-    // Counts (single row se)
     const counts = rows.length
       ? {
           active: rows[0].activeCount,
@@ -48,11 +43,7 @@ export const getAll = (req, res) => {
         }
       : { active: 0, inactive: 0, approved: 0 };
 
-    // SINGLE RESPONSE
-    res.json({
-      counts,
-      data: formattedRows,
-    });
+    res.json({ counts, data: formattedRows });
   });
 };
 
@@ -86,13 +77,12 @@ export const getById = (req, res) => {
       return res.status(404).json({ message: "Loan application not found" });
     }
 
-    const formatted = rows.map((row) => ({
-      ...row,
-      created_at: moment(row.created_at).format("DD MMM YYYY"),
-      //updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-    }));
+    const formatted = {
+      ...rows[0],
+      created_at: moment(rows[0].created_at).format("DD MMM YYYY"),
+    };
 
-    res.json(formatted[0]);
+    res.json(formatted);
   });
 };
 
@@ -100,11 +90,10 @@ export const submitEmiForm = async (req, res) => {
   try {
     const ID = req.guestUser?.id || null;
     if (!ID) {
-      return res
-        .status(400)
-        .json({ message: "Unauthorized, Please Login Again!" });
+      return res.status(400).json({ message: "Unauthorized, Please Login Again!" });
     }
 
+    // ── Job fields ──
     const {
       employmentType,
       fullname,
@@ -127,29 +116,34 @@ export const submitEmiForm = async (req, res) => {
       yearIncome,
       monthIncome,
       ongoingEmi,
-      businessSector,
-      businessCategory,
-      businessExperienceYears,
-      businessExperienceMonths,
-      businessOtherIncome,
+
+      // ── Business fields (DB column names) ──
+      businessType,           // varchar(50)
+      businessName,           // varchar(255)
+      businessVintage,        // int
+      annualTurnover,         // decimal(15,2)
+      monthlyNetIncome,       // decimal(15,2)
+      existingLoanEMI,        // decimal(15,2) optional
+      gstRegistered,          // tinyint(1) → 1 or 0
+      itrFiled,               // tinyint(1) → 1 or 0
+      businessSector,         // varchar(50) optional
+      businessCategory,       // varchar(50) optional
+      businessExperienceYears,  // varchar(5) optional
+      businessExperienceMonths, // varchar(5) optional
+      businessOtherIncome,      // varchar(100) optional
     } = req.body;
 
     /* ---------- HELPER: COMPRESS + UPLOAD ---------- */
     const uploadSingleImage = async (files) => {
       if (!files || files.length === 0) return null;
-
       const convertedImage = await convertSingleImageToWebp(files[0]);
       return await uploadToS3(convertedImage);
     };
 
     /* ---------- UPLOAD IMAGES ---------- */
     const panImage = await uploadSingleImage(req.files?.panImage);
-    const aadhaarFrontImage = await uploadSingleImage(
-      req.files?.aadhaarFrontImage
-    );
-    const aadhaarBackImage = await uploadSingleImage(
-      req.files?.aadhaarBackImage
-    );
+    const aadhaarFrontImage = await uploadSingleImage(req.files?.aadhaarFrontImage);
+    const aadhaarBackImage = await uploadSingleImage(req.files?.aadhaarBackImage);
 
     /* ---------- VALIDATION ---------- */
     if (!panImage || !aadhaarFrontImage || !aadhaarBackImage) {
@@ -158,21 +152,43 @@ export const submitEmiForm = async (req, res) => {
       });
     }
 
-    /* ---------- INSERT DATA ---------- */
+    /* ---------- INSERT ---------- */
     const sql = `
       INSERT INTO loanemiforperson (
-        user_id, employmentType, fullname, dateOfBirth, contactNo, panNumber, aadhaarNumber, email,
-        state, city, pincode, employmentSector, workexperienceYear, workexperienceMonth,
+        user_id,
+        employmentType,
+        fullname, dateOfBirth, contactNo, panNumber, aadhaarNumber, email,
+        state, city, pincode,
+        employmentSector, workexperienceYear, workexperienceMonth,
         salaryType, grossPay, netPay, pfDeduction, otherIncome,
         yearIncome, monthIncome, ongoingEmi,
-        businessSector, businessCategory, businessExperienceYears, businessExperienceMonths, businessOtherIncome,
+        businessType, businessName, businessVintage,
+        annualTurnover, monthlyNetIncome, existingLoanEMI,
+        gstRegistered, itrFiled,
+        businessSector, businessCategory,
+        businessExperienceYears, businessExperienceMonths, businessOtherIncome,
         panImage, aadhaarFrontImage, aadhaarBackImage
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (
+        ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?, ?,
+        ?, ?, ?
+      )
     `;
 
     const values = [
       ID,
       employmentType,
+
+      // Personal
       fullname,
       dateOfBirth,
       contactNo,
@@ -182,22 +198,38 @@ export const submitEmiForm = async (req, res) => {
       state,
       city,
       pincode,
-      employmentSector,
-      workexperienceYear,
-      workexperienceMonth,
-      salaryType,
-      grossPay,
-      netPay,
-      pfDeduction,
-      otherIncome,
-      yearIncome,
-      monthIncome,
-      ongoingEmi,
-      businessSector,
-      businessCategory,
-      businessExperienceYears,
-      businessExperienceMonths,
-      businessOtherIncome,
+
+      // Job income
+      employmentSector || null,
+      workexperienceYear || null,
+      workexperienceMonth || null,
+      salaryType || null,
+      grossPay || null,
+      netPay || null,
+      pfDeduction || null,
+      otherIncome || null,
+      yearIncome || null,
+      monthIncome || null,
+      ongoingEmi || null,
+
+      // Business — new DB columns
+      businessType || null,
+      businessName || null,
+      businessVintage ? parseInt(businessVintage) : null,
+      annualTurnover ? parseFloat(annualTurnover) : null,
+      monthlyNetIncome ? parseFloat(monthlyNetIncome) : null,
+      existingLoanEMI ? parseFloat(existingLoanEMI) : null,
+      gstRegistered !== undefined && gstRegistered !== "" ? parseInt(gstRegistered) : null,
+      itrFiled !== undefined && itrFiled !== "" ? parseInt(itrFiled) : null,
+
+      // Business — legacy optional columns
+      businessSector || null,
+      businessCategory || null,
+      businessExperienceYears || null,
+      businessExperienceMonths || null,
+      businessOtherIncome || null,
+
+      // Images
       panImage,
       aadhaarFrontImage,
       aadhaarBackImage,
@@ -206,10 +238,7 @@ export const submitEmiForm = async (req, res) => {
     db.query(sql, values, (err, result) => {
       if (err) {
         console.error("Error inserting EMI form:", err);
-        return res.status(500).json({
-          message: "Database insert error",
-          error: err,
-        });
+        return res.status(500).json({ message: "Database insert error", error: err });
       }
 
       return res.status(201).json({
