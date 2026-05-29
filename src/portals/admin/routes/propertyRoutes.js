@@ -170,7 +170,7 @@ router.put("/location/edit/:id", changePropertyLocation);
 const brochureUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
-      cb(null, "/tmp"); // OS temp dir — cleaned up automatically
+      cb(null, "/uploads"); // OS temp dir — cleaned up automatically
     },
     filename: (req, file, cb) => {
       const unique = `${Date.now()}-${file.originalname}`;
