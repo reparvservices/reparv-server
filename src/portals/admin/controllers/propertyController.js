@@ -5,7 +5,7 @@ import path from "path";
 import csv from "csv-parser";
 import { convertImagesToWebp } from "#utils/convertImagesToWebp.js";
 import { sanitize } from "#utils/sanitize.js";
-import { deleteFromS3, uploadToS3 } from "#utils/imageUpload.js";
+import { deleteFromS3, multipartUploadToS3, uploadToS3 } from "#utils/imageUpload.js";
 import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
 
 function toSlug(text) {
@@ -1678,7 +1678,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
         if (compressed) uploadFile = compressed;
       }
 
-      brochureUrl = await uploadToS3(uploadFile);
+      brochureUrl = await multipartUploadToS3(uploadFile);
     }
 
     /* ---------- UPDATE DB ---------- */
@@ -1703,6 +1703,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
     });
   }
 };
+
 export const deleteBrochureFile = async (req, res) => {
   try {
     const propertyId = req.params.id;
