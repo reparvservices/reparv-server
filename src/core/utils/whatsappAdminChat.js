@@ -67,6 +67,78 @@ export async function sendTextMessage({ toDigits, body }) {
   return postMessages(payload);
 }
 
+/**
+ * Meta template: partner_app_link (English)
+ * Body {{1}} = first name. Header + Download App button are static in the template.
+ */
+export async function sendPartnerAppLinkTemplate({ toDigits, firstName }) {
+  const to = normalizePhoneE164(toDigits);
+  if (!to) throw new Error("Invalid phone for WhatsApp");
+
+  const name = String(firstName || "Partner").trim().slice(0, 100) || "Partner";
+  const templateName = process.env.PARTNER_WHATSAPP_TEMPLATE || "partner_app_link";
+  const languageCode = process.env.PARTNER_WHATSAPP_TEMPLATE_LANG || "en";
+
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: languageCode },
+      components: [
+        {
+          type: "body",
+          parameters: [{ type: "text", text: name }],
+        },
+      ],
+    },
+  };
+
+  return postMessages(payload);
+}
+
+/**
+ * Meta authentication template: auth_template (English, copy code)
+ * Body: "{{1}} is your verification code..."
+ */
+export async function sendAuthOtpTemplate({ toDigits, otp }) {
+  const to = normalizePhoneE164(toDigits);
+  if (!to) throw new Error("Invalid phone for WhatsApp");
+
+  const code = String(otp || "").trim();
+  if (!/^\d{4,8}$/.test(code)) throw new Error("Invalid OTP code");
+
+  const templateName = process.env.WHATSAPP_AUTH_TEMPLATE || "auth_template";
+  const languageCode = process.env.WHATSAPP_AUTH_TEMPLATE_LANG || "en";
+
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: languageCode },
+      components: [
+        {
+          type: "body",
+          parameters: [{ type: "text", text: code }],
+        },
+        {
+          type: "button",
+          sub_type: "url",
+          index: "0",
+          parameters: [{ type: "text", text: code }],
+        },
+      ],
+    },
+  };
+
+  return postMessages(payload);
+}
+
 export function logInboundMessage({
   phone_e164,
   wa_message_id,

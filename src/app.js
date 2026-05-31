@@ -15,6 +15,7 @@ import { verifyToken } from "./core/middleware/verifyToken.js";
 import { requireActivePartnerSubscription } from "./core/middleware/requireActivePartnerSubscription.js";
 import { mountPublicRoutes } from "./http/mountPublicRoutes.js";
 import { mountProtectedRoutes } from "./http/mountProtectedRoutes.js";
+import { getPartnerAppUrls } from "./portals/frontend/services/partnerJoinLead.service.js";
 
 const app = express();
 
@@ -100,6 +101,42 @@ app.get("/open", (req, res) => {
     </html>
   `);
 });
+
+app.get("/partner-app/join", (req, res) => {
+  const token = String(req.query.token || "");
+  const { playStore, appStore } = getPartnerAppUrls();
+  const deepLink = token
+    ? `reparv://register?token=${encodeURIComponent(token)}`
+    : "reparv://register";
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Reparv Partner App</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta property="og:title" content="Complete your Reparv Partner registration" />
+      <meta property="og:description" content="Download the Reparv Partner app to finish registration" />
+    </head>
+    <body style="font-family: system-ui, sans-serif; text-align: center; padding: 2rem;">
+      <h1>Opening Reparv Partner…</h1>
+      <p>If the app does not open, you will be redirected to the app store.</p>
+      <script>
+        const ua = navigator.userAgent.toLowerCase();
+        const isAndroid = /android/.test(ua);
+        const isIOS = /iphone|ipad/.test(ua);
+        window.location.href = "${deepLink}";
+        setTimeout(() => {
+          if (isAndroid) window.location.href = "${playStore}";
+          else if (isIOS) window.location.href = "${appStore}";
+          else window.location.href = "${playStore}";
+        }, 2000);
+      </script>
+    </body>
+    </html>
+  `);
+});
+
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,

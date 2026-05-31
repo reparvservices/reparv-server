@@ -19,6 +19,7 @@ import adsManagerRoutes from "../portals/admin/routes/adsManagerRoutes.js";
 import salespersonRoutes from "../portals/admin/routes/salespersonRoutes.js";
 import partnerRoutes from "../portals/admin/routes/partnerRoutes.js";
 import projectPartnerRoutes from "../portals/admin/routes/projectPartnerRoutes.js";
+import partnerJoinLeadRoutes from "../portals/admin/routes/partnerJoinLeadRoutes.js";
 import territoryPartnerRoutes from "../portals/admin/routes/territoryPartnerRoutes.js";
 import guestUserRoutes from "../portals/admin/routes/guestUserRoutes.js";
 import subscriptionPlanRoutes from "../portals/subscription/admin/routes/subscriptionPlan.routes.js";
@@ -250,6 +251,7 @@ export function mountProtectedRoutes(app) {
   app.use("/admin/salespersons", salespersonRoutes);
   app.use("/admin/partner", partnerRoutes);
   app.use("/admin/projectpartner", projectPartnerRoutes);
+  app.use("/admin/partner-join-leads", partnerJoinLeadRoutes);
   app.use("/admin/territorypartner", territoryPartnerRoutes);
   app.use("/admin/guestuser", guestUserRoutes);
   app.use("/admin/subscription/plans", subscriptionPlanRoutes);

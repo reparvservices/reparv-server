@@ -5,6 +5,7 @@ import sendEmail from "#utils/nodeMailer.js";
 import { sendOtpSMS } from "#utils/sendOtpSMS.js";
 import moment from "moment";
 import jwt from "jsonwebtoken";
+import { markPartnerJoinLeadRegistered } from "../../frontend/services/partnerJoinLead.service.js";
 export const add = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -178,6 +179,10 @@ export const add = async (req, res) => {
               console.log("Email error:", err);
             }
           }
+
+          markPartnerJoinLeadRegistered(contact).catch((err) => {
+            console.error("[register] markPartnerJoinLeadRegistered:", err.message);
+          });
 
           return res.status(201).json({
             message: "Project Partner Added Successfully",
