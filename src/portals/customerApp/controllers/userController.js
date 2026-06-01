@@ -349,9 +349,9 @@ export const getProfile = (req, res) => {
 };
 
 export const update = async (req, res) => {
-  // console.log(req.body);
   try {
-    const { user_id, fullname, email, contact, state, city } = req.body;
+    const { user_id, fullname, email, contact, state, city, userimage } =
+      req.body;
 
     if (!user_id || !fullname) {
       return res.status(400).json({
@@ -359,64 +359,42 @@ export const update = async (req, res) => {
         message: "User ID and fullname required",
       });
     }
+    console.log(req.body);
 
     const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
 
-    db.query(
-      "SELECT userimage FROM guestUsers WHERE id = ?",
-      [user_id],
-      async (err, result) => {
-        if (err || result.length === 0) {
-          return res.status(404).json({
-            success: false,
-            message: "User not found",
-          });
-        }
+    // ✅ No multer, no S3 upload here — image URL comes directly from frontend
+    const sql = `
+      UPDATE guestUsers 
+      SET fullname = ?, email = ?, contact = ?, userimage = ?, state = ?, city = ?, updated_at = ?
+      WHERE id = ?
+    `;
 
-        let imageUrl = result[0].userimage;
+    await new Promise((resolve, reject) => {
+      db.query(
+        sql,
+        [
+          fullname,
+          email ?? null,
+          contact ?? null,
+          userimage ?? null, // ✅ S3 URL sent from frontend
+          state ?? null,
+          city ?? null,
+          timestamp,
+          user_id,
+        ],
+        (err, result) => {
+          if (err) return reject(err);
+          resolve(result);
+        },
+      );
+    });
 
-        /* ===== IMAGE CONVERT + UPLOAD ===== */
-        if (req.file) {
-          const convertedImage = await convertSingleImageToWebp(req.file);
-
-          if (convertedImage) {
-            imageUrl = await uploadToS3(convertedImage);
-          }
-
-          // 🗑 delete old image from S3
-          if (result[0].userimage) {
-            await deleteFromS3(result[0].userimage);
-          }
-        }
-
-        const sql = `
-          UPDATE guestUsers 
-          SET fullname = ?, email = ?, contact = ?, userimage = ?, state = ?, city = ?, updated_at = ?
-          WHERE id = ?
-        `;
-
-        db.query(
-          sql,
-          [
-            fullname,
-            email,
-            contact,
-            imageUrl,
-            state ?? null,
-            city ?? null,
-            timestamp,
-            user_id,
-          ],
-          () => {
-            return res.status(200).json({
-              success: true,
-              message: "Profile updated successfully",
-              userimage: imageUrl,
-            });
-          },
-        );
-      },
-    );
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      userimage: userimage ?? null,
+    });
   } catch (error) {
     console.error("Profile update error:", error);
     return res.status(500).json({

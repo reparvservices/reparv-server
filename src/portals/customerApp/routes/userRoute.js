@@ -34,7 +34,7 @@ router.post("/signup", add);
 //router.post("/login",login)
 router.post("/verify-otp", verifyOtp);
 router.post("/resend-otp", resendOtp);
-router.put("/update", upload.single("userimage"), update);
+router.put("/update", update);
 router.get("/profile", getProfile);
 router.post("/google-login", googleLogin);
 router.post("/facebook-login", facebookLogin);

@@ -215,6 +215,74 @@ export const getById = (req, res) => {
   });
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ALL IMAGE KEYS — exact DB column names
+//
+// EXISTING:  frontView | sideView | hallView | kitchenView | bedroomView
+//            bathroomView | balconyView | nearestLandmark | developedAmenities
+//            extraImages (JSON)
+//
+// NEW:       entranceView | roadView | parkingView | interiorView
+//            warehouseArea | loadingArea | officeArea | cabinView
+//            washroomView | displayArea | showroomInterior
+//            farmGardenArea | terraceSitout
+//
+// SQL to add new columns (run once):
+// ALTER TABLE properties
+//   ADD COLUMN entranceView     TEXT,
+//   ADD COLUMN roadView         TEXT,
+//   ADD COLUMN parkingView      TEXT,
+//   ADD COLUMN interiorView     TEXT,
+//   ADD COLUMN warehouseArea    TEXT,
+//   ADD COLUMN loadingArea      TEXT,
+//   ADD COLUMN officeArea       TEXT,
+//   ADD COLUMN cabinView        TEXT,
+//   ADD COLUMN washroomView     TEXT,
+//   ADD COLUMN displayArea      TEXT,
+//   ADD COLUMN showroomInterior TEXT,
+//   ADD COLUMN farmGardenArea   TEXT,
+//   ADD COLUMN terraceSitout    TEXT;
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ALL_IMAGE_KEYS = [
+  // ── existing ──
+  "frontView",
+  "sideView",
+  "hallView",
+  "kitchenView",
+  "bedroomView",
+  "bathroomView",
+  "balconyView",
+  "nearestLandmark",
+  "developedAmenities",
+  "extraImages", // JSON array column
+
+  // ── new ──
+  "entranceView",
+  "roadView",
+  "parkingView",
+  "interiorView",
+  "warehouseArea",
+  "loadingArea",
+  "officeArea",
+  "cabinView",
+  "washroomView",
+  "displayArea",
+  "showroomInterior",
+  "farmGardenArea",
+  "terraceSitout",
+];
+
+/** Serialise an image value for storage.
+ *  extraImages → JSON array string  (DB col type: json)
+ *  everything else → JSON array string too, kept consistent with existing schema
+ */
+const imgJson = (key, v) => {
+  if (!v) return null;
+  const arr = Array.isArray(v) ? v : [v];
+  return JSON.stringify(arr);
+};
+
 /* ---------- ADD PROPERTY ---------- */
 export const addProperty = async (req, res) => {
   try {
@@ -231,15 +299,6 @@ export const addProperty = async (req, res) => {
       city,
       address,
       customerid,
-      frontView,
-      sideView,
-      kitchenView,
-      hallView,
-      bedroomView,
-      bathroomView,
-      balconyView,
-      nearestLandmark,
-      developedAmenities,
     } = req.body;
 
     console.log("[addProperty] body:", req.body);
@@ -250,14 +309,13 @@ export const addProperty = async (req, res) => {
         .json({ success: false, message: "Required fields missing" });
     }
 
-    /* ---------- DUPLICATE CHECK ---------- */
+    /* ── duplicate check ── */
     db.query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",
       [property_name],
       (selectErr, selectResult) => {
-        // ← removed async
         if (selectErr) {
-          console.error("[addProperty] SELECT error:", selectErr); // ← log real error
+          console.error("[addProperty] SELECT error:", selectErr);
           return res
             .status(500)
             .json({ success: false, message: "Database error" });
@@ -269,7 +327,7 @@ export const addProperty = async (req, res) => {
             .json({ success: false, message: "Property name already exists" });
         }
 
-        /* ---------- PARSE AREAS ---------- */
+        /* ── parse areas ── */
         let parsedAreas = [];
         try {
           if (typeof areas === "string") parsedAreas = JSON.parse(areas);
@@ -278,11 +336,8 @@ export const addProperty = async (req, res) => {
           console.warn("[addProperty] Invalid areas JSON:", areas);
         }
 
-        console.log("[addProperty] parsedAreas:", parsedAreas); // ← debug
-
         const FARM_TYPES = ["FarmLand", "FarmHouse"];
         const isFarm = FARM_TYPES.includes(property_type);
-
         let builtUpArea = null;
         let carpetArea = null;
 
@@ -290,9 +345,8 @@ export const addProperty = async (req, res) => {
           const landEntry = parsedAreas.find((a) =>
             a?.label?.toLowerCase().includes("land"),
           );
-          if (landEntry) {
+          if (landEntry)
             builtUpArea = `${landEntry.value} ${landEntry.unit || "Acre"}`;
-          }
         } else {
           builtUpArea =
             parsedAreas.find((a) =>
@@ -303,32 +357,39 @@ export const addProperty = async (req, res) => {
               ?.value || null;
         }
 
-        console.log(
-          "[addProperty] builtUpArea:",
-          builtUpArea,
-          "| carpetArea:",
-          carpetArea,
-        ); // ← debug
+        /* ── collect image values from body ── */
+        const imageColumns = [];
+        const imageValues = [];
 
-        /* ---------- IMAGE HELPER ---------- */
-        const imgJson = (v) =>
-          v ? JSON.stringify(Array.isArray(v) ? v : [v]) : null;
+        ALL_IMAGE_KEYS.forEach((key) => {
+          if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+            imageColumns.push(key);
+            imageValues.push(imgJson(key, req.body[key]));
+          }
+        });
 
-        /* ---------- INSERT ---------- */
-        const insertSQL = `
-          INSERT INTO properties (
-            customerid, guestUserId, propertyType, propertyCategory, propertyName,
-            totalSalesPrice, totalOfferPrice, contact, projectBy,
-            state, city, address, builtUpArea, carpetArea,
-            frontView, sideView, kitchenView, hallView,
-            bedroomView, bathroomView, balconyView,
-            nearestLandmark, developedAmenities,
-            seoSlug, created_at, updated_at
-          )
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
-        `;
+        /* ── build INSERT ── */
+        const coreColumns = [
+          "customerid",
+          "guestUserId",
+          "propertyType",
+          "propertyCategory",
+          "propertyName",
+          "totalSalesPrice",
+          "totalOfferPrice",
+          "contact",
+          "projectBy",
+          "state",
+          "city",
+          "address",
+          "builtUpArea",
+          "carpetArea",
+          "seoSlug",
+          "created_at",
+          "updated_at",
+        ];
 
-        const values = [
+        const coreValues = [
           customerid,
           customerid,
           bhk_type || null,
@@ -343,24 +404,25 @@ export const addProperty = async (req, res) => {
           address,
           builtUpArea,
           carpetArea,
-          imgJson(frontView),
-          imgJson(sideView),
-          imgJson(kitchenView),
-          imgJson(hallView),
-          imgJson(bedroomView),
-          imgJson(bathroomView),
-          imgJson(balconyView),
-          imgJson(nearestLandmark),
-          imgJson(developedAmenities),
           toSlug(property_name),
         ];
 
-        console.log("[addProperty] INSERT values:", values); // ← debug
-        console.log("[addProperty] value count:", values.length); // must be 24
+        const allColumns = [...coreColumns, ...imageColumns];
+        const coreValueCount = coreValues.length; // 15 values before NOW(),NOW()
 
-        db.query(insertSQL, values, (insertErr, insertResult) => {
+        const insertSQL = `
+          INSERT INTO properties (${allColumns.join(", ")})
+          VALUES (${Array(coreValueCount).fill("?").join(",")}, NOW(), NOW()${imageColumns.length ? "," + imageColumns.map(() => "?").join(",") : ""})
+        `;
+
+        const insertValues = [...coreValues, ...imageValues];
+
+        console.log("[addProperty] INSERT columns:", allColumns);
+        console.log("[addProperty] INSERT values:", insertValues);
+
+        db.query(insertSQL, insertValues, (insertErr, insertResult) => {
           if (insertErr) {
-            console.error("[addProperty] INSERT error:", insertErr); // ← THE key log
+            console.error("[addProperty] INSERT error:", insertErr);
             return res.status(500).json({
               success: false,
               message: "Insert failed",
@@ -386,14 +448,13 @@ export const addProperty = async (req, res) => {
   }
 };
 
+/* ---------- UPDATE PROPERTY ---------- */
 export const updateProperty = async (req, res) => {
   try {
     const { propertyid } = req.params;
 
     if (!propertyid) {
-      return res.status(400).json({
-        message: "Property ID is required",
-      });
+      return res.status(400).json({ message: "Property ID is required" });
     }
 
     console.log("========== UPDATE PROPERTY ==========");
@@ -421,16 +482,13 @@ export const updateProperty = async (req, res) => {
       furnishing,
       total_floors,
       floor_no,
-
       water_supply,
       power_backup,
-
       location_feature,
       parking_feature,
       terrace_feature,
       amenities_feature,
       smart_home_feature,
-
       security_benefit,
       prime_location_benefit,
       rental_income_benefit,
@@ -439,68 +497,48 @@ export const updateProperty = async (req, res) => {
       ecofriendly_benefit,
     } = req.body;
 
-    const IMAGE_KEYS = [
-      "frontView",
-      "sideView",
-      "kitchenView",
-      "hallView",
-      "bedroomView",
-      "bathroomView",
-      "balconyView",
-      "nearestLandmark",
-      "developedAmenities",
-    ];
+    /* ── collect only the image keys present in this request ── */
+    const sentImageClauses = [];
+    const sentImageValues = [];
 
-    const sentImages = {};
-
-    IMAGE_KEYS.forEach((key) => {
+    ALL_IMAGE_KEYS.forEach((key) => {
       if (Object.prototype.hasOwnProperty.call(req.body, key)) {
-        const val = req.body[key];
-
-        sentImages[key] = val
-          ? JSON.stringify(Array.isArray(val) ? val : [val])
-          : null;
+        sentImageClauses.push(`${key} = ?`);
+        sentImageValues.push(imgJson(key, req.body[key]));
       }
     });
 
-    console.log("Processed Images:", sentImages);
+    console.log("Image columns being updated:", sentImageClauses);
 
+    /* ── duplicate name check ── */
     db.query(
       `SELECT propertyid FROM properties WHERE propertyName = ? AND propertyid != ?`,
       [property_name, propertyid],
       (err, exists) => {
         if (err) {
           console.error("CHECK PROPERTY NAME ERROR:", err);
-
-          return res.status(500).json({
-            message: "Database error",
-            error: err.message,
-          });
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err.message });
         }
 
         if (exists.length > 0) {
-          return res.status(409).json({
-            message: "Property name already exists!",
-          });
+          return res
+            .status(409)
+            .json({ message: "Property name already exists!" });
         }
 
+        /* ── parse areas ── */
         let parsedAreas = [];
-
         try {
-          if (typeof areas === "string") {
-            parsedAreas = JSON.parse(areas);
-          } else if (Array.isArray(areas)) {
-            parsedAreas = areas;
-          }
+          if (typeof areas === "string") parsedAreas = JSON.parse(areas);
+          else if (Array.isArray(areas)) parsedAreas = areas;
         } catch (e) {
           console.error("AREA PARSE ERROR:", e);
         }
 
-        console.log("Parsed Areas:", parsedAreas);
-
         const FARM_TYPES = ["FarmLand", "FarmHouse"];
         const isFarm = FARM_TYPES.includes(property_type);
-
         let builtUpArea = null;
         let carpetArea = null;
 
@@ -508,24 +546,19 @@ export const updateProperty = async (req, res) => {
           const landEntry = parsedAreas.find((a) =>
             a?.label?.toLowerCase().includes("land"),
           );
-
-          if (landEntry) {
+          if (landEntry)
             builtUpArea = `${landEntry.value} ${landEntry.unit || "Acre"}`;
-          }
         } else {
           builtUpArea =
             parsedAreas.find((a) =>
               a?.label?.toLowerCase().includes("built-up"),
             )?.value || null;
-
           carpetArea =
             parsedAreas.find((a) => a?.label?.toLowerCase().includes("carpet"))
               ?.value || null;
         }
 
-        console.log("BuiltUpArea:", builtUpArea);
-        console.log("CarpetArea:", carpetArea);
-
+        /* ── core SET clauses ── */
         const coreFields = [
           "propertyCategory = ?",
           "propertyName = ?",
@@ -548,23 +581,19 @@ export const updateProperty = async (req, res) => {
           "furnishing = ?",
           "totalFloors = ?",
           "floorNo = ?",
-
           "waterSupply = ?",
           "powerBackup = ?",
-
           "locationFeature = ?",
           "parkingFeature = ?",
           "terraceFeature = ?",
           "amenitiesFeature = ?",
           "smartHomeFeature = ?",
-
           "securityBenefit = ?",
           "primeLocationBenefit = ?",
           "rentalIncomeBenefit = ?",
           "qualityBenefit = ?",
           "capitalAppreciationBenefit = ?",
           "ecofriendlyBenefit = ?",
-
           "updated_at = NOW()",
         ];
 
@@ -581,7 +610,6 @@ export const updateProperty = async (req, res) => {
           builtUpArea,
           carpetArea,
           toSlug(property_name),
-
           propertyDescription ?? null,
           ownership_type ?? null,
           property_facing ?? null,
@@ -591,16 +619,13 @@ export const updateProperty = async (req, res) => {
           furnishing ?? null,
           total_floors ?? null,
           floor_no ?? null,
-
           water_supply ?? null,
           power_backup ?? null,
-
           location_feature ?? null,
           parking_feature ?? null,
           terrace_feature ?? null,
           amenities_feature ?? null,
           smart_home_feature ?? null,
-
           security_benefit ?? null,
           prime_location_benefit ?? null,
           rental_income_benefit ?? null,
@@ -609,33 +634,28 @@ export const updateProperty = async (req, res) => {
           ecofriendly_benefit ?? null,
         ];
 
+        // optional bhk_type field
         if (bhk_type !== undefined && bhk_type !== null) {
           coreFields.unshift("propertyType = ?");
           coreValues.unshift(bhk_type);
         }
 
-        const imageSetClauses = Object.keys(sentImages).map((k) => `${k} = ?`);
-
-        const imageValues = Object.values(sentImages);
-
         const updateSQL = `
           UPDATE properties SET
-          ${[...coreFields, ...imageSetClauses].join(",\n")}
+          ${[...coreFields, ...sentImageClauses].join(",\n")}
           WHERE propertyid = ?
         `;
 
-        const values = [...coreValues, ...imageValues, propertyid];
+        const values = [...coreValues, ...sentImageValues, propertyid];
 
         console.log("========== UPDATE SQL ==========");
         console.log(updateSQL);
-
         console.log("========== UPDATE VALUES ==========");
         console.log(values);
 
         db.query(updateSQL, values, (updateErr, result) => {
           if (updateErr) {
             console.error("UPDATE PROPERTY ERROR:", updateErr);
-
             return res.status(500).json({
               message: "Update failed",
               detail: updateErr.message,
@@ -643,12 +663,8 @@ export const updateProperty = async (req, res) => {
             });
           }
 
-          console.log("UPDATE RESULT:", result);
-
           if (result.affectedRows === 0) {
-            return res.status(404).json({
-              message: "Property not found",
-            });
+            return res.status(404).json({ message: "Property not found" });
           }
 
           return res.status(200).json({
@@ -661,7 +677,6 @@ export const updateProperty = async (req, res) => {
     );
   } catch (error) {
     console.error("SERVER ERROR:", error);
-
     return res.status(500).json({
       message: "Server error",
       error: error.message,
