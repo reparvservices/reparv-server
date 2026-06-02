@@ -336,25 +336,35 @@ export const addProperty = async (req, res) => {
           console.warn("[addProperty] Invalid areas JSON:", areas);
         }
 
-        const FARM_TYPES = ["FarmLand", "FarmHouse"];
+        const FARM_TYPES = ["FarmLand", "FarmHouse", "ResaleFarmHouse"];
+
         const isFarm = FARM_TYPES.includes(property_type);
+
         let builtUpArea = null;
         let carpetArea = null;
 
         if (isFarm) {
-          const landEntry = parsedAreas.find((a) =>
-            a?.label?.toLowerCase().includes("land"),
+          const landArea = parsedAreas.find((area) =>
+            area?.label?.toLowerCase().includes("land"),
           );
-          if (landEntry)
-            builtUpArea = `${landEntry.value} ${landEntry.unit || "Acre"}`;
+
+          if (landArea) {
+            builtUpArea = `${landArea.value} ${landArea.unit || "Acre"}`;
+          }
         } else {
-          builtUpArea =
-            parsedAreas.find((a) =>
-              a?.label?.toLowerCase().includes("built-up"),
-            )?.value || null;
-          carpetArea =
-            parsedAreas.find((a) => a?.label?.toLowerCase().includes("carpet"))
-              ?.value || null;
+          const superBuiltUp = parsedAreas.find(
+            (area) =>
+              area?.label?.toLowerCase() ===
+              "super built-up area".toLowerCase(),
+          );
+
+          const carpet = parsedAreas.find(
+            (area) =>
+              area?.label?.toLowerCase() === "carpet area".toLowerCase(),
+          );
+
+          builtUpArea = superBuiltUp?.value || null;
+          carpetArea = carpet?.value || null;
         }
 
         /* ── collect image values from body ── */
@@ -537,25 +547,35 @@ export const updateProperty = async (req, res) => {
           console.error("AREA PARSE ERROR:", e);
         }
 
-        const FARM_TYPES = ["FarmLand", "FarmHouse"];
+        const FARM_TYPES = ["FarmLand", "FarmHouse", "ResaleFarmHouse"];
+
         const isFarm = FARM_TYPES.includes(property_type);
+
         let builtUpArea = null;
         let carpetArea = null;
 
         if (isFarm) {
-          const landEntry = parsedAreas.find((a) =>
-            a?.label?.toLowerCase().includes("land"),
+          const landArea = parsedAreas.find((area) =>
+            area?.label?.toLowerCase().includes("land"),
           );
-          if (landEntry)
-            builtUpArea = `${landEntry.value} ${landEntry.unit || "Acre"}`;
+
+          if (landArea) {
+            builtUpArea = `${landArea.value} ${landArea.unit || "Acre"}`;
+          }
         } else {
-          builtUpArea =
-            parsedAreas.find((a) =>
-              a?.label?.toLowerCase().includes("built-up"),
-            )?.value || null;
-          carpetArea =
-            parsedAreas.find((a) => a?.label?.toLowerCase().includes("carpet"))
-              ?.value || null;
+          const superBuiltUpArea = parsedAreas.find(
+            (area) =>
+              area?.label?.toLowerCase() ===
+              "super built-up area".toLowerCase(),
+          );
+
+          const carpetAreaEntry = parsedAreas.find(
+            (area) =>
+              area?.label?.toLowerCase() === "carpet area".toLowerCase(),
+          );
+
+          builtUpArea = superBuiltUpArea?.value || null;
+          carpetArea = carpetAreaEntry?.value || null;
         }
 
         /* ── core SET clauses ── */
