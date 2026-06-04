@@ -3,6 +3,10 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import db from "#db";
 import sendForgotPasswordMail from "#utils/sendForgotPasswordMail.js";
+import {
+  getAdminTokenCookieOptions,
+  getAdminTokenClearOptions,
+} from "#utils/adminAuthCookie.js";
 
 const router = express.Router();
 
@@ -142,11 +146,14 @@ router.post("/login", async (req, res) => {
         username: user.username,
         email: user.email,
         adharId: user.adharno,
+        name: user.name,
+        contact: user.contact,
+        role: user.role,
       },
       process.env.JWT_SECRET,
       {
         expiresIn: "10d",
-      }
+      },
     );
 
     //  Store session data
@@ -159,21 +166,10 @@ router.post("/login", async (req, res) => {
       role: user.role,
     };
 
-    //  Set secure cookie for authentication
-    res.cookie("adminToken", token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "None",
-      //domain: "admin.reparv.in",
-      //domain: "localhost",
-      //path: "/",
-      maxAge: 10 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie("adminToken", token, getAdminTokenCookieOptions());
 
-    //  Send response
     return res.json({
       message: "Login successful",
-      token,
       user: req.session.user,
     });
   } catch (error) {
@@ -184,12 +180,37 @@ router.post("/login", async (req, res) => {
   }
 });
 
-//  Get Current User's Session Data
+//  Get Current User's Session Data (express-session; optional legacy)
 router.get("/session-data", (req, res) => {
   if (req.session.user) {
     res.json({ message: "Session Active", user: req.session.user });
   } else {
     res.status(401).json({ message: "No active session" });
+  }
+});
+
+/** Current admin from httpOnly JWT cookie (primary auth check for the admin SPA). */
+router.get("/auth/me", (req, res) => {
+  const token = req.cookies?.adminToken;
+  if (!token) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return res.json({
+      user: {
+        id: decoded.id,
+        username: decoded.username,
+        email: decoded.email,
+        name: decoded.name,
+        contact: decoded.contact,
+        role: decoded.role,
+      },
+    });
+  } catch {
+    res.clearCookie("adminToken", getAdminTokenClearOptions());
+    return res.status(401).json({ message: "Invalid or expired session" });
   }
 });
 
@@ -199,11 +220,7 @@ router.post("/logout", (req, res) => {
     if (err) {
       return res.status(500).json({ message: "Logout failed" });
     }
-    res.clearCookie("adminToken", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "None",
-    });
+    res.clearCookie("adminToken", getAdminTokenClearOptions());
     console.log("Logout Successfully");
     return res.json({ message: "Logout successful." });
   });
