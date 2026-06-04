@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 
 const publicRoutes = [
   "/admin/login",
+  "/admin/auth/me",
   "/admin/setup/create-user",
   "/builder/login",
   "/employee/login",
