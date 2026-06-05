@@ -565,8 +565,7 @@ export const updateProperty = async (req, res) => {
         } else {
           const superBuiltUpArea = parsedAreas.find(
             (area) =>
-              area?.label?.toLowerCase() ===
-              "super built-up area".toLowerCase(),
+              area?.label?.toLowerCase() === "Built-up Area".toLowerCase(),
           );
 
           const carpetAreaEntry = parsedAreas.find(
@@ -576,6 +575,8 @@ export const updateProperty = async (req, res) => {
 
           builtUpArea = superBuiltUpArea?.value || null;
           carpetArea = carpetAreaEntry?.value || null;
+          console.log("Parsed builtUpArea:", builtUpArea);
+          console.log("Parsed carpetArea:", carpetArea);
         }
 
         /* ── core SET clauses ── */
