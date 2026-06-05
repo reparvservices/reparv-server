@@ -12,7 +12,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "TZ=Asia/Kolkata node src/server.js",
     "dev": "TZ=Asia/Kolkata nodemon src/server.js",
-    "import-meta-leads": "node src/portals/metalead/scripts/import-meta-leads-csv.js"
+    "import-meta-leads": "node src/portals/metalead/scripts/import-meta-leads-csv.js",
+    "ai:index-doc": "node src/ai/scripts/index-knowledge.js"
   },
   "keywords": [],
   "author": "",
@@ -32,6 +33,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-mysql-session": "^3.0.3",
+    "express-rate-limit": "^8.5.2",
     "express-session": "^1.18.1",
     "firebase-admin": "^13.5.0",
     "google-auth-library": "^10.5.0",
@@ -47,7 +49,9 @@
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.12",
     "nodemon": "^3.1.9",
+    "openai": "^6.42.0",
     "papaparse": "^5.5.3",
+    "pdf-parse": "^2.2.2",
     "pdfkit": "^0.18.0",
     "razorpay": "^2.9.6",
     "server.js": "^1.0.0",

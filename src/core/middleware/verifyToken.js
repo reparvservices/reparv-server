@@ -53,6 +53,7 @@ const publicRoutes = [
   "/frontend/contact-us",
   "/frontend/news",
   "/frontend/seo-data",
+  "/api/ai",
   "/salesapp/enquiry",
   "/api/booking",
   "/salesapp/api/edit",
