@@ -91,7 +91,17 @@ function buildPropertyUrl(seoSlug) {
   return `${PROPERTY_BASE_URL.replace(/\/$/, "")}/property-info/${seoSlug}`;
 }
 
-export async function propertySearch(filters = {}) {
+function normalizePropertyType(raw) {
+  const t = String(raw || "").toLowerCase();
+  if (/plot|land|zameen/.test(t)) return "Plot";
+  if (/apartment|flat|bhk/.test(t)) return "Apartment";
+  if (/villa|bungalow/.test(t)) return "Villa";
+  if (/house|home|bungalow/.test(t)) return "House";
+  if (/commercial|shop|office/.test(t)) return "Commercial";
+  return raw;
+}
+
+async function runPropertySearch(filters = {}) {
   const {
     city,
     area,
@@ -110,8 +120,8 @@ export async function propertySearch(filters = {}) {
   const params = [];
 
   if (city) {
-    conditions.push("p.city = ?");
-    params.push(city);
+    conditions.push("LOWER(p.city) = LOWER(?)");
+    params.push(city.trim());
   }
   if (area) {
     conditions.push("(p.location LIKE ? OR p.address LIKE ?)");
@@ -128,8 +138,16 @@ export async function propertySearch(filters = {}) {
     params.push(Number(budgetMin));
   }
   if (propertyType) {
-    conditions.push("(p.propertyCategory LIKE ? OR p.propertyType LIKE ?)");
-    params.push(`%${propertyType}%`, `%${propertyType}%`);
+    const normalized = normalizePropertyType(propertyType);
+    conditions.push(
+      "(p.propertyCategory LIKE ? OR p.propertyType LIKE ? OR p.propertyCategory LIKE ? OR p.propertyType LIKE ?)",
+    );
+    params.push(
+      `%${normalized}%`,
+      `%${normalized}%`,
+      `%${propertyType}%`,
+      `%${propertyType}%`,
+    );
   }
   if (possessionStatus) {
     conditions.push("(p.propertyStatusFeature LIKE ? OR p.possessionDate IS NOT NULL)");
@@ -207,6 +225,32 @@ export async function propertySearch(filters = {}) {
       url: buildPropertyUrl(row.seoSlug),
     };
   });
+}
+
+export async function propertySearch(filters = {}) {
+  let results = await runPropertySearch(filters);
+
+  if (results.length === 0 && (filters.budgetMin != null || filters.budgetMax != null)) {
+    const { budgetMin, budgetMax, ...broader } = filters;
+    results = await runPropertySearch(broader);
+  }
+
+  if (results.length === 0 && filters.bedrooms) {
+    const { bedrooms, ...broader } = filters;
+    results = await runPropertySearch(broader);
+  }
+
+  if (results.length === 0 && filters.area) {
+    const { area, ...broader } = filters;
+    results = await runPropertySearch(broader);
+  }
+
+  if (results.length === 0 && filters.possessionStatus) {
+    const { possessionStatus, ...broader } = filters;
+    results = await runPropertySearch(broader);
+  }
+
+  return results;
 }
 
 export async function getPropertyById(propertyId) {

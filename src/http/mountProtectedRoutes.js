@@ -191,6 +191,7 @@ import territoryAuth from "../portals/territoryApp/routes/authRoutes.js";
 import salesSubscription from "../portals/salesApp/routes/partnerSubscription.routes.js";
 import scheduleNotesRoutes from "../portals/salesApp/routes/notesRoute.js";
 import onboardingAppRoute from "../portals/onboardingApp/routes/userRoute.js";
+import agentRoutes from "../ai/routes.js";
 import onboardingPartnerPostRoute from "../portals/onboardingApp/routes/postRoutes.js";
 import onboardingSubscription from "../portals/onboardingApp/routes/partnerSubscription.routes.js";
 import projectPartnerAppRoute from "../portals/projectPartnerApp/routes/userRoute.js";
@@ -304,6 +305,7 @@ export function mountProtectedRoutes(app) {
   app.use("/user/auth", userAuthRoutes);
   app.use("/user/emi", userEmiRoutes);
   app.use("/user/activity", userActivityRoutes);
+  app.use("/user/agent", agentRoutes);
 
   app.use("/builder", builderLoginRoutes);
   app.use("/builder/profile", builderProfileRoutes);
