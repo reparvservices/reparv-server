@@ -214,36 +214,6 @@ export const getById = (req, res) => {
     });
   });
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ALL IMAGE KEYS — exact DB column names
-//
-// EXISTING:  frontView | sideView | hallView | kitchenView | bedroomView
-//            bathroomView | balconyView | nearestLandmark | developedAmenities
-//            extraImages (JSON)
-//
-// NEW:       entranceView | roadView | parkingView | interiorView
-//            warehouseArea | loadingArea | officeArea | cabinView
-//            washroomView | displayArea | showroomInterior
-//            farmGardenArea | terraceSitout
-//
-// SQL to add new columns (run once):
-// ALTER TABLE properties
-//   ADD COLUMN entranceView     TEXT,
-//   ADD COLUMN roadView         TEXT,
-//   ADD COLUMN parkingView      TEXT,
-//   ADD COLUMN interiorView     TEXT,
-//   ADD COLUMN warehouseArea    TEXT,
-//   ADD COLUMN loadingArea      TEXT,
-//   ADD COLUMN officeArea       TEXT,
-//   ADD COLUMN cabinView        TEXT,
-//   ADD COLUMN washroomView     TEXT,
-//   ADD COLUMN displayArea      TEXT,
-//   ADD COLUMN showroomInterior TEXT,
-//   ADD COLUMN farmGardenArea   TEXT,
-//   ADD COLUMN terraceSitout    TEXT;
-// ─────────────────────────────────────────────────────────────────────────────
-
 const ALL_IMAGE_KEYS = [
   // ── existing ──
   "frontView",
@@ -505,6 +475,9 @@ export const updateProperty = async (req, res) => {
       quality_benefit,
       capital_appreciation_benefit,
       ecofriendly_benefit,
+      latitude,
+      longitude,
+      propertyApprovedBy,
     } = req.body;
 
     /* ── collect only the image keys present in this request ── */
@@ -559,13 +532,26 @@ export const updateProperty = async (req, res) => {
             area?.label?.toLowerCase().includes("land"),
           );
 
+          console.log("Farm Land Area:", landArea);
+
           if (landArea) {
-            builtUpArea = `${landArea.value} ${landArea.unit || "Acre"}`;
+            const value = landArea?.value?.toString()?.trim();
+            const unit = landArea?.unit?.toString()?.trim();
+
+            if (
+              value &&
+              unit &&
+              !value.toLowerCase().includes(unit.toLowerCase())
+            ) {
+              builtUpArea = `${value} ${unit}`;
+            } else {
+              builtUpArea = value || null;
+            }
           }
         } else {
           const superBuiltUpArea = parsedAreas.find(
             (area) =>
-              area?.label?.toLowerCase() === "Built-up Area".toLowerCase(),
+              area?.label?.toLowerCase() === "built-up area".toLowerCase(),
           );
 
           const carpetAreaEntry = parsedAreas.find(
@@ -575,14 +561,15 @@ export const updateProperty = async (req, res) => {
 
           builtUpArea = superBuiltUpArea?.value || null;
           carpetArea = carpetAreaEntry?.value || null;
+
           console.log("Parsed builtUpArea:", builtUpArea);
           console.log("Parsed carpetArea:", carpetArea);
         }
-
         /* ── core SET clauses ── */
         const coreFields = [
           "propertyCategory = ?",
           "propertyName = ?",
+          "propertyApprovedBy = ?",
           "totalSalesPrice = ?",
           "totalOfferPrice = ?",
           "contact = ?",
@@ -615,12 +602,15 @@ export const updateProperty = async (req, res) => {
           "qualityBenefit = ?",
           "capitalAppreciationBenefit = ?",
           "ecofriendlyBenefit = ?",
+          "latitude = ?",
+          "longitude = ?",
           "updated_at = NOW()",
         ];
 
         const coreValues = [
           property_type || null,
           property_name,
+          propertyApprovedBy,
           price,
           ofprice,
           contact,
@@ -653,6 +643,8 @@ export const updateProperty = async (req, res) => {
           quality_benefit ?? null,
           capital_appreciation_benefit ?? null,
           ecofriendly_benefit ?? null,
+          latitude ?? null,
+          longitude ?? null,
         ];
 
         // optional bhk_type field
