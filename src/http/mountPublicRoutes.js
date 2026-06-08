@@ -28,7 +28,7 @@ import FollowRoute from "../portals/shared/routes/followRoute.js";
 import ForgetPasswordRoute from "../portals/shared/routes/Forgotpasswordroutes.js";
 import sitemapRoutes from "../portals/shared/routes/sitemapRoutes.js";
 import customersNotify from "../portals/customerApp/routes/notifyroute.js";
-import aiRoutes from "../routes/ai.routes.js";
+import { getAgentPage } from "../ai/controller.js";
 
 export function mountPublicRoutes(app) {
   app.use("/admin", loginRoutes);
@@ -56,7 +56,7 @@ export function mountPublicRoutes(app) {
   app.use("/api/s3", s3Routes);
   app.use("/api/user", otpRoutes);
   app.use("/api/customer-notify", customersNotify);
-  app.use("/api/ai", aiRoutes);
+  app.get("/agent", getAgentPage);
 
   app.use("/api/feed/", Feed);
   app.use("/api/follow/", FollowRoute);

@@ -1,8 +1,5 @@
-import {
-  getPropertyById,
-  findPropertyByName,
-} from "./property-search.tool.js";
-import { semanticSearch, buildRagContext } from "../vector/vector.service.js";
+import { getPropertyById, findPropertyByName } from "./properties.js";
+import { semanticSearch, buildRagContext } from "../rag/index.js";
 
 export async function getProjectDetails({ propertyId, projectName, query }) {
   let property = null;
@@ -34,14 +31,12 @@ export async function getProjectDetails({ propertyId, projectName, query }) {
       propertyId: resolvedId,
     });
   } catch (err) {
-    console.warn("[project-info] RAG search skipped:", err.message);
+    console.warn("[ai/tools/project] RAG search skipped:", err.message);
   }
-
-  const ragContext = buildRagContext(ragChunks);
 
   return {
     property,
-    ragContext: ragContext || null,
+    ragContext: buildRagContext(ragChunks) || null,
     sourcesUsed: ragChunks.length,
     matches: projectName && !property ? await findPropertyByName(projectName) : [],
   };

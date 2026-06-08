@@ -1,9 +1,9 @@
 /**
  * CLI: index a document into RAG
- * Usage: node src/ai/scripts/index-knowledge.js --title "FAQ" --file ./uploads/faq.pdf --propertyId 1
+ * Usage: npm run ai:index-doc -- --title "FAQ" --file ./uploads/faq.pdf --propertyId 1
  */
 import "dotenv/config";
-import { indexDocument } from "../../vector/vector.service.js";
+import { indexDocument } from "../rag/index.js";
 
 function parseArgs(argv) {
   const out = {};
@@ -20,7 +20,7 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv);
 if (!args.title || (!args.file && !args.text)) {
   console.error(
-    "Usage: node src/ai/scripts/index-knowledge.js --title NAME --file PATH [--propertyId N] [--docType brochure]",
+    "Usage: npm run ai:index-doc -- --title NAME --file PATH [--propertyId N] [--docType brochure]",
   );
   process.exit(1);
 }

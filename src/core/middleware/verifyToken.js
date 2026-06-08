@@ -54,6 +54,8 @@ const publicRoutes = [
   "/frontend/news",
   "/frontend/seo-data",
   "/api/ai",
+  "/agent",
+  "/ai-chat",
   "/salesapp/enquiry",
   "/api/booking",
   "/salesapp/api/edit",
