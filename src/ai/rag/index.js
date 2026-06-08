@@ -6,7 +6,7 @@ import {
   createEmbedding,
   createEmbeddingsBatch,
   cosineSimilarity,
-} from "./embeddings.service.js";
+} from "./embeddings.js";
 
 const CHUNK_SIZE = Number(process.env.AI_RAG_CHUNK_SIZE) || 900;
 const CHUNK_OVERLAP = Number(process.env.AI_RAG_CHUNK_OVERLAP) || 120;
@@ -37,7 +37,7 @@ async function extractPdfText(filePath) {
     const data = await pdfParse(buffer);
     return data.text || "";
   } catch (err) {
-    console.warn("[vector] PDF parse failed:", err.message);
+    console.warn("[ai/rag] PDF parse failed:", err.message);
     return "";
   }
 }
