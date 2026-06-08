@@ -165,12 +165,27 @@ router.get("/session-data", (req, res) => {
 /* ======================================================
    LOGOUT
 ====================================================== */
-router.post("/logout", (req, res) => {
-  res.clearCookie("userToken");
+const userTokenCookieOpts = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+};
 
-  req.session?.destroy(() => {
-    return res.json({ message: "Logout successful" });
-  });
+router.post("/logout", (req, res) => {
+  res.clearCookie("userToken", userTokenCookieOpts);
+
+  const respond = () =>
+    res.json({ success: true, message: "Logout successful" });
+
+  if (req.session) {
+    req.session.destroy((err) => {
+      if (err) console.error("Session destroy error:", err);
+      respond();
+    });
+    return;
+  }
+
+  respond();
 });
 
 export default router;

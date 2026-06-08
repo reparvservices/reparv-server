@@ -25,6 +25,9 @@ export async function createLead({ userId, ...data }) {
   const maxBudget = data.budgetMax ?? null;
   const source = "AI Agent";
   let enquirersid = data.enquirersId || null;
+  if (enquirersid && String(enquirersid).replace(/\D/g, "").length >= 10) {
+    enquirersid = null;
+  }
   let projectpartnerid = null;
   let category = data.propertyType || null;
 
