@@ -3,7 +3,6 @@ import {
   resolveEnquiryByPhone,
   normalizePhoneE164,
 } from "#utils/whatsappAdminChat.js";
-import { handleWhatsAppInboundAsync } from "../../../whatsapp/webhook.controller.js";
 
 function extractIncomingMessages(body) {
   const out = [];
@@ -97,16 +96,6 @@ export const receiveWebhook = (req, res) => {
       }).catch((e) =>
         console.error("logInboundMessage:", e?.message || e),
       );
-
-      if (msg.textBody && !msg.textBody.startsWith("[")) {
-        handleWhatsAppInboundAsync({
-          phone_e164,
-          textBody: msg.textBody,
-          wa_message_id: msg.id,
-          enquirersid: enquiry?.enquirersid || null,
-          customer_name: enquiry?.customer_name || null,
-        });
-      }
     });
   }
 };
