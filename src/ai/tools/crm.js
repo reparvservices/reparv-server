@@ -1,6 +1,6 @@
 import moment from "moment-timezone";
 import db from "#db/promise";
-import { upsertLeadProfile } from "./lead-qualification.tool.js";
+import { upsertLeadProfile } from "./leads.js";
 
 function now() {
   return moment().format("YYYY-MM-DD HH:mm:ss");
@@ -14,9 +14,6 @@ function normalizePhone(contact) {
   return d.length >= 10 ? d.slice(-10) : null;
 }
 
-/**
- * Create or update enquirer in existing CRM `enquirers` table.
- */
 export async function createLead({ userId, ...data }) {
   const phone = normalizePhone(data.phone);
   if (!phone) {
@@ -123,9 +120,6 @@ export async function createLead({ userId, ...data }) {
   };
 }
 
-/**
- * Human handoff — updates lead profile and enquirer message.
- */
 export async function assignToSalesAgent({
   userId,
   reason,
@@ -157,16 +151,4 @@ export async function assignToSalesAgent({
     enquirersid: eid,
     reason,
   };
-}
-
-export async function resolveEnquirerByPhone(phoneE164) {
-  const last10 = normalizePhone(phoneE164);
-  const candidates = [phoneE164, last10].filter(Boolean);
-  const [rows] = await db.query(
-    `SELECT enquirersid, customer AS customer_name, contact, propertyid
-     FROM enquirers WHERE contact IN (?)
-     ORDER BY updated_at DESC LIMIT 1`,
-    [candidates],
-  );
-  return rows[0] || null;
 }

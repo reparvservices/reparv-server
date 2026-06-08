@@ -1,6 +1,8 @@
 import moment from "moment-timezone";
 import db from "#db/promise";
+import { DEFAULT_LANGUAGE } from "./prompt.js";
 
+const CHANNEL = "web";
 const MAX_HISTORY = 40;
 
 function now() {
@@ -17,20 +19,20 @@ function parseJson(val, fallback) {
   }
 }
 
-export async function getConversation(userId, channel = "web") {
+export async function getConversation(userId) {
   const [rows] = await db.query(
     `SELECT * FROM ai_conversations WHERE user_id = ? AND channel = ? LIMIT 1`,
-    [userId, channel],
+    [userId, CHANNEL],
   );
   if (!rows?.length) {
     return {
       userId,
-      channel,
+      channel: CHANNEL,
       chatHistory: [],
       preferences: { budget: "", city: "", propertyType: "" },
       enquirersid: null,
       phone_e164: null,
-      language: "en",
+      language: DEFAULT_LANGUAGE,
     };
   }
   const row = rows[0];
@@ -45,13 +47,12 @@ export async function getConversation(userId, channel = "web") {
     }),
     enquirersid: row.enquirersid,
     phone_e164: row.phone_e164,
-    language: row.language || "en",
+    language: row.language || DEFAULT_LANGUAGE,
   };
 }
 
-export async function saveConversation({
+async function saveConversation({
   userId,
-  channel = "web",
   chatHistory,
   preferences,
   enquirersid,
@@ -78,28 +79,27 @@ export async function saveConversation({
        updated_at = VALUES(updated_at)`,
     [
       userId,
-      channel,
+      CHANNEL,
       histJson,
       prefsJson,
       enquirersid || null,
       phone_e164 || null,
-      language || "en",
+      language || DEFAULT_LANGUAGE,
       ts,
       ts,
     ],
   );
 
-  return getConversation(userId, channel);
+  return getConversation(userId);
 }
 
-export async function appendMessages(userId, channel, newMessages, updates = {}) {
-  const conv = await getConversation(userId, channel);
+export async function appendMessages(userId, newMessages, updates = {}) {
+  const conv = await getConversation(userId);
   const chatHistory = [...conv.chatHistory, ...newMessages].slice(-MAX_HISTORY);
   const preferences = { ...conv.preferences, ...(updates.preferences || {}) };
 
   return saveConversation({
     userId,
-    channel,
     chatHistory,
     preferences,
     enquirersid: updates.enquirersid ?? conv.enquirersid,

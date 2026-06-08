@@ -1,20 +1,27 @@
 import OpenAI from "openai";
-import { SYSTEM_PROMPT, TOOL_DEFINITIONS } from "./prompt.js";
+import {
+  SYSTEM_PROMPT,
+  TOOL_DEFINITIONS,
+  DEFAULT_LANGUAGE,
+  buildLanguageInstruction,
+} from "./prompt.js";
 import {
   getConversation,
   appendMessages,
   buildOpenAIInputFromHistory,
-} from "./memory.service.js";
-import { propertySearch } from "./property-search.tool.js";
-import { getProjectDetails } from "./project-info.tool.js";
-import { createLead, assignToSalesAgent } from "./crm.tool.js";
-import { scheduleSiteVisit } from "./site-visit.tool.js";
+} from "./memory.js";
+import { executeTool } from "./tools/index.js";
+import { propertySearch } from "./tools/properties.js";
 import {
   calculateLeadScore,
   getLeadProfile,
   formatLeadScoreResponse,
   upsertLeadProfile,
-} from "./lead-qualification.tool.js";
+} from "./tools/leads.js";
+import {
+  resolveChatSessionFromRequest,
+  formatSessionResponse,
+} from "./session.js";
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const MAX_TOOL_ROUNDS = 8;
@@ -53,55 +60,9 @@ function extractFunctionCalls(response) {
   return (response.output || []).filter((o) => o.type === "function_call");
 }
 
-async function executeTool(name, args, context) {
-  const { userId, channel, phone } = context;
-
-  switch (name) {
-    case "searchProperties":
-      return { properties: await propertySearch(args) };
-
-    case "getProjectDetails":
-      return await getProjectDetails(args);
-
-    case "createLead": {
-      const result = await createLead({ userId, ...args });
-      const score = calculateLeadScore(args.purchaseTimeline);
-      if (score === "hot") {
-        await assignToSalesAgent({
-          userId,
-          reason: "Hot lead — purchase within 30 days",
-          enquirersId: result.enquirersid,
-        });
-      }
-      return result;
-    }
-
-    case "scheduleSiteVisit":
-      return scheduleSiteVisit({
-        ...args,
-        enquirersId: args.enquirersId,
-        userId,
-        phone,
-      });
-
-    case "assignToSalesAgent":
-      return assignToSalesAgent({
-        userId,
-        reason: args.reason,
-        assignedTo: args.assignedTo,
-        enquirersId: args.enquirersId,
-      });
-
-    default:
-      return { error: `Unknown tool: ${name}` };
-  }
-}
-
 function mergePreferences(conv, userMessage, toolResults) {
   const prefs = { ...conv.preferences };
-  const budgetMatch = userMessage.match(
-    /(\d+)\s*(lakh|lac|cr|crore)/gi,
-  );
+  const budgetMatch = userMessage.match(/(\d+)\s*(lakh|lac|cr|crore)/gi);
   if (budgetMatch) prefs.budget = budgetMatch.join(" ");
   const cityMatch = userMessage.match(
     /\b(Pune|Mumbai|Bangalore|Bengaluru|Hyderabad|Delhi|Noida|Gurgaon|Chennai|Kolkata|Ahmedabad)\b/i,
@@ -119,16 +80,8 @@ function mergePreferences(conv, userMessage, toolResults) {
   return prefs;
 }
 
-/**
- * Run the Real Estate AI Advisor for one user turn.
- */
-export async function runAgent({
-  userId,
-  message,
-  channel = "web",
-  phone = null,
-  language = "en",
-}) {
+export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }) {
+  const storageId = session.storageId;
   if (!isAgentEnabled()) {
     return {
       reply:
@@ -142,9 +95,9 @@ export async function runAgent({
     throw new Error("Message is required");
   }
 
-  const conv = await getConversation(userId, channel);
+  const conv = await getConversation(storageId);
   const historyInput = buildOpenAIInputFromHistory(conv.chatHistory);
-  const leadProfile = await getLeadProfile(userId).catch(() => null);
+  const leadProfile = await getLeadProfile(storageId).catch(() => null);
 
   const contextBlock = leadProfile
     ? `\nKnown lead profile: ${JSON.stringify(formatLeadScoreResponse(leadProfile))}`
@@ -153,21 +106,15 @@ export async function runAgent({
   const openai = getOpenAI();
   const toolResults = [];
 
-  let input = [
-    ...historyInput,
-    {
-      role: "user",
-      content: text,
-    },
-  ];
-
+  let input = [...historyInput, { role: "user", content: text }];
   let previousResponseId = null;
   let finalText = "";
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const createParams = {
       model: MODEL,
-      instructions: SYSTEM_PROMPT + contextBlock,
+      instructions:
+        SYSTEM_PROMPT + buildLanguageInstruction(language) + contextBlock,
       tools: TOOL_DEFINITIONS,
       input,
     };
@@ -194,9 +141,8 @@ export async function runAgent({
       }
 
       const result = await executeTool(call.name, args, {
-        userId,
-        channel,
-        phone,
+        userId: storageId,
+        mode: session.mode,
       });
       toolResults.push({ name: call.name, args, result });
 
@@ -216,17 +162,17 @@ export async function runAgent({
   }
 
   const preferences = mergePreferences(conv, text, toolResults);
+  const leadPhone = leadProfile?.phone || null;
 
   await appendMessages(
-    userId,
-    channel,
+    storageId,
     [
       { role: "user", content: text, at: new Date().toISOString() },
       { role: "assistant", content: finalText, at: new Date().toISOString() },
     ],
     {
-      preferences,
-      phone_e164: phone || conv.phone_e164,
+      preferences: { ...preferences, sessionMode: session.mode },
+      phone_e164: leadPhone || conv.phone_e164,
       language,
       enquirersid:
         toolResults.find((t) => t.result?.enquirersid)?.result?.enquirersid ||
@@ -241,7 +187,14 @@ export async function runAgent({
     reply: finalText,
     properties: properties || undefined,
     toolCalls: toolResults.map((t) => t.name),
-    lead: formatLeadScoreResponse(await getLeadProfile(userId).catch(() => null)),
+    lead: formatLeadScoreResponse(
+      await getLeadProfile(storageId).catch(() => null),
+    ),
+    session: {
+      mode: session.mode,
+      userId: session.userId,
+      guestId: session.guestId,
+    },
   };
 }
 
@@ -249,19 +202,23 @@ export async function searchPropertiesDirect(filters) {
   return propertySearch(filters);
 }
 
-export async function scoreLeadDirect({ userId, purchaseTimeline, ...rest }) {
+export async function scoreLeadDirect({
+  mode,
+  userId,
+  guestId,
+  purchaseTimeline,
+  ...rest
+}) {
+  const session = resolveChatSessionFromRequest({ mode, userId, guestId });
   const score = calculateLeadScore(purchaseTimeline);
-  if (userId) {
-    await upsertLeadProfile(userId, {
-      purchaseTimeline,
-      leadScore: score,
-      ...rest,
-    });
-  }
+  await upsertLeadProfile(session.storageId, {
+    purchaseTimeline,
+    leadScore: score,
+    ...rest,
+  });
   return {
     leadScore: score,
-    ...(userId
-      ? formatLeadScoreResponse(await getLeadProfile(userId))
-      : {}),
+    session: formatSessionResponse(session),
+    ...formatLeadScoreResponse(await getLeadProfile(session.storageId)),
   };
 }

@@ -1,5 +1,10 @@
 import db from "#db/promise";
 
+const PROPERTY_BASE_URL =
+  process.env.FRONTEND_URL ||
+  process.env.REPARV_WEB_URL ||
+  "https://www.reparv.in";
+
 function parsePropertyType(raw) {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw;
@@ -33,9 +38,59 @@ function formatLakh(amount) {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
-/**
- * Search properties from MySQL (existing CRM `properties` + `propertiesinfo`).
- */
+function extractImagePaths(raw) {
+  if (!raw) return [];
+  if (typeof raw === "string" && raw.startsWith("http")) return [raw];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map((v) => String(v || "").trim()).filter(Boolean);
+    }
+    if (typeof parsed === "string" && parsed) return [parsed];
+  } catch {
+    const text = String(raw).trim();
+    if (text) return [text];
+  }
+  return [];
+}
+
+function toAbsoluteImageUrl(path) {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  const cdn = process.env.ASSET_CDN_URL || process.env.AWS_PUBLIC_URL;
+  if (cdn) {
+    return `${cdn.replace(/\/$/, "")}${normalized}`;
+  }
+
+  if (
+    normalized.startsWith("/uploads/") &&
+    process.env.AWS_BUCKET_NAME &&
+    process.env.AWS_REGION
+  ) {
+    const key = normalized.slice(1);
+    return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+  }
+
+  return normalized;
+}
+
+function resolveImageUrl(...sources) {
+  for (const raw of sources) {
+    for (const path of extractImagePaths(raw)) {
+      const url = toAbsoluteImageUrl(path);
+      if (url) return url;
+    }
+  }
+  return null;
+}
+
+function buildPropertyUrl(seoSlug) {
+  if (!seoSlug) return null;
+  return `${PROPERTY_BASE_URL.replace(/\/$/, "")}/property-info/${seoSlug}`;
+}
+
 export async function propertySearch(filters = {}) {
   const {
     city,
@@ -105,6 +160,14 @@ export async function propertySearch(filters = {}) {
       p.possessionDate,
       p.amenitiesFeature,
       p.seoSlug,
+      p.frontView,
+      (
+        SELECT img.image
+        FROM propertiesimages img
+        WHERE img.propertyid = p.propertyid
+        ORDER BY img.imageid ASC
+        LIMIT 1
+      ) AS galleryImage,
       MIN(pi.totalcost) AS minUnitPrice,
       GROUP_CONCAT(DISTINCT pi.type ORDER BY pi.type SEPARATOR ', ') AS unitTypes
     FROM properties p
@@ -140,6 +203,8 @@ export async function propertySearch(filters = {}) {
       possessionDate: row.possessionDate,
       amenities: parseAmenities(row.amenitiesFeature),
       seoSlug: row.seoSlug,
+      imageUrl: resolveImageUrl(row.frontView, row.galleryImage),
+      url: buildPropertyUrl(row.seoSlug),
     };
   });
 }

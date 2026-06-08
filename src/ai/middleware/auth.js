@@ -1,7 +1,3 @@
-/**
- * Optional API key for public AI endpoints (website chat widget).
- * Set AI_AGENT_PUBLIC_KEY — clients send header x-ai-api-key.
- */
 export function requireAiPublicKey(req, res, next) {
   const expected = process.env.AI_AGENT_PUBLIC_KEY;
   if (!expected) return next();

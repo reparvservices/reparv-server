@@ -137,6 +137,10 @@ app.get("/partner-app/join", (req, res) => {
   `);
 });
 
+app.get("/ai-chat", (req, res) => {
+  res.redirect(301, "/agent");
+});
+
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,

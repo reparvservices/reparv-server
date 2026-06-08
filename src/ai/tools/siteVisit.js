@@ -1,6 +1,5 @@
 import moment from "moment-timezone";
 import db from "#db/promise";
-import { resolveEnquirerByPhone } from "./crm.tool.js";
 
 function now() {
   return moment().format("YYYY-MM-DD HH:mm:ss");
@@ -12,16 +11,10 @@ export async function scheduleSiteVisit({
   visitDate,
   visitTime,
   remark,
-  phone,
   userId,
 }) {
   const ts = now();
   let enquirerId = enquirersId;
-
-  if (!enquirerId && phone) {
-    const enq = await resolveEnquirerByPhone(phone);
-    enquirerId = enq?.enquirersid;
-  }
 
   if (!enquirerId && userId) {
     const [rows] = await db.query(

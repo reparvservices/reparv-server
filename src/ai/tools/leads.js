@@ -5,10 +5,6 @@ function now() {
   return moment().format("YYYY-MM-DD HH:mm:ss");
 }
 
-/**
- * Lead score from purchase timeline text.
- * Hot: within 30 days | Warm: within 3 months | Cold: after 3 months
- */
 export function calculateLeadScore(purchaseTimeline) {
   const t = String(purchaseTimeline || "").toLowerCase();
   if (!t) return null;
