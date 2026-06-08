@@ -41,7 +41,7 @@ function resolvePageSession(req) {
 export function renderAgentChatPage(req) {
   const pageSession = resolvePageSession(req);
   const config = {
-    wsPath: "/agent/ws",
+    chatPath: "/api/ai/chat",
     requiresApiKey: Boolean(process.env.AI_AGENT_PUBLIC_KEY),
     agentEnabled: process.env.AI_AGENT_ENABLED !== "0",
     mode: pageSession.mode,
@@ -319,8 +319,8 @@ export function renderAgentChatPage(req) {
       <p>Find properties, get project details, and connect with sales</p>
     </div>
     <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
-      <span id="connStatus" class="status status-connecting">Connecting…</span>
-      <span class="badge">${escapeHtml(modeBadge)} · WebSocket</span>
+      <span id="connStatus" class="status status-connected">Ready</span>
+      <span class="badge">${escapeHtml(modeBadge)} · HTTP</span>
     </div>
   </header>
   ${disabledBanner}
@@ -373,10 +373,7 @@ export function renderAgentChatPage(req) {
     const apiKeyInput = document.getElementById("apiKey");
     const connStatus = document.getElementById("connStatus");
 
-    let socket = null;
-    let socketReady = false;
-    let reconnectTimer = null;
-    const pendingQueue = [];
+    let httpReady = true;
 
     function getGuestId() {
       const stored = localStorage.getItem(STORAGE_GUEST);
@@ -505,8 +502,8 @@ export function renderAgentChatPage(req) {
 
     function setLoading(on) {
       awaitingReply = on;
-      sendBtn.disabled = on || !socketReady;
-      input.disabled = on || !socketReady;
+      sendBtn.disabled = on || !httpReady;
+      input.disabled = on || !httpReady;
       if (on) {
         if (!typingEl) {
           typingEl = document.createElement("div");
@@ -523,19 +520,8 @@ export function renderAgentChatPage(req) {
       }
     }
 
-    function buildWsUrl() {
-      const proto = location.protocol === "https:" ? "wss:" : "ws:";
-      const params = new URLSearchParams();
-      if (apiKeyInput && apiKeyInput.value.trim()) {
-        params.set("apiKey", apiKeyInput.value.trim());
-      }
-      const qs = params.toString();
-      return proto + "//" + location.host + cfg.wsPath + (qs ? "?" + qs : "");
-    }
-
     function buildChatPayload(message) {
       const payload = {
-        type: "chat",
         mode: cfg.mode,
         message,
         language: cfg.language,
@@ -551,97 +537,79 @@ export function renderAgentChatPage(req) {
       return payload;
     }
 
-    function handleSocketMessage(data) {
-      if (data.type === "typing") {
-        setLoading(Boolean(data.active));
-        return;
-      }
-
-      if (data.type === "ready") {
-        socketReady = true;
-        setConnStatus("connected", "Connected");
-        sendBtn.disabled = awaitingReply;
-        input.disabled = awaitingReply;
-        while (pendingQueue.length) {
-          socket.send(JSON.stringify(pendingQueue.shift()));
-        }
-        return;
-      }
-
+    function handleChatResponse(data) {
       if (data.type === "error") {
         setLoading(false);
         addMessage(data.message || "Error", "error");
         return;
       }
 
-      if (data.type === "reply") {
+      if (data.type !== "reply") {
         setLoading(false);
-
-        if (cfg.mode === MODE_GUEST && data.session?.guestId) {
-          localStorage.setItem(STORAGE_GUEST, data.session.guestId);
-          sessionInput.value = data.session.guestId;
-        }
-
-        const metaParts = [];
-        if (data.session?.mode) metaParts.push("Mode: " + data.session.mode);
-        if (data.toolCalls?.length) metaParts.push("Tools: " + data.toolCalls.join(", "));
-        if (data.lead?.leadScore) metaParts.push("Lead: " + data.lead.leadScore);
-        if (data.properties?.length) metaParts.push(data.properties.length + " properties found");
-
-        addMessage(data.reply || "(empty reply)", "bot", metaParts.join(" · ") || null);
-        renderPropertyCards(data.properties);
-      }
-    }
-
-    function connectSocket() {
-      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        addMessage("Unexpected server response", "error");
         return;
       }
 
+      setLoading(false);
+
+      if (cfg.mode === MODE_GUEST && data.session?.guestId) {
+        localStorage.setItem(STORAGE_GUEST, data.session.guestId);
+        sessionInput.value = data.session.guestId;
+      }
+
+      const metaParts = [];
+      if (data.session?.mode) metaParts.push("Mode: " + data.session.mode);
+      if (data.toolCalls?.length) metaParts.push("Tools: " + data.toolCalls.join(", "));
+      if (data.lead?.leadScore) metaParts.push("Lead: " + data.lead.leadScore);
+      if (data.properties?.length) metaParts.push(data.properties.length + " properties found");
+
+      addMessage(data.reply || "(empty reply)", "bot", metaParts.join(" · ") || null);
+      renderPropertyCards(data.properties);
+    }
+
+    async function postChatMessage(payload) {
+      const headers = { "Content-Type": "application/json" };
+      const apiKey = apiKeyInput?.value.trim();
+      if (apiKey) {
+        headers["x-ai-api-key"] = apiKey;
+      }
+
+      const res = await fetch(cfg.chatPath, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error("Invalid server response");
+      }
+
+      if (!res.ok) {
+        throw new Error(data.message || "Request failed");
+      }
+
+      return data;
+    }
+
+    function refreshHttpReady() {
       if (cfg.requiresApiKey && apiKeyInput && !apiKeyInput.value.trim()) {
+        httpReady = false;
         setConnStatus("disconnected", "API key required");
         sendBtn.disabled = true;
         input.disabled = true;
         return;
       }
 
-      socketReady = false;
-      setConnStatus("connecting", "Connecting…");
-      sendBtn.disabled = true;
-      input.disabled = true;
-
-      socket = new WebSocket(buildWsUrl());
-
-      socket.addEventListener("open", () => {
-        setConnStatus("connected", "Connected");
-      });
-
-      socket.addEventListener("message", (event) => {
-        let data;
-        try {
-          data = JSON.parse(event.data);
-        } catch {
-          addMessage("Invalid server message", "error");
-          return;
-        }
-        handleSocketMessage(data);
-      });
-
-      socket.addEventListener("close", () => {
-        socketReady = false;
-        setConnStatus("disconnected", "Disconnected");
-        sendBtn.disabled = true;
-        input.disabled = true;
-        clearTimeout(reconnectTimer);
-        reconnectTimer = setTimeout(connectSocket, 2500);
-      });
-
-      socket.addEventListener("error", () => {
-        setConnStatus("disconnected", "Connection error");
-      });
+      httpReady = true;
+      setConnStatus("connected", "Ready");
+      sendBtn.disabled = awaitingReply;
+      input.disabled = awaitingReply;
     }
 
-    function sendMessage(text) {
+    async function sendMessage(text) {
       const message = text.trim();
       if (!message) return;
 
@@ -663,15 +631,15 @@ export function renderAgentChatPage(req) {
 
       const payload = buildChatPayload(message);
 
-      if (!socket || socket.readyState !== WebSocket.OPEN || !socketReady) {
-        pendingQueue.push(payload);
-        connectSocket();
-        setLoading(true);
-        return;
-      }
-
       setLoading(true);
-      socket.send(JSON.stringify(payload));
+      try {
+        const data = await postChatMessage(payload);
+        handleChatResponse(data);
+      } catch (err) {
+        setLoading(false);
+        setConnStatus("disconnected", "Request failed");
+        addMessage(err.message || "Request failed", "error");
+      }
     }
 
     form.addEventListener("submit", (e) => {
@@ -686,15 +654,11 @@ export function renderAgentChatPage(req) {
     if (apiKeyInput) {
       apiKeyInput.addEventListener("change", () => {
         localStorage.setItem(STORAGE_KEY, apiKeyInput.value.trim());
-        if (socket) {
-          socket.close();
-          socket = null;
-        }
-        connectSocket();
+        refreshHttpReady();
       });
     }
 
-    connectSocket();
+    refreshHttpReady();
     input.focus();
   </script>
 </body>
