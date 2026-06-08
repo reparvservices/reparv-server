@@ -29,6 +29,7 @@ import ForgetPasswordRoute from "../portals/shared/routes/Forgotpasswordroutes.j
 import sitemapRoutes from "../portals/shared/routes/sitemapRoutes.js";
 import customersNotify from "../portals/customerApp/routes/notifyroute.js";
 import { getAgentPage } from "../ai/controller.js";
+import aiPublicRoutes from "../ai/publicRoutes.js";
 
 export function mountPublicRoutes(app) {
   app.use("/admin", loginRoutes);
@@ -57,6 +58,7 @@ export function mountPublicRoutes(app) {
   app.use("/api/user", otpRoutes);
   app.use("/api/customer-notify", customersNotify);
   app.get("/agent", getAgentPage);
+  app.use("/api/ai", aiPublicRoutes);
 
   app.use("/api/feed/", Feed);
   app.use("/api/follow/", FollowRoute);
