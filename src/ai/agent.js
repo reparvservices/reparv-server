@@ -42,6 +42,53 @@ function isAgentEnabled() {
   return process.env.AI_AGENT_ENABLED !== "0";
 }
 
+function stripMarkdown(text) {
+  return String(text || "")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, "")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/^\s*[-*•]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/\n{2,}/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function extractCityFromProperties(properties = []) {
+  for (const p of properties) {
+    const loc = String(p.location || "").trim();
+    if (!loc) continue;
+    const parts = loc.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length) return parts[parts.length - 1];
+  }
+  return null;
+}
+
+function isVerbosePropertyReply(text) {
+  const raw = String(text || "");
+  return (
+    raw.length > 200 ||
+    /!\[[^\]]*]\(/.test(raw) ||
+    /\[[^\]]+]\(https?:\/\//i.test(raw) ||
+    /^\s*\d+\.\s+\S/m.test(raw) ||
+    (raw.match(/\n/g) || []).length >= 2
+  );
+}
+
+function compactPropertyReply(text, properties = []) {
+  const count = properties.length;
+  if (!count) return stripMarkdown(text);
+
+  const cleaned = stripMarkdown(text);
+  if (!isVerbosePropertyReply(text) && cleaned.length <= 200) {
+    return cleaned;
+  }
+
+  const city = extractCityFromProperties(properties) || "Yahan";
+  const noun = count === 1 ? "property" : `${count} properties`;
+
+  return `${city} mein ${noun} mili hain — neeche cards check kariye. Kisi pe details ya site visit chahiye?`;
+}
+
 function extractOutputText(response) {
   if (response.output_text) return response.output_text.trim();
 
@@ -161,6 +208,14 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
       "I could not complete that request. Would you like to speak with a sales executive?";
   }
 
+  const properties = toolResults.find((t) => t.name === "searchProperties")
+    ?.result?.properties;
+
+  const reply =
+    properties?.length > 0
+      ? compactPropertyReply(finalText, properties)
+      : stripMarkdown(finalText);
+
   const preferences = mergePreferences(conv, text, toolResults);
   const leadPhone = leadProfile?.phone || null;
 
@@ -168,7 +223,7 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
     storageId,
     [
       { role: "user", content: text, at: new Date().toISOString() },
-      { role: "assistant", content: finalText, at: new Date().toISOString() },
+      { role: "assistant", content: reply, at: new Date().toISOString() },
     ],
     {
       preferences: { ...preferences, sessionMode: session.mode },
@@ -180,11 +235,8 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
     },
   );
 
-  const properties = toolResults.find((t) => t.name === "searchProperties")
-    ?.result?.properties;
-
   return {
-    reply: finalText,
+    reply,
     properties: properties || undefined,
     toolCalls: toolResults.map((t) => t.name),
     lead: formatLeadScoreResponse(
