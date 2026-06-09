@@ -376,7 +376,6 @@ export const update = async (req, res) => {
       projectBy,
       possessionDate,
       propertyCategory,
-      propertyApprovedBy,
       propertyName,
       address,
       state,
@@ -398,8 +397,7 @@ export const update = async (req, res) => {
       propertyType,
       builtYear,
       ownershipType,
-      builtUpArea,
-      carpetArea,
+      areas, // ← areas array (farm or non-farm)
       parkingAvailability,
       totalFloors,
       floorNo,
@@ -424,6 +422,7 @@ export const update = async (req, res) => {
       capitalAppreciationBenefit,
       ecofriendlyBenefit,
       propertyVideo,
+      approvedBy,
     } = req.body;
 
     // ── Validation ────────────────────────────────────────────────────────────
@@ -477,7 +476,61 @@ export const update = async (req, res) => {
         : [];
     const propertyTypeJson = JSON.stringify(propertyTypeArray);
 
-    // ── Collect only image keys present in this request (same pattern as updateProperty) ──
+    // ── Area parse (same logic as addPropertyNew & updateProperty) ────────────
+    let parsedAreas = [];
+    try {
+      parsedAreas = typeof areas === "string" ? JSON.parse(areas) : areas || [];
+    } catch {
+      parsedAreas = [];
+    }
+
+    const FARM_TYPES = [
+      "FarmLand",
+      "ResaleFarmLand",
+      "FarmHouse",
+      "ResaleFarmHouse",
+    ];
+    const isFarm = FARM_TYPES.includes(propertyCategory);
+
+    let builtUpArea = null;
+    let carpetArea = null;
+
+    if (isFarm) {
+      const landArea = parsedAreas.find(
+        (a) =>
+          a?.label?.toLowerCase().includes("land") ||
+          a?.label?.toLowerCase().includes("farm"),
+      );
+
+      console.log("Farm Land Area:", landArea);
+
+      if (landArea) {
+        const value = landArea?.value?.toString()?.trim();
+        const unit = landArea?.unit?.toString()?.trim();
+
+        if (
+          value &&
+          unit &&
+          !value.toLowerCase().includes(unit.toLowerCase())
+        ) {
+          builtUpArea = `${value} ${unit}`;
+        } else {
+          builtUpArea = value || null;
+        }
+      }
+    } else {
+      builtUpArea =
+        parsedAreas.find((a) => a?.label?.toLowerCase() === "built-up area")
+          ?.value || null;
+      carpetArea =
+        parsedAreas.find((a) => a?.label?.toLowerCase() === "carpet area")
+          ?.value || null;
+
+      console.log("Parsed builtUpArea:", builtUpArea);
+      console.log("Parsed carpetArea:", carpetArea);
+    }
+
+    // ── Collect only image keys present in this request ───────────────────────
     const sentImageClauses = [];
     const sentImageValues = [];
 
@@ -520,8 +573,8 @@ export const update = async (req, res) => {
       "propertyType = ?",
       "builtYear = ?",
       "ownershipType = ?",
-      "builtUpArea = ?",
-      "carpetArea = ?",
+      "builtUpArea = ?", // "1.5 Acre" for farm, number for others
+      "carpetArea = ?", // null for farm types
       "parkingAvailability = ?",
       "totalFloors = ?",
       "floorNo = ?",
@@ -554,7 +607,7 @@ export const update = async (req, res) => {
       sanitize(projectBy) ?? null,
       sanitize(formattedPossessionDate) ?? null,
       propertyCategory,
-      propertyApprovedBy ?? null,
+      approvedBy ?? null,
       propertyName,
       address,
       state,
@@ -578,8 +631,8 @@ export const update = async (req, res) => {
       propertyTypeJson,
       builtYear ?? null,
       ownershipType ?? null,
-      builtUpArea ?? null,
-      carpetArea ?? null,
+      builtUpArea, // parsed above — "1.5 Acre" or numeric string
+      carpetArea, // null for farm types
       parkingAvailability ?? null,
       totalFloors ?? null,
       floorNo ?? null,
@@ -613,11 +666,6 @@ export const update = async (req, res) => {
     `;
 
     const values = [...coreValues, ...sentImageValues, Id];
-
-    // console.log("========== UPDATE SQL ==========");
-    // console.log(updateSQL);
-    // console.log("========== UPDATE VALUES ==========");
-    // console.log(values);
 
     db.query(updateSQL, values, (err, result) => {
       if (err) {
@@ -656,12 +704,13 @@ export const addPropertyNew = async (req, res) => {
     const {
       property_type,
       property_name,
+      bhk_type,
       price,
       ownername,
       contact,
       areas,
       ofprice,
-      category, // ← was missing before; used for propertyCategory
+      category,
       state,
       city,
       address,
@@ -722,12 +771,53 @@ export const addPropertyNew = async (req, res) => {
           parsedAreas = [];
         }
 
-        const builtUpArea =
-          parsedAreas.find((a) => a.label?.toLowerCase().includes("built"))
-            ?.value || null;
-        const carpetArea =
-          parsedAreas.find((a) => a.label?.toLowerCase().includes("carpet"))
-            ?.value || null;
+        const FARM_TYPES = [
+          "FarmLand",
+          "ResaleFarmLand",
+          "FarmHouse",
+          "ResaleFarmHouse",
+        ];
+        const isFarm = FARM_TYPES.includes(property_type);
+
+        let builtUpArea = null;
+        let carpetArea = null;
+
+        if (isFarm) {
+          // Farm types: areas array has { label: 'Farm Land Area', value: '1.5', unit: 'Acre' }
+          const landArea = parsedAreas.find(
+            (a) =>
+              a?.label?.toLowerCase().includes("land") ||
+              a?.label?.toLowerCase().includes("farm"),
+          );
+
+          console.log("Farm Land Area:", landArea);
+
+          if (landArea) {
+            const value = landArea?.value?.toString()?.trim();
+            const unit = landArea?.unit?.toString()?.trim();
+
+            if (
+              value &&
+              unit &&
+              !value.toLowerCase().includes(unit.toLowerCase())
+            ) {
+              builtUpArea = `${value} ${unit}`;
+            } else {
+              builtUpArea = value || null;
+            }
+          }
+        } else {
+          // All other types: areas array has { label: 'Built-Up Area', value: '1200' }
+          builtUpArea =
+            parsedAreas.find((a) => a?.label?.toLowerCase() === "built-up area")
+              ?.value || null;
+          carpetArea =
+            parsedAreas.find((a) => a?.label?.toLowerCase() === "carpet area")
+              ?.value || null;
+
+          console.log("Parsed builtUpArea:", builtUpArea);
+          console.log("Parsed carpetArea:", carpetArea);
+        }
 
         const seoSlug = toSlug(property_name);
 
@@ -747,7 +837,6 @@ export const addPropertyNew = async (req, res) => {
           if (typeof val === "string") {
             const trimmed = val.trim();
             if (!trimmed) return "[]";
-            // Already a JSON array string
             if (trimmed.startsWith("[")) {
               try {
                 const parsed = JSON.parse(trimmed);
@@ -758,7 +847,6 @@ export const addPropertyNew = async (req, res) => {
                 }
               } catch {}
             }
-            // Single URL string
             return JSON.stringify([trimmed]);
           }
           return "[]";
@@ -807,8 +895,8 @@ export const addPropertyNew = async (req, res) => {
 
         const values = [
           projectpartnerid,
+          bhk_type,
           property_type,
-          category || property_type, // ← use real category from body
           property_name,
           price,
           ofprice,
@@ -820,9 +908,9 @@ export const addPropertyNew = async (req, res) => {
           pincode,
           latitude,
           longitude,
-          builtUpArea,
-          carpetArea,
-          ...imageColumns, // ← all 23 image keys, always present
+          builtUpArea, // "1.5 Acre" for farm, "1200" for others
+          carpetArea, // null for farm/plot types
+          ...imageColumns,
           propertyVideo,
           seoSlug,
         ];
@@ -1115,5 +1203,86 @@ export const updateProperty = async (req, res) => {
       success: false,
       message: "Server error",
     });
+  }
+};
+
+export const uploadBrochureAndVideoLink = async (req, res) => {
+  try {
+    const propertyId = req.params.id;
+    if (!propertyId) {
+      return res.status(400).json({ message: "Property Id is required" });
+    }
+
+    console.log("fff");
+
+    const brochureFile = req.file || null; // brochure (image/pdf)
+    const { videoLink } = req.body;
+
+    if (!brochureFile && !videoLink) {
+      return res
+        .status(400)
+        .json({ message: "No brochure or video link provided" });
+    }
+
+    // Fetch old brochure from DB
+    const [oldData] = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT brochureFile, videoLink FROM properties WHERE propertyid = ?",
+        [propertyId],
+        (err, result) => {
+          if (err) return reject(err);
+          if (!result.length)
+            return reject({ status: 404, message: "Property not found" });
+          resolve(result);
+        },
+      );
+    });
+
+    let brochureUrl = oldData.brochureFile;
+
+    // Upload new brochure to S3 if provided
+    if (brochureFile) {
+      let uploadFile = brochureFile;
+
+      // Compress ONLY if image (PDF untouched)
+      if (brochureFile.mimetype?.startsWith("image/")) {
+        const compressedImage = await convertSingleImageToWebp(brochureFile);
+        if (compressedImage) {
+          uploadFile = compressedImage;
+        }
+      }
+
+      // Delete old brochure from S3
+      if (oldData.brochureFile) {
+        await deleteFromS3(oldData.brochureFile);
+      }
+
+      brochureUrl = await uploadToS3(uploadFile);
+    }
+
+    // Update DB with new brochure URL & videoLink
+    db.query(
+      "UPDATE properties SET brochureFile = ?, videoLink = ? WHERE propertyid = ?",
+      [brochureUrl, videoLink || oldData.videoLink, propertyId],
+      (err) => {
+        if (err) {
+          console.error("Error updating brochure/video link:", err);
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
+        }
+
+        res.status(200).json({
+          message: "Brochure & Video Link updated successfully",
+          brochureUrl,
+          videoLink: videoLink || oldData.videoLink,
+        });
+      },
+    );
+  } catch (error) {
+    console.error("Unexpected error:", error);
+    res
+      .status(error.status || 500)
+      .json({ message: error.message || "Server error" });
   }
 };

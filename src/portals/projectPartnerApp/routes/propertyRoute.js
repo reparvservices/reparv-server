@@ -6,6 +6,7 @@ import {
   getAll,
   update,
   updateProperty,
+  uploadBrochureAndVideoLink,
 } from "../controllers/propertyController.js";
 import { generateUploadUrl } from "../controllers/uploadController.js";
 
@@ -96,7 +97,7 @@ router.put(
 );
 
 router.post("/generate-upload-url", generateUploadUrl);
-
+router.post("/brochure/:id", uploadBrochureAndVideoLink);
 /* ---------- MULTER ERROR HANDLER ---------- */
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {

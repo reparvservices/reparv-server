@@ -185,11 +185,10 @@ export const getProjectPartner = async (req, res) => {
 
 export const updateOneSignalId = async (req, res) => {
   const { onesignalId } = req.body;
-console.log(onesignalId);
-
+  console.log(onesignalId);
   const id = req.params.id;
   console.log(id);
-  
+
   if (!onesignalId) {
     return res
       .status(400)
