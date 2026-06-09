@@ -51,16 +51,16 @@ export const getAll = (req, res) => {
         COUNT(DISTINCT w.guest_user_id) AS likes,
 
         /* Views */
-        COALESCE(pa.views,0) AS views,
+        MAX(COALESCE(pa.views, 0)) AS views,
 
         /* Share */
-        COALESCE(pa.share,0) AS shares,
+        MAX(COALESCE(pa.share, 0)) AS shares,
 
         /* Calls */
-        COALESCE(pa.calls,0) AS calls,
+        MAX(COALESCE(pa.calls, 0)) AS calls,
 
         /* WhatsApp */
-        COALESCE(pa.whatsapp_enquiry,0) AS whatsapp
+        MAX(COALESCE(pa.whatsapp_enquiry, 0)) AS whatsapp
 
       FROM properties 
 
@@ -89,10 +89,10 @@ export const getAll = (req, res) => {
         projectpartner.city AS partnerCity,
 
         COUNT(DISTINCT w.guest_user_id) AS likes,
-        COALESCE(pa.views,0) AS views,
-        COALESCE(pa.calls,0) AS calls,
-        COALESCE(pa.share,0) AS shares,
-        COALESCE(pa.whatsapp_enquiry,0) AS whatsapp
+        MAX(COALESCE(pa.views, 0)) AS views,
+        MAX(COALESCE(pa.calls, 0)) AS calls,
+        MAX(COALESCE(pa.share, 0)) AS shares,
+        MAX(COALESCE(pa.whatsapp_enquiry, 0)) AS whatsapp
 
       FROM properties 
 
@@ -121,10 +121,10 @@ export const getAll = (req, res) => {
         guestUsers.city AS partnerCity,
 
         COUNT(DISTINCT w.guest_user_id) AS likes,
-        COALESCE(pa.views,0) AS views,
-        COALESCE(pa.calls,0) AS calls,
-        COALESCE(pa.share,0) AS shares,
-        COALESCE(pa.whatsapp_enquiry,0) AS whatsapp
+        MAX(COALESCE(pa.views, 0)) AS views,
+        MAX(COALESCE(pa.calls, 0)) AS calls,
+        MAX(COALESCE(pa.share, 0)) AS shares,
+        MAX(COALESCE(pa.whatsapp_enquiry, 0)) AS whatsapp
 
       FROM properties 
 
@@ -153,10 +153,10 @@ export const getAll = (req, res) => {
         onboardingpartner.city AS partnerCity,
 
         COUNT(DISTINCT w.guest_user_id) AS likes,
-        COALESCE(pa.views,0) AS views,
-        COALESCE(pa.calls,0) AS calls,
-        COALESCE(pa.share,0) AS shares,
-        COALESCE(pa.whatsapp_enquiry,0) AS whatsapp
+        MAX(COALESCE(pa.views, 0)) AS views,
+        MAX(COALESCE(pa.calls, 0)) AS calls,
+        MAX(COALESCE(pa.share, 0)) AS shares,
+        MAX(COALESCE(pa.whatsapp_enquiry, 0)) AS whatsapp
 
       FROM properties 
 
@@ -182,10 +182,10 @@ export const getAll = (req, res) => {
         builders.company_name,
 
         COUNT(DISTINCT w.guest_user_id) AS likes,
-        COALESCE(pa.views,0) AS views,
-        COALESCE(pa.calls,0) AS calls,
-        COALESCE(pa.share,0) AS shares,
-        COALESCE(pa.whatsapp_enquiry,0) AS whatsapp
+        MAX(COALESCE(pa.views, 0)) AS views,
+        MAX(COALESCE(pa.calls, 0)) AS calls,
+        MAX(COALESCE(pa.share, 0)) AS shares,
+        MAX(COALESCE(pa.whatsapp_enquiry, 0)) AS whatsapp
 
       FROM properties 
 
@@ -214,7 +214,7 @@ export const getAll = (req, res) => {
       likes: Number(row.likes) || 0,
       views: Number(row.views) || 0,
       calls: Number(row.calls) || 0,
-      calls: Number(row.shares) || 0,
+      shares: Number(row.shares) || 0,
       whatsapp: Number(row.whatsapp) || 0,
       created_at: moment
         .utc(row.created_at)
