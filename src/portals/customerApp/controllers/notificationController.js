@@ -3,7 +3,7 @@ import db from "#db";
 const saveFcmToken = (req, res) => {
   const { fcmToken } = req.body;
   const userId = req.user?.id || req.body.userId;
-
+  console.log(userId, "dd0", fcmToken);
   if (!fcmToken && !userId) {
     return res.status(400).json({
       success: false,
