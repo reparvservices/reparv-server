@@ -110,6 +110,9 @@ async function runPropertySearch(filters = {}) {
     budgetMax,
     bedrooms,
     possessionStatus,
+    excludePropertyIds,
+    offset = 0,
+    sortVariant = 0,
     limit = 5,
   } = filters;
 
@@ -165,6 +168,22 @@ async function runPropertySearch(filters = {}) {
 
   const bedroomParams = bedrooms ? [`%${bedrooms}%`, `%${bedrooms}%`] : [];
 
+  const excludeIds = (Array.isArray(excludePropertyIds) ? excludePropertyIds : [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+
+  if (excludeIds.length) {
+    conditions.push(`p.propertyid NOT IN (${excludeIds.map(() => "?").join(", ")})`);
+    params.push(...excludeIds);
+  }
+
+  const orderClause =
+    Number(sortVariant) % 2 === 1
+      ? "ORDER BY p.updated_at DESC, p.propertyid DESC"
+      : "ORDER BY p.totalSalesPrice ASC, p.propertyid ASC";
+
+  const safeOffset = Math.max(0, Number(offset) || 0);
+
   const sql = `
     SELECT
       p.propertyid,
@@ -194,14 +213,15 @@ async function runPropertySearch(filters = {}) {
     WHERE ${conditions.join(" AND ")}
     ${bedroomClause}
     GROUP BY p.propertyid
-    ORDER BY p.totalSalesPrice ASC
-    LIMIT ?
+    ${orderClause}
+    LIMIT ? OFFSET ?
   `;
 
   const [rows] = await db.query(sql, [
     ...params,
     ...bedroomParams,
     Math.min(Math.max(Number(limit) || 5, 1), 15),
+    safeOffset,
   ]);
 
   return rows.map((row, index) => {
@@ -228,25 +248,29 @@ async function runPropertySearch(filters = {}) {
 }
 
 export async function propertySearch(filters = {}) {
-  let results = await runPropertySearch(filters);
+  const searchFilters = {
+    ...filters,
+    sortVariant: filters.sortVariant ?? filters.searchRound ?? 0,
+  };
+  let results = await runPropertySearch(searchFilters);
 
-  if (results.length === 0 && (filters.budgetMin != null || filters.budgetMax != null)) {
-    const { budgetMin, budgetMax, ...broader } = filters;
+  if (results.length === 0 && (searchFilters.budgetMin != null || searchFilters.budgetMax != null)) {
+    const { budgetMin, budgetMax, ...broader } = searchFilters;
     results = await runPropertySearch(broader);
   }
 
-  if (results.length === 0 && filters.bedrooms) {
-    const { bedrooms, ...broader } = filters;
+  if (results.length === 0 && searchFilters.bedrooms) {
+    const { bedrooms, ...broader } = searchFilters;
     results = await runPropertySearch(broader);
   }
 
-  if (results.length === 0 && filters.area) {
-    const { area, ...broader } = filters;
+  if (results.length === 0 && searchFilters.area) {
+    const { area, ...broader } = searchFilters;
     results = await runPropertySearch(broader);
   }
 
-  if (results.length === 0 && filters.possessionStatus) {
-    const { possessionStatus, ...broader } = filters;
+  if (results.length === 0 && searchFilters.possessionStatus) {
+    const { possessionStatus, ...broader } = searchFilters;
     results = await runPropertySearch(broader);
   }
 

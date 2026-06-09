@@ -316,7 +316,7 @@ export function renderAgentChatPage(req) {
   <header>
     <div>
       <h1>${escapeHtml(AGENT_NAME)}</h1>
-      <p>Find properties, get project details, and connect with sales</p>
+      <p>Browse properties, compare options, and get expert sales guidance</p>
     </div>
     <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
       <span id="connStatus" class="status status-connected">Ready</span>
@@ -344,10 +344,10 @@ export function renderAgentChatPage(req) {
       </div>
     </details>
     <div class="chips">
-      <button class="chip" type="button" data-prompt="Show me 2 BHK apartments in Pune under 90 lakh">2 BHK in Pune under 90L</button>
-      <button class="chip" type="button" data-prompt="What properties do you have in Mumbai?">Properties in Mumbai</button>
-      <button class="chip" type="button" data-prompt="I want to schedule a site visit next Saturday">Schedule site visit</button>
-      <button class="chip" type="button" data-prompt="Connect me with a sales executive">Talk to sales</button>
+      <button class="chip" type="button" data-prompt="Show me properties in Pune">Properties in Pune</button>
+      <button class="chip" type="button" data-prompt="Show me 2 BHK flats in Nagpur">2 BHK in Nagpur</button>
+      <button class="chip" type="button" data-prompt="Aur options dikhao, yeh pasand nahi aaye">Show different options</button>
+      <button class="chip" type="button" data-prompt="Mujhe purchase karna hai, guide karo">I want to buy</button>
     </div>
     <div id="messages" aria-live="polite"></div>
     <form class="composer" id="form">
@@ -488,7 +488,7 @@ export function renderAgentChatPage(req) {
     }
 
     addMessage(
-      "Namaste! Main aapka " + cfg.agentName + " hoon. Properties, budget ya site visit — kuch bhi pooch sakte ho.",
+      "Namaste! Main aapka " + cfg.agentName + " hoon. Pehle aapko sahi properties dikhata hoon — pasand aaye to details lunga, nahi to aur options dikhaunga. Bas city ya type batao, jaise 'Pune mein 2 BHK dikhao'.",
       "bot",
     );
 

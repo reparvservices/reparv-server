@@ -170,7 +170,31 @@ export const getAll = (req, res) => {
     `;
   }
 
-  // 6. OTHER SOURCES (default)
+  // 6. AI AGENT ENQUIRIES (from Real Estate AI Advisor)
+  else if (enquirySource === "AI Agent") {
+    sql = `
+      SELECT 
+        enquirers.*, 
+        meta_leads.raw_payload AS raw_payload,
+        properties.frontView, 
+        properties.seoSlug, 
+        properties.commissionAmount,
+        territorypartner.fullname AS territoryName, 
+        territorypartner.contact AS territoryContact,
+        projectpartner.fullname AS projectPartnerName, 
+        projectpartner.contact AS projectPartnerContact
+      FROM enquirers 
+      LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+      LEFT JOIN meta_leads ON meta_leads.id = enquirers.meta_lead_id
+      LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
+      LEFT JOIN projectpartner ON projectpartner.id = enquirers.projectpartnerid
+      WHERE enquirers.source = 'AI Agent'
+        AND enquirers.status != 'Token'
+      ORDER BY enquirers.enquirersid DESC
+    `;
+  }
+
+  // 7. OTHER SOURCES (default)
   else {
     sql = `
       SELECT 

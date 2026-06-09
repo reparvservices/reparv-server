@@ -22,6 +22,11 @@ import {
   resolveChatSessionFromRequest,
   formatSessionResponse,
 } from "./session.js";
+import {
+  buildSalesContextBlock,
+  mergeSalesState,
+  buildPropertyReply,
+} from "./salesFlow.js";
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const MAX_TOOL_ROUNDS = 8;
@@ -53,16 +58,6 @@ function stripMarkdown(text) {
     .trim();
 }
 
-function extractCityFromProperties(properties = []) {
-  for (const p of properties) {
-    const loc = String(p.location || "").trim();
-    if (!loc) continue;
-    const parts = loc.split(",").map((s) => s.trim()).filter(Boolean);
-    if (parts.length) return parts[parts.length - 1];
-  }
-  return null;
-}
-
 function isVerbosePropertyReply(text) {
   const raw = String(text || "");
   return (
@@ -72,21 +67,6 @@ function isVerbosePropertyReply(text) {
     /^\s*\d+\.\s+\S/m.test(raw) ||
     (raw.match(/\n/g) || []).length >= 2
   );
-}
-
-function compactPropertyReply(text, properties = []) {
-  const count = properties.length;
-  if (!count) return stripMarkdown(text);
-
-  const cleaned = stripMarkdown(text);
-  if (!isVerbosePropertyReply(text) && cleaned.length <= 200) {
-    return cleaned;
-  }
-
-  const city = extractCityFromProperties(properties) || "Yahan";
-  const noun = count === 1 ? "property" : `${count} properties`;
-
-  return `${city} mein ${noun} mili hain — neeche cards check kariye. Kisi pe details ya site visit chahiye?`;
 }
 
 function extractOutputText(response) {
@@ -107,24 +87,25 @@ function extractFunctionCalls(response) {
   return (response.output || []).filter((o) => o.type === "function_call");
 }
 
-function mergePreferences(conv, userMessage, toolResults) {
-  const prefs = { ...conv.preferences };
-  const budgetMatch = userMessage.match(/(\d+)\s*(lakh|lac|cr|crore)/gi);
-  if (budgetMatch) prefs.budget = budgetMatch.join(" ");
-  const cityMatch = userMessage.match(
-    /\b(Pune|Mumbai|Bangalore|Bengaluru|Hyderabad|Delhi|Noida|Gurgaon|Chennai|Kolkata|Ahmedabad)\b/i,
-  );
-  if (cityMatch) prefs.city = cityMatch[0];
-  if (/bhk|2\s*bhk|3\s*bhk/i.test(userMessage)) {
-    prefs.propertyType = userMessage.match(/\d\s*bhk/i)?.[0] || prefs.propertyType;
+async function persistPartialLead(storageId, prefs, leadProfile) {
+  const patch = {};
+  const name = prefs.capturedName || leadProfile?.name;
+  const phone = prefs.capturedPhone || leadProfile?.phone;
+  const city = prefs.city || leadProfile?.city;
+
+  if (name && name !== leadProfile?.name) patch.name = name;
+  if (phone && phone !== leadProfile?.phone) patch.phone = phone;
+  if (city && city !== leadProfile?.city) patch.city = city;
+  if (prefs.budgetMin != null) patch.budgetMin = prefs.budgetMin;
+  if (prefs.budgetMax != null) patch.budgetMax = prefs.budgetMax;
+  if (prefs.propertyType) patch.propertyType = prefs.propertyType;
+  if (prefs.interestedPropertyId) {
+    patch.locationPreference = prefs.interestedPropertyName || undefined;
   }
 
-  for (const tr of toolResults) {
-    if (tr.name === "createLead" && tr.result?.leadScore) {
-      prefs.leadScore = tr.result.leadScore;
-    }
+  if (Object.keys(patch).length) {
+    await upsertLeadProfile(storageId, patch).catch(() => null);
   }
-  return prefs;
 }
 
 export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }) {
@@ -146,9 +127,23 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
   const historyInput = buildOpenAIInputFromHistory(conv.chatHistory);
   const leadProfile = await getLeadProfile(storageId).catch(() => null);
 
-  const contextBlock = leadProfile
-    ? `\nKnown lead profile: ${JSON.stringify(formatLeadScoreResponse(leadProfile))}`
-    : "";
+  const { preferences: preIntentPrefs, intent } = mergeSalesState(
+    conv,
+    text,
+    [],
+    leadProfile,
+  );
+
+  const salesContext = buildSalesContextBlock(
+    { ...conv, preferences: preIntentPrefs },
+    leadProfile,
+    intent,
+  );
+
+  const contextBlock =
+    (leadProfile
+      ? `\nKnown lead profile: ${JSON.stringify(formatLeadScoreResponse(leadProfile))}`
+      : "") + salesContext;
 
   const openai = getOpenAI();
   const toolResults = [];
@@ -187,6 +182,47 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
         args = {};
       }
 
+      if (call.name === "searchProperties") {
+        const livePrefs = mergeSalesState(conv, text, toolResults, leadProfile)
+          .preferences;
+        const shown = livePrefs.shownPropertyIds || [];
+        const rotate =
+          intent === "show_more" ||
+          (shown.length > 0 && !args.excludePropertyIds?.length);
+        if (rotate && shown.length) {
+          args.excludePropertyIds = shown;
+        }
+        if (!args.city && livePrefs.city) args.city = livePrefs.city;
+        if (!args.propertyType && livePrefs.propertyType) {
+          args.propertyType = livePrefs.propertyType;
+        }
+        if (livePrefs.budgetMax && args.budgetMax == null) {
+          args.budgetMax = livePrefs.budgetMax;
+        }
+        if (livePrefs.budgetMin && args.budgetMin == null) {
+          args.budgetMin = livePrefs.budgetMin;
+        }
+        args.searchRound = livePrefs.searchRound || 0;
+        args.sortVariant = livePrefs.searchRound || 0;
+        if (!args.limit) args.limit = 5;
+      }
+
+      if (call.name === "createLead") {
+        const livePrefs = mergeSalesState(conv, text, toolResults, leadProfile)
+          .preferences;
+        if (!args.name && livePrefs.capturedName) args.name = livePrefs.capturedName;
+        if (!args.phone && livePrefs.capturedPhone) args.phone = livePrefs.capturedPhone;
+        if (!args.city && livePrefs.city) args.city = livePrefs.city;
+        if (!args.budgetMax && livePrefs.budgetMax) args.budgetMax = livePrefs.budgetMax;
+        if (!args.budgetMin && livePrefs.budgetMin) args.budgetMin = livePrefs.budgetMin;
+        if (!args.propertyId && livePrefs.interestedPropertyId) {
+          args.propertyId = livePrefs.interestedPropertyId;
+        }
+        if (!args.propertyType && livePrefs.propertyType) {
+          args.propertyType = livePrefs.propertyType;
+        }
+      }
+
       const result = await executeTool(call.name, args, {
         userId: storageId,
         mode: session.mode,
@@ -208,22 +244,44 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
       "I could not complete that request. Would you like to speak with a sales executive?";
   }
 
-  const properties = toolResults.find((t) => t.name === "searchProperties")
-    ?.result?.properties;
+  const searchResult = toolResults.find((t) => t.name === "searchProperties");
+  const properties = searchResult?.result?.properties;
 
-  const reply =
-    properties?.length > 0
-      ? compactPropertyReply(finalText, properties)
-      : stripMarkdown(finalText);
+  const { preferences, intent: finalIntent } = mergeSalesState(
+    conv,
+    text,
+    toolResults,
+    leadProfile,
+  );
 
-  const preferences = mergePreferences(conv, text, toolResults);
-  const leadPhone = leadProfile?.phone || null;
+  await persistPartialLead(storageId, preferences, leadProfile);
+
+  const updatedLead = await getLeadProfile(storageId).catch(() => leadProfile);
+  const leadPhone = updatedLead?.phone || preferences.capturedPhone || null;
+
+  let reply = stripMarkdown(finalText);
+  if (properties !== undefined) {
+    reply = buildPropertyReply(
+      preferences.salesStage,
+      properties || [],
+      finalIntent,
+      preferences,
+    );
+  } else if (isVerbosePropertyReply(finalText)) {
+    reply = stripMarkdown(finalText).slice(0, 220);
+  }
 
   await appendMessages(
     storageId,
     [
       { role: "user", content: text, at: new Date().toISOString() },
-      { role: "assistant", content: reply, at: new Date().toISOString() },
+      {
+        role: "assistant",
+        content: reply,
+        at: new Date().toISOString(),
+        properties: properties?.length ? properties : undefined,
+        toolCalls: toolResults.map((t) => t.name),
+      },
     ],
     {
       preferences: { ...preferences, sessionMode: session.mode },
@@ -239,9 +297,7 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
     reply,
     properties: properties || undefined,
     toolCalls: toolResults.map((t) => t.name),
-    lead: formatLeadScoreResponse(
-      await getLeadProfile(storageId).catch(() => null),
-    ),
+    lead: formatLeadScoreResponse(updatedLead),
     session: {
       mode: session.mode,
       userId: session.userId,

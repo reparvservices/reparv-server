@@ -54,6 +54,7 @@ import newsRoutes from "../portals/admin/routes/newsRoute.js";
 import newsAnalyticsRoutes from "../portals/admin/routes/newsAnalyticsRoutes.js";
 import subscribersRoutes from "../portals/admin/routes/subscribersRoutes.js";
 import whatsappChatRoutes from "../portals/admin/routes/whatsappChatRoutes.js";
+import aiAgentRoutes from "../portals/admin/routes/aiAgentRoutes.js";
 
 import guestUserLoginRoutes from "../portals/guestUser/routes/userRoutes.js";
 import guestUserProfileRoutes from "../portals/guestUser/routes/profileRoutes.js";
@@ -266,6 +267,7 @@ export function mountProtectedRoutes(app) {
   app.use("/admin/call-enquirers", callEnquirerRoutes);
   app.use("/admin/whatsapp-enquirers", whatsappEnquirerRoutes);
   app.use("/admin/whatsapp-chat", whatsappChatRoutes);
+  app.use("/admin/ai-agent", aiAgentRoutes);
   app.use("/admin/enquiries", verifyToken, addEnquiryRoutes);
   app.use("/admin/auctionmembers", auctionmembersRoutes);
   app.use("/admin/tickets", ticketRoutes);
