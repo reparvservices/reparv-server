@@ -6,9 +6,7 @@ export async function sendOtpSMS(phone, otp) {
     apikey: process.env.TWO_FACTOR_API_KEY,
     to: `91${phone}`, // India format
     from: "REPARV",
-    msg: `<#> Your OTP for Reparv app login is ${otp}. Valid for 5 minutes.
-    
-iqiEeICF8yb`,
+    msg: `Your OTP for Reparv app login is ${otp}. Valid for 5 minutes. Do not share with anyone.`,
   });
 
   const response = await axios.post(
