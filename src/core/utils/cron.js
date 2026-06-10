@@ -676,7 +676,7 @@ function notifyProjectPartnerForNewEnquiry() {
           const { token, propertyName, location, enquirersid } = enquiry;
 
           if (!token) {
-            console.log(" Project partner token missing.");
+            // console.log(" Project partner token missing.");
             continue;
           }
 
@@ -1043,3 +1043,113 @@ async function notifyGuestsForNewProperties() {
 // Runs every 5 minutes
 cron.schedule("* * * * *", notifyGuestsForNewProperties);
 // console.log("[GuestCron] New property → guest notification cron registered.");
+
+function notifyGuestForPropertyApproval() {
+  db.query(
+    `SELECT 
+       p.propertyid, p.propertyName, p.city, p.approve, p.rejectreason,
+       p.frontView, p.seoSlug, p.guestUserId,
+       g.fcmToken, g.fullname
+     FROM properties p
+     INNER JOIN guestUsers g ON g.id = p.guestUserId
+     WHERE p.approve IN ('Approved', 'Rejected')
+       AND p.guest_approval_notified = 0
+       AND g.fcmToken IS NOT NULL
+       AND g.fcmToken != ''`,
+    async (err, properties) => {
+      if (err) {
+        console.error("[ApprovalCron] DB query error:", err.message);
+        return;
+      }
+
+      if (!properties || properties.length === 0) {
+        console.log("[ApprovalCron] No pending approval notifications.");
+        return;
+      }
+
+      console.log(
+        `[ApprovalCron] Found ${properties.length} property(ies) to notify.`,
+      );
+
+      for (const property of properties) {
+        const isApproved = property.approve === "Approved";
+
+        const title = isApproved
+          ? "🎉 Property Approved!"
+          : "❌ Property Not Approved";
+
+        const body = isApproved
+          ? `Great news! Your property "${property.propertyName}" in ${property.city} has been approved and is now live.`
+          : `Your property "${property.propertyName}" in ${property.city} was not approved.${
+              property.rejectreason ? ` Reason: ${property.rejectreason}` : ""
+            }`;
+
+        const imageUrl = encodeURI(
+          getImageUrl(parseFrontView(property?.frontView)[0]) || "",
+        );
+
+        const message = {
+          token: property.fcmToken,
+          notification: {
+            title,
+            body,
+            ...(isApproved && imageUrl ? { image: imageUrl } : {}),
+          },
+          data: {
+            screen: isApproved ? "PropertyDetails" : "MyProperties",
+            propertyid: String(property.seoSlug || property.propertyid),
+            propertyName: String(property.propertyName || ""),
+            city: String(property.city || ""),
+            approve: property.approve,
+          },
+          android: {
+            priority: "high",
+            ...(isApproved && imageUrl ? { notification: { imageUrl } } : {}),
+          },
+          apns: {
+            headers: { "apns-priority": "10" },
+            payload: { aps: { sound: "default" } },
+            ...(isApproved && imageUrl
+              ? { fcm_options: { image: imageUrl } }
+              : {}),
+          },
+        };
+
+        try {
+          const response = await guestApp.messaging().send(message);
+          console.log(
+            `[ApprovalCron] Notified guest ${property.guestUserId} for property ${property.propertyid}:`,
+            response,
+          );
+
+          // Mark as notified only after successful send
+          db.query(
+            `UPDATE properties SET guest_approval_notified = 1 WHERE propertyid = ?`,
+            [property.propertyid],
+            (updateErr) => {
+              if (updateErr) {
+                console.error(
+                  `[ApprovalCron] Failed to mark property ${property.propertyid} as notified:`,
+                  updateErr.message,
+                );
+              } else {
+                console.log(
+                  `[ApprovalCron] Property ${property.propertyid} marked as approval-notified.`,
+                );
+              }
+            },
+          );
+        } catch (sendErr) {
+          console.error(
+            `[ApprovalCron] Failed to notify guest ${property.guestUserId} for property ${property.propertyid}:`,
+            sendErr.message,
+          );
+          // Skip update — will retry next minute
+        }
+      }
+    },
+  );
+}
+
+// Runs every minute
+cron.schedule("* * * * *", notifyGuestForPropertyApproval);
