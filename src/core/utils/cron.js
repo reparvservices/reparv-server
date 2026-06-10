@@ -1153,3 +1153,111 @@ function notifyGuestForPropertyApproval() {
 
 // Runs every minute
 cron.schedule("* * * * *", notifyGuestForPropertyApproval);
+
+function notifyProjectPartnerForPropertyApproval() {
+  db.query(
+    `SELECT 
+       p.propertyid, p.propertyName, p.city, p.approve, p.rejectreason,
+       p.frontView, p.seoSlug, p.projectpartnerid,
+       pp.onesignalid AS token, pp.fullname
+     FROM properties p
+     INNER JOIN projectpartner pp ON pp.id = p.projectpartnerid
+     WHERE p.approve IN ('Approved', 'Rejected')
+       AND p.pp_approval_notified = 0
+       AND pp.onesignalid IS NOT NULL
+       AND pp.onesignalid != ''`,
+    async (err, properties) => {
+      if (err) {
+        console.error("[PPApprovalCron] DB query error:", err.message);
+        return;
+      }
+
+      if (!properties || properties.length === 0) {
+        console.log("[PPApprovalCron] No pending approval notifications.");
+        return;
+      }
+
+      console.log(
+        `[PPApprovalCron] Found ${properties.length} property(ies) to notify.`,
+      );
+
+      for (const property of properties) {
+        const isApproved = property.approve === "Approved";
+
+        const title = isApproved
+          ? "🎉 Property Approved!"
+          : "❌ Property Not Approved";
+
+        const body = isApproved
+          ? `Great news! Your property "${property.propertyName}" in ${property.city} has been approved and is now live.`
+          : `Your property "${property.propertyName}" in ${property.city} was not approved.${
+              property.rejectreason ? ` Reason: ${property.rejectreason}` : ""
+            }`;
+
+        const imageUrl = encodeURI(
+          getImageUrl(parseFrontView(property?.frontView)[0]) || "",
+        );
+
+        const message = {
+          token: property.token,
+          notification: {
+            title,
+            body,
+          },
+          data: {
+            screen: isApproved ? "PropertyDetails" : "MyProperties",
+            propertyid: String(property.seoSlug || property.propertyid),
+            propertyName: String(property.propertyName || ""),
+            city: String(property.city || ""),
+            approve: property.approve,
+          },
+          android: {
+            priority: "high",
+            notification: {
+              sound: "notify",
+              channelId: "default",
+            },
+          },
+          apns: {
+            headers: { "apns-priority": "10" },
+            payload: { aps: { sound: "default" } },
+          },
+        };
+        try {
+          const response = await projectApp.messaging().send(message);
+          console.log(
+            `[PPApprovalCron] Notified project partner ${property.projectpartnerid} for property ${property.propertyid}:`,
+            response,
+          );
+
+          // Mark as notified only after successful send
+          db.query(
+            `UPDATE properties SET pp_approval_notified = 1 WHERE propertyid = ?`,
+            [property.propertyid],
+            (updateErr) => {
+              if (updateErr) {
+                console.error(
+                  `[PPApprovalCron] Failed to mark property ${property.propertyid}:`,
+                  updateErr.message,
+                );
+              } else {
+                console.log(
+                  `[PPApprovalCron] Property ${property.propertyid} marked as pp-approval-notified.`,
+                );
+              }
+            },
+          );
+        } catch (sendErr) {
+          console.error(
+            `[PPApprovalCron] Failed to notify project partner ${property.projectpartnerid} for property ${property.propertyid}:`,
+            sendErr.message,
+          );
+          // Skip update — will retry next minute
+        }
+      }
+    },
+  );
+}
+
+// Runs every minute
+cron.schedule("* * * * *", notifyProjectPartnerForPropertyApproval);
