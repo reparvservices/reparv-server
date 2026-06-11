@@ -1205,7 +1205,7 @@ function notifyProjectPartnerForPropertyApproval() {
             body,
           },
           data: {
-            screen: isApproved ? "PropertyDetails" : "MyProperties",
+            screen: isApproved ? "PropertiesScreen" : "PropertiesScreen",
             propertyid: String(property.seoSlug || property.propertyid),
             propertyName: String(property.propertyName || ""),
             city: String(property.city || ""),
