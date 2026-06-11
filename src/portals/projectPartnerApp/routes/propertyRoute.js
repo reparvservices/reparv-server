@@ -97,7 +97,7 @@ router.put(
 );
 
 router.post("/generate-upload-url", generateUploadUrl);
-router.post("/brochure/:id", uploadBrochureAndVideoLink);
+router.post("/brochure/upload/:id", uploadBrochureAndVideoLink);
 /* ---------- MULTER ERROR HANDLER ---------- */
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {

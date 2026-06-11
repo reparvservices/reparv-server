@@ -2,7 +2,7 @@ import moment from "moment-timezone";
 import db from "#db";
 import fs from "fs";
 import path from "path";
-import { uploadToS3 } from "#utils/imageUpload.js";
+import { deleteFromS3, uploadToS3 } from "#utils/imageUpload.js";
 import { convertImagesToWebp } from "#utils/convertImagesToWebp.js";
 import { uploadVideoToS3 } from "#utils/videoUpload.js";
 import { sanitize } from "#utils/sanitize.js";
@@ -1205,7 +1205,6 @@ export const updateProperty = async (req, res) => {
     });
   }
 };
-
 export const uploadBrochureAndVideoLink = async (req, res) => {
   try {
     const propertyId = req.params.id;
@@ -1213,10 +1212,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
       return res.status(400).json({ message: "Property Id is required" });
     }
 
-    console.log("fff");
-
-    const brochureFile = req.file || null; // brochure (image/pdf)
-    const { videoLink } = req.body;
+    const { brochureFile, videoLink } = req.body; // both come as JSON now
 
     if (!brochureFile && !videoLink) {
       return res
@@ -1224,7 +1220,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
         .json({ message: "No brochure or video link provided" });
     }
 
-    // Fetch old brochure from DB
+    // Fetch old data from DB
     const [oldData] = await new Promise((resolve, reject) => {
       db.query(
         "SELECT brochureFile, videoLink FROM properties WHERE propertyid = ?",
@@ -1238,32 +1234,19 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
       );
     });
 
-    let brochureUrl = oldData.brochureFile;
-
-    // Upload new brochure to S3 if provided
-    if (brochureFile) {
-      let uploadFile = brochureFile;
-
-      // Compress ONLY if image (PDF untouched)
-      if (brochureFile.mimetype?.startsWith("image/")) {
-        const compressedImage = await convertSingleImageToWebp(brochureFile);
-        if (compressedImage) {
-          uploadFile = compressedImage;
-        }
-      }
-
-      // Delete old brochure from S3
-      if (oldData.brochureFile) {
-        await deleteFromS3(oldData.brochureFile);
-      }
-
-      brochureUrl = await uploadToS3(uploadFile);
+    // Delete old brochure from S3 if a new one is being set
+    if (brochureFile && oldData.brochureFile) {
+      await deleteFromS3(oldData.brochureFile);
     }
 
-    // Update DB with new brochure URL & videoLink
+    // Update DB
     db.query(
       "UPDATE properties SET brochureFile = ?, videoLink = ? WHERE propertyid = ?",
-      [brochureUrl, videoLink || oldData.videoLink, propertyId],
+      [
+        brochureFile || oldData.brochureFile, // keep old if not updated
+        videoLink || oldData.videoLink, // keep old if not updated
+        propertyId,
+      ],
       (err) => {
         if (err) {
           console.error("Error updating brochure/video link:", err);
@@ -1274,7 +1257,7 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
 
         res.status(200).json({
           message: "Brochure & Video Link updated successfully",
-          brochureUrl,
+          brochureUrl: brochureFile || oldData.brochureFile,
           videoLink: videoLink || oldData.videoLink,
         });
       },
