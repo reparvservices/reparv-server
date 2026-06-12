@@ -24,7 +24,7 @@ if (process.env.DISABLE_COMPRESSION !== "1") {
   app.use(compression({ threshold: 2048 }));
 }
 
-const bodyLimit = process.env.BODY_LIMIT || "32mb";
+const bodyLimit = process.env.BODY_LIMIT || "100mb";
 
 app.use(
   session({

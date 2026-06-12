@@ -279,7 +279,7 @@ export const addProperty = async (req, res) => {
   }
 };
 
-export const update = async (req, res) => {
+export const updateOld = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const partnerId = req.guestUser?.id;
 
@@ -381,6 +381,277 @@ export const update = async (req, res) => {
       address || null,
       state,
       city,
+      projectBy || null,
+      contact || null,
+      email || null,
+
+      keepOrReplace(frontView, existing.frontView),
+      keepOrReplace(sideView, existing.sideView),
+      keepOrReplace(kitchenView, existing.kitchenView),
+      keepOrReplace(hallView, existing.hallView),
+      keepOrReplace(bedroomView, existing.bedroomView),
+      keepOrReplace(bathroomView, existing.bathroomView),
+      keepOrReplace(balconyView, existing.balconyView),
+      keepOrReplace(nearestLandmark, existing.nearestLandmark),
+      keepOrReplace(developedAmenities, existing.developedAmenities),
+
+      currentdate,
+      Id,
+    ];
+
+    await db.promise().query(updateSQL, values);
+
+    return res.status(200).json({
+      message: "Property updated successfully",
+      id: Id,
+    });
+  } catch (error) {
+    console.error("updateProperty error:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      error: error.message || error,
+    });
+  }
+};
+
+export const update = async (req, res) => {
+  const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
+  const partnerId = req.guestUser?.id;
+
+  if (!partnerId) {
+    return res.status(401).json({ message: "Unauthorized Access" });
+  }
+
+  const Id = Number(req.params.id);
+  if (!Id) {
+    return res.status(400).json({ message: "Invalid property ID" });
+  }
+
+  const {
+    propertyCategory,
+    propertyName,
+    address,
+    state,
+    city,
+    pincode,
+    location,
+    distanceFromCityCenter,
+    latitude,
+    longitude,
+
+    totalSalesPrice,
+    totalOfferPrice,
+    stampDuty,
+    registrationFee,
+    gst,
+    advocateFee,
+    msebWater,
+    maintenance,
+    other,
+    tags,
+
+    possessionDate,
+    builtYear,
+    ownershipType,
+    builtUpArea,
+    carpetArea,
+    parkingAvailability,
+    totalFloors,
+    floorNo,
+    loanAvailability,
+    propertyFacing,
+    reraRegistered,
+    furnishing,
+    waterSupply,
+    powerBackup,
+
+    locationFeature,
+    sizeAreaFeature,
+    parkingFeature,
+    terraceFeature,
+    ageOfPropertyFeature,
+    amenitiesFeature,
+    propertyStatusFeature,
+    smartHomeFeature,
+
+    securityBenefit,
+    primeLocationBenefit,
+    rentalIncomeBenefit,
+    qualityBenefit,
+    capitalAppreciationBenefit,
+    ecofriendlyBenefit,
+
+    projectBy,
+    contact,
+    email,
+
+    // IMAGE URL ARRAYS (S3)
+    frontView,
+    sideView,
+    kitchenView,
+    hallView,
+    bedroomView,
+    bathroomView,
+    balconyView,
+    nearestLandmark,
+    developedAmenities,
+  } = req.body;
+
+  // Minimal required fields (same as addProperty)
+  if (!propertyName || !propertyCategory || !city || !state) {
+    return res.status(400).json({
+      message: "Property name, category, city, and state are required",
+    });
+  }
+
+  try {
+    // 1 Fetch existing property
+    const [rows] = await db
+      .promise()
+      .query("SELECT * FROM properties WHERE propertyid = ?", [Id]);
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Property not found" });
+    }
+
+    const existing = rows[0];
+
+    // IMAGE MERGE (keep old if not sent)
+    const keepOrReplace = (incoming, existingValue) =>
+      Array.isArray(incoming) ? JSON.stringify(incoming) : existingValue;
+
+    // Array fields -> JSON strings (or keep existing if not provided)
+    const keepOrReplaceArrayField = (incoming, existingValue) =>
+      Array.isArray(incoming) ? JSON.stringify(incoming) : existingValue;
+
+    // 2 Update property
+    const updateSQL = `
+      UPDATE properties SET
+        propertyCategory=?,
+        propertyName=?,
+        address=?,
+        state=?,
+        city=?,
+        pincode=?,
+        location=?,
+        distanceFromCityCenter=?,
+        latitude=?,
+        longitude=?,
+
+        totalSalesPrice=?,
+        totalOfferPrice=?,
+        stampDuty=?,
+        registrationFee=?,
+        gst=?,
+        advocateFee=?,
+        msebWater=?,
+        maintenance=?,
+        other=?,
+        tags=?,
+
+        possessionDate=?,
+        builtYear=?,
+        ownershipType=?,
+        builtUpArea=?,
+        carpetArea=?,
+        parkingAvailability=?,
+        totalFloors=?,
+        floorNo=?,
+        loanAvailability=?,
+        propertyFacing=?,
+        reraRegistered=?,
+        furnishing=?,
+        waterSupply=?,
+        powerBackup=?,
+
+        locationFeature=?,
+        sizeAreaFeature=?,
+        parkingFeature=?,
+        terraceFeature=?,
+        ageOfPropertyFeature=?,
+        amenitiesFeature=?,
+        propertyStatusFeature=?,
+        smartHomeFeature=?,
+
+        securityBenefit=?,
+        primeLocationBenefit=?,
+        rentalIncomeBenefit=?,
+        qualityBenefit=?,
+        capitalAppreciationBenefit=?,
+        ecofriendlyBenefit=?,
+
+        projectBy=?,
+        contact=?,
+        email=?,
+
+        frontView=?,
+        sideView=?,
+        kitchenView=?,
+        hallView=?,
+        bedroomView=?,
+        bathroomView=?,
+        balconyView=?,
+        nearestLandmark=?,
+        developedAmenities=?,
+
+        updated_at=?
+      WHERE propertyid=?
+    `;
+
+    const values = [
+      propertyCategory,
+      propertyName,
+      address || null,
+      state,
+      city,
+      pincode || null,
+      location || null,
+      distanceFromCityCenter || null,
+      latitude || null,
+      longitude || null,
+
+      totalSalesPrice || null,
+      totalOfferPrice || null,
+      stampDuty || null,
+      registrationFee || null,
+      gst || null,
+      advocateFee || null,
+      msebWater || null,
+      maintenance || null,
+      other || null,
+      tags || null,
+
+      possessionDate || null,
+      builtYear || null,
+      ownershipType || null,
+      builtUpArea || null,
+      carpetArea || null,
+      parkingAvailability || null,
+      totalFloors || null,
+      floorNo || null,
+      loanAvailability || null,
+      propertyFacing || null,
+      reraRegistered || null,
+      furnishing || null,
+      waterSupply || null,
+      powerBackup || null,
+
+      keepOrReplaceArrayField(locationFeature, existing.locationFeature),
+      sizeAreaFeature || null,
+      parkingFeature || null,
+      terraceFeature || null,
+      ageOfPropertyFeature || null,
+      keepOrReplaceArrayField(amenitiesFeature, existing.amenitiesFeature),
+      propertyStatusFeature || null,
+      keepOrReplaceArrayField(smartHomeFeature, existing.smartHomeFeature),
+
+      keepOrReplaceArrayField(securityBenefit, existing.securityBenefit),
+      keepOrReplaceArrayField(primeLocationBenefit, existing.primeLocationBenefit),
+      keepOrReplaceArrayField(rentalIncomeBenefit, existing.rentalIncomeBenefit),
+      keepOrReplaceArrayField(qualityBenefit, existing.qualityBenefit),
+      keepOrReplaceArrayField(capitalAppreciationBenefit, existing.capitalAppreciationBenefit),
+      keepOrReplaceArrayField(ecofriendlyBenefit, existing.ecofriendlyBenefit),
+
       projectBy || null,
       contact || null,
       email || null,
