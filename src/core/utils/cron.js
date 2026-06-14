@@ -1,5 +1,6 @@
 // cronJobs.js
 import db from "#db";
+import { ensurePropertiesSchema } from "../db/ensurePropertiesSchema.js";
 import cron from "node-cron";
 import dayjs from "dayjs";
 import fetch from "node-fetch"; // For Node <18; on Node 18+ global fetch works
@@ -13,6 +14,12 @@ import axios from "axios";
 import { google } from "googleapis";
 
 dotenv.config();
+
+try {
+  await ensurePropertiesSchema();
+} catch (err) {
+  console.error("[Cron] Properties schema check failed:", err.message);
+}
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -230,7 +237,6 @@ export const checkEnquiriesWithTime = () => {
       return;
     }
     if (!results.length) {
-      console.log("No enquiries to reject.");
       return;
     }
 
@@ -306,7 +312,6 @@ async function notifySlot(timeSlot) {
     }
 
     if (!results.length) {
-      console.log(`No enquiries for slot ${timeSlot} on ${today}`);
       return;
     }
 
@@ -347,7 +352,6 @@ const notifiedSlotsToday = new Set();
 // Reset the set at midnight
 cron.schedule("0 0 * * *", () => {
   notifiedSlotsToday.clear();
-  console.log("🗓 Reset notified slots for the new day");
 });
 // Notification cron: runs every minute
 cron.schedule("* * * * *", () => {
@@ -409,7 +413,6 @@ export const checkNewEnquiries = async () => {
     }
 
     if (results.length === 0) {
-      console.log("No new enquiries for territory partners.");
       return;
     }
 
@@ -445,8 +448,6 @@ Team Reparv`,
             ` Failed to update enquiry ${enquiry.enquirersid}:`,
             err,
           );
-        } else {
-          console.log(` Enquiry ${enquiry.enquirersid} marked as notified.`);
         }
       });
     }
@@ -563,11 +564,10 @@ export const checkcalendernotes = () => {
     }
 
     if (!results.length) {
-      console.log("No upcoming notes within next 10 minutes.");
       return;
     }
 
-    console.log("Notes to notify:", results);
+    console.log(`[CalendarCron] Notifying ${results.length} note(s).`);
 
     (async () => {
       for (const row of results) {
@@ -586,7 +586,6 @@ Note: ${row.note}`;
               msg,
               "Calender",
             );
-            console.log("PP notified:", row.project_onesignal);
           } catch (e) {
             console.error("PP notification error:", e);
           }
@@ -601,7 +600,6 @@ Note: ${row.note}`;
               msg,
               "Calender",
             );
-            console.log("Sales notified:", row.sales_onesignal);
           } catch (e) {
             console.error("Sales notification error:", e);
           }
@@ -616,7 +614,6 @@ Note: ${row.note}`;
               msg,
               "Calender",
             );
-            console.log("Territory notified:", row.territory_onesignal);
           } catch (e) {
             console.error("Territory notification error:", e);
           }
@@ -662,12 +659,11 @@ function notifyProjectPartnerForNewEnquiry() {
     `,
       async (err, rows) => {
         if (err) {
-          console.log("DB Error while fetching enquiries:", err);
+          console.error("DB Error while fetching enquiries:", err);
           return;
         }
 
         if (!rows || rows.length === 0) {
-          console.log("No new enquiries found.");
           return;
         }
 
@@ -687,9 +683,8 @@ function notifyProjectPartnerForNewEnquiry() {
 
           try {
             await sendPPNotification(token, title, message, "EnquiriesScreen");
-            console.log("Notification sent to:", token);
           } catch (notifyErr) {
-            console.log("Error sending push notification:", notifyErr);
+            console.error("Error sending push notification:", notifyErr);
             continue;
           }
 
@@ -699,13 +694,11 @@ function notifyProjectPartnerForNewEnquiry() {
             [enquirersid],
             (updateErr) => {
               if (updateErr) {
-                console.log(
+                console.error(
                   "Error updating pp_notified for enquiry:",
                   enquirersid,
                   updateErr,
                 );
-              } else {
-                console.log(`pp_notified updated for enquiry ${enquirersid}`);
               }
             },
           );
@@ -713,7 +706,7 @@ function notifyProjectPartnerForNewEnquiry() {
       },
     );
   } catch (error) {
-    console.log("Error sending new enquiry notifications:", error);
+    console.error("Error sending new enquiry notifications:", error);
   }
 }
 
@@ -903,6 +896,54 @@ const parseFrontView = (frontView) => {
     return [];
   }
 };
+
+function shouldMarkApprovalNotifiedOnFailure(err) {
+  const code = err?.code || err?.errorInfo?.code || "";
+  const message = String(
+    err?.message || err?.errorInfo?.message || err || "",
+  ).toLowerCase();
+
+  const retryableCodes = new Set([
+    "messaging/server-unavailable",
+    "messaging/internal-error",
+  ]);
+
+  if (retryableCodes.has(code)) return false;
+
+  if (code.startsWith("messaging/")) return true;
+
+  return (
+    message.includes("requested entity was not found") ||
+    message.includes("not a valid fcm registration token")
+  );
+}
+
+async function markGuestApprovalNotified(propertyId) {
+  await db
+    .promise()
+    .query(
+      `UPDATE properties SET guest_approval_notified = 1 WHERE propertyid = ?`,
+      [propertyId],
+    );
+}
+
+async function markPpApprovalNotified(propertyId) {
+  await db
+    .promise()
+    .query(
+      `UPDATE properties SET pp_approval_notified = 1 WHERE propertyid = ?`,
+      [propertyId],
+    );
+}
+
+function logApprovalCronSummary(cronName, { sent, invalidToken, failed }) {
+  if (sent === 0 && invalidToken === 0 && failed === 0) return;
+  const skippedLabel =
+    invalidToken > 0 ? `${invalidToken} skipped (invalid/unreachable token)` : "";
+  const failedLabel = failed > 0 ? `${failed} failed (will retry)` : "";
+  const parts = [`${sent} sent`, skippedLabel, failedLabel].filter(Boolean);
+  console.log(`[${cronName}] ${parts.join(", ")}`);
+}
 // Send FCM notification to a single guest user token
 async function sendGuestNotification(guest, title, body, data = {}) {
   if (!guestApp) return;
@@ -913,7 +954,6 @@ async function sendGuestNotification(guest, title, body, data = {}) {
   //   "https://reparv-assets.s3.ap-south-1.amazonaws.com/uploads/1772799052752-WhatsApp Image 2026-03-06 at 5.10.53 PM.webp",
   // );
   const imageUrl = encodeURI(image);
-  console.log(imageUrl, data);
 
   const message = {
     token: guest.fcmToken,
@@ -966,7 +1006,6 @@ async function notifyGuestsForNewProperties() {
     );
 
     if (newProperties.length === 0) {
-      console.log("[GuestCron] No new properties to notify.");
       return;
     }
 
@@ -1007,8 +1046,6 @@ async function notifyGuestsForNewProperties() {
         );
 
         for (const guest of targetGuests) {
-          console.log(property?.frontView[0]);
-
           await sendGuestNotification(
             guest,
             "🏡 New Property in " + property.city,
@@ -1030,10 +1067,6 @@ async function notifyGuestsForNewProperties() {
         .query(`UPDATE properties SET notified = 1 WHERE propertyid = ?`, [
           property.propertyid,
         ]);
-
-      console.log(
-        `[GuestCron] Property ${property.propertyid} marked as notified.`,
-      );
     }
   } catch (err) {
     console.error("[GuestCron] Error:", err.message);
@@ -1044,219 +1077,197 @@ async function notifyGuestsForNewProperties() {
 cron.schedule("* * * * *", notifyGuestsForNewProperties);
 // console.log("[GuestCron] New property → guest notification cron registered.");
 
-function notifyGuestForPropertyApproval() {
-  db.query(
-    `SELECT 
-       p.propertyid, p.propertyName, p.city, p.approve, p.rejectreason,
-       p.frontView, p.seoSlug, p.guestUserId,
-       g.fcmToken, g.fullname
-     FROM properties p
-     INNER JOIN guestUsers g ON g.id = p.guestUserId
-     WHERE p.approve IN ('Approved', 'Rejected')
-       AND p.guest_approval_notified = 0
-       AND g.fcmToken IS NOT NULL
-       AND g.fcmToken != ''`,
-    async (err, properties) => {
-      if (err) {
-        console.error("[ApprovalCron] DB query error:", err.message);
-        return;
-      }
+let guestApprovalCronRunning = false;
 
-      if (!properties || properties.length === 0) {
-        console.log("[ApprovalCron] No pending approval notifications.");
-        return;
-      }
+async function notifyGuestForPropertyApproval() {
+  if (!guestApp) return;
+  if (guestApprovalCronRunning) return;
+  guestApprovalCronRunning = true;
 
-      console.log(
-        `[ApprovalCron] Found ${properties.length} property(ies) to notify.`,
+  try {
+    const [properties] = await db.promise().query(
+      `SELECT 
+         p.propertyid, p.propertyName, p.city, p.approve, p.rejectreason,
+         p.frontView, p.seoSlug, p.guestUserId,
+         g.fcmToken, g.fullname
+       FROM properties p
+       INNER JOIN guestUsers g ON g.id = p.guestUserId
+       WHERE p.approve IN ('Approved', 'Rejected')
+         AND p.guest_approval_notified = 0
+         AND g.fcmToken IS NOT NULL
+         AND g.fcmToken != ''`,
+    );
+
+    if (!properties?.length) return;
+
+    let sent = 0;
+    let invalidToken = 0;
+    let failed = 0;
+
+    for (const property of properties) {
+      const isApproved = property.approve === "Approved";
+
+      const title = isApproved
+        ? "🎉 Property Approved!"
+        : "❌ Property Not Approved";
+
+      const body = isApproved
+        ? `Great news! Your property "${property.propertyName}" in ${property.city} has been approved and is now live.`
+        : `Your property "${property.propertyName}" in ${property.city} was not approved.${
+            property.rejectreason ? ` Reason: ${property.rejectreason}` : ""
+          }`;
+
+      const imageUrl = encodeURI(
+        getImageUrl(parseFrontView(property?.frontView)[0]) || "",
       );
 
-      for (const property of properties) {
-        const isApproved = property.approve === "Approved";
+      const message = {
+        token: property.fcmToken,
+        notification: {
+          title,
+          body,
+          ...(isApproved && imageUrl ? { image: imageUrl } : {}),
+        },
+        data: {
+          screen: isApproved ? "PropertyDetails" : "MyProperties",
+          propertyid: String(property.seoSlug || property.propertyid),
+          propertyName: String(property.propertyName || ""),
+          city: String(property.city || ""),
+          approve: property.approve,
+        },
+        android: {
+          priority: "high",
+          ...(isApproved && imageUrl ? { notification: { imageUrl } } : {}),
+        },
+        apns: {
+          headers: { "apns-priority": "10" },
+          payload: { aps: { sound: "default" } },
+          ...(isApproved && imageUrl
+            ? { fcm_options: { image: imageUrl } }
+            : {}),
+        },
+      };
 
-        const title = isApproved
-          ? "🎉 Property Approved!"
-          : "❌ Property Not Approved";
-
-        const body = isApproved
-          ? `Great news! Your property "${property.propertyName}" in ${property.city} has been approved and is now live.`
-          : `Your property "${property.propertyName}" in ${property.city} was not approved.${
-              property.rejectreason ? ` Reason: ${property.rejectreason}` : ""
-            }`;
-
-        const imageUrl = encodeURI(
-          getImageUrl(parseFrontView(property?.frontView)[0]) || "",
-        );
-
-        const message = {
-          token: property.fcmToken,
-          notification: {
-            title,
-            body,
-            ...(isApproved && imageUrl ? { image: imageUrl } : {}),
-          },
-          data: {
-            screen: isApproved ? "PropertyDetails" : "MyProperties",
-            propertyid: String(property.seoSlug || property.propertyid),
-            propertyName: String(property.propertyName || ""),
-            city: String(property.city || ""),
-            approve: property.approve,
-          },
-          android: {
-            priority: "high",
-            ...(isApproved && imageUrl ? { notification: { imageUrl } } : {}),
-          },
-          apns: {
-            headers: { "apns-priority": "10" },
-            payload: { aps: { sound: "default" } },
-            ...(isApproved && imageUrl
-              ? { fcm_options: { image: imageUrl } }
-              : {}),
-          },
-        };
-
-        try {
-          const response = await guestApp.messaging().send(message);
-          console.log(
-            `[ApprovalCron] Notified guest ${property.guestUserId} for property ${property.propertyid}:`,
-            response,
-          );
-
-          // Mark as notified only after successful send
-          db.query(
-            `UPDATE properties SET guest_approval_notified = 1 WHERE propertyid = ?`,
-            [property.propertyid],
-            (updateErr) => {
-              if (updateErr) {
-                console.error(
-                  `[ApprovalCron] Failed to mark property ${property.propertyid} as notified:`,
-                  updateErr.message,
-                );
-              } else {
-                console.log(
-                  `[ApprovalCron] Property ${property.propertyid} marked as approval-notified.`,
-                );
-              }
-            },
-          );
-        } catch (sendErr) {
-          console.error(
-            `[ApprovalCron] Failed to notify guest ${property.guestUserId} for property ${property.propertyid}:`,
-            sendErr.message,
-          );
-          // Skip update — will retry next minute
+      try {
+        await guestApp.messaging().send(message);
+        await markGuestApprovalNotified(property.propertyid);
+        sent++;
+      } catch (sendErr) {
+        if (shouldMarkApprovalNotifiedOnFailure(sendErr)) {
+          await markGuestApprovalNotified(property.propertyid);
+          await db
+            .promise()
+            .query(`UPDATE guestUsers SET fcmToken = NULL WHERE id = ?`, [
+              property.guestUserId,
+            ]);
+          invalidToken++;
+        } else {
+          failed++;
         }
       }
-    },
-  );
+    }
+
+    logApprovalCronSummary("ApprovalCron", { sent, invalidToken, failed });
+  } catch (err) {
+    console.error("[ApprovalCron] Error:", err.message);
+  } finally {
+    guestApprovalCronRunning = false;
+  }
 }
 
 // Runs every minute
 cron.schedule("* * * * *", notifyGuestForPropertyApproval);
 
-function notifyProjectPartnerForPropertyApproval() {
-  db.query(
-    `SELECT 
-       p.propertyid, p.propertyName, p.city, p.approve, p.rejectreason,
-       p.frontView, p.seoSlug, p.projectpartnerid,
-       pp.onesignalid AS token, pp.fullname
-     FROM properties p
-     INNER JOIN projectpartner pp ON pp.id = p.projectpartnerid
-     WHERE p.approve IN ('Approved', 'Rejected')
-       AND p.pp_approval_notified = 0
-       AND pp.onesignalid IS NOT NULL
-       AND pp.onesignalid != ''`,
-    async (err, properties) => {
-      if (err) {
-        console.error("[PPApprovalCron] DB query error:", err.message);
-        return;
-      }
+let ppApprovalCronRunning = false;
 
-      if (!properties || properties.length === 0) {
-        console.log("[PPApprovalCron] No pending approval notifications.");
-        return;
-      }
+async function notifyProjectPartnerForPropertyApproval() {
+  if (ppApprovalCronRunning) return;
+  ppApprovalCronRunning = true;
 
-      console.log(
-        `[PPApprovalCron] Found ${properties.length} property(ies) to notify.`,
-      );
+  try {
+    const [properties] = await db.promise().query(
+      `SELECT 
+         p.propertyid, p.propertyName, p.city, p.approve, p.rejectreason,
+         p.frontView, p.seoSlug, p.projectpartnerid,
+         pp.onesignalid AS token, pp.fullname
+       FROM properties p
+       INNER JOIN projectpartner pp ON pp.id = p.projectpartnerid
+       WHERE p.approve IN ('Approved', 'Rejected')
+         AND p.pp_approval_notified = 0
+         AND pp.onesignalid IS NOT NULL
+         AND pp.onesignalid != ''`,
+    );
 
-      for (const property of properties) {
-        const isApproved = property.approve === "Approved";
+    if (!properties?.length) return;
 
-        const title = isApproved
-          ? "🎉 Property Approved!"
-          : "❌ Property Not Approved";
+    let sent = 0;
+    let invalidToken = 0;
+    let failed = 0;
 
-        const body = isApproved
-          ? `Great news! Your property "${property.propertyName}" in ${property.city} has been approved and is now live.`
-          : `Your property "${property.propertyName}" in ${property.city} was not approved.${
-              property.rejectreason ? ` Reason: ${property.rejectreason}` : ""
-            }`;
+    for (const property of properties) {
+      const isApproved = property.approve === "Approved";
 
-        const imageUrl = encodeURI(
-          getImageUrl(parseFrontView(property?.frontView)[0]) || "",
-        );
+      const title = isApproved
+        ? "🎉 Property Approved!"
+        : "❌ Property Not Approved";
 
-        const message = {
-          token: property.token,
+      const body = isApproved
+        ? `Great news! Your property "${property.propertyName}" in ${property.city} has been approved and is now live.`
+        : `Your property "${property.propertyName}" in ${property.city} was not approved.${
+            property.rejectreason ? ` Reason: ${property.rejectreason}` : ""
+          }`;
+
+      const message = {
+        token: property.token,
+        notification: {
+          title,
+          body,
+        },
+        data: {
+          screen: isApproved ? "PropertiesScreen" : "PropertiesScreen",
+          propertyid: String(property.seoSlug || property.propertyid),
+          propertyName: String(property.propertyName || ""),
+          city: String(property.city || ""),
+          approve: property.approve,
+        },
+        android: {
+          priority: "high",
           notification: {
-            title,
-            body,
+            sound: "notify",
+            channelId: "default",
           },
-          data: {
-            screen: isApproved ? "PropertiesScreen" : "PropertiesScreen",
-            propertyid: String(property.seoSlug || property.propertyid),
-            propertyName: String(property.propertyName || ""),
-            city: String(property.city || ""),
-            approve: property.approve,
-          },
-          android: {
-            priority: "high",
-            notification: {
-              sound: "notify",
-              channelId: "default",
-            },
-          },
-          apns: {
-            headers: { "apns-priority": "10" },
-            payload: { aps: { sound: "default" } },
-          },
-        };
-        try {
-          const response = await projectApp.messaging().send(message);
-          console.log(
-            `[PPApprovalCron] Notified project partner ${property.projectpartnerid} for property ${property.propertyid}:`,
-            response,
-          );
+        },
+        apns: {
+          headers: { "apns-priority": "10" },
+          payload: { aps: { sound: "default" } },
+        },
+      };
 
-          // Mark as notified only after successful send
-          db.query(
-            `UPDATE properties SET pp_approval_notified = 1 WHERE propertyid = ?`,
-            [property.propertyid],
-            (updateErr) => {
-              if (updateErr) {
-                console.error(
-                  `[PPApprovalCron] Failed to mark property ${property.propertyid}:`,
-                  updateErr.message,
-                );
-              } else {
-                console.log(
-                  `[PPApprovalCron] Property ${property.propertyid} marked as pp-approval-notified.`,
-                );
-              }
-            },
-          );
-        } catch (sendErr) {
-          console.error(
-            `[PPApprovalCron] Failed to notify project partner ${property.projectpartnerid} for property ${property.propertyid}:`,
-            sendErr.message,
-          );
-          // Skip update — will retry next minute
+      try {
+        await projectApp.messaging().send(message);
+        await markPpApprovalNotified(property.propertyid);
+        sent++;
+      } catch (sendErr) {
+        if (shouldMarkApprovalNotifiedOnFailure(sendErr)) {
+          await markPpApprovalNotified(property.propertyid);
+          await db
+            .promise()
+            .query(`UPDATE projectpartner SET onesignalid = NULL WHERE id = ?`, [
+              property.projectpartnerid,
+            ]);
+          invalidToken++;
+        } else {
+          failed++;
         }
       }
-    },
-  );
+    }
+
+    logApprovalCronSummary("PPApprovalCron", { sent, invalidToken, failed });
+  } catch (err) {
+    console.error("[PPApprovalCron] Error:", err.message);
+  } finally {
+    ppApprovalCronRunning = false;
+  }
 }
 
 // Runs every minute

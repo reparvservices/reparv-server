@@ -35,7 +35,6 @@ import whatsappEnquirerRoutes from "../portals/admin/routes/whatsappEnquirerRout
 import addEnquiryRoutes from "../portals/admin/routes/enquiryRoutes.js";
 import auctionmembersRoutes from "../portals/admin/routes/auctionmemberRoutes.js";
 import ticketRoutes from "../portals/admin/routes/ticketRoutes.js";
-import apkUploadRoutes from "../portals/admin/routes/apkUploadRoutes.js";
 import blogRoutes from "../portals/admin/routes/blogRoutes.js";
 import trendRoutes from "../portals/admin/routes/trendRoutes.js";
 import sliderRoutes from "../portals/admin/routes/sliderRoutes.js";
@@ -271,7 +270,6 @@ export function mountProtectedRoutes(app) {
   app.use("/admin/enquiries", verifyToken, addEnquiryRoutes);
   app.use("/admin/auctionmembers", auctionmembersRoutes);
   app.use("/admin/tickets", ticketRoutes);
-  app.use("/admin/apk", apkUploadRoutes);
   app.use("/admin/blog", blogRoutes);
   app.use("/admin/trend", trendRoutes);
   app.use("/admin/slider", sliderRoutes);

@@ -34,7 +34,6 @@ const publicRoutes = [
   "/admin/territorypartner/status",
   "/admin/territorypartner/assignlogin",
   "/admin/marketing-content",
-  "/admin/apk",
   "/api/payment/create-order",
   "/api/payment/verify-payment",
   "/api/user",
