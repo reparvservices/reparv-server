@@ -127,8 +127,14 @@ export const getAllOld = (req, res) => {
     }
     const formatted = result.map((row) => ({
       ...row,
-      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      created_at: moment
+        .utc(row.created_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment
+        .utc(row.updated_at)
+        .tz("Asia/Kolkata")
+        .format("DD MMM YYYY | hh:mm A"),
     }));
 
     res.json(formatted);
@@ -267,14 +273,9 @@ const uploadMultipleImagesToS3 = async (filesArray) => {
 export const addProperty = async (req, res) => {
   try {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
-    const projectPartnerId = req.employeeUser?.projectpartnerid;
 
-    if (!projectPartnerId) {
-      return res.status(401).json({
-        message:
-          "Unauthorized Access — Employee is not linked to any Project Partner.",
-      });
-    }
+    const projectPartnerId = req.employeeUser?.projectpartnerid || null;
+    const employeeId = req.employeeUser?.employeeid || null;
 
     const {
       builderid,
@@ -368,7 +369,7 @@ export const addProperty = async (req, res) => {
       registrationFees = (30000 / totalOfferPrice) * 100;
     } else {
       registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
-        propertyCategory
+        propertyCategory,
       )
         ? 0
         : 1;
@@ -381,7 +382,7 @@ export const addProperty = async (req, res) => {
       const r = 0.08 / 12;
       const n = 240;
       return Math.round(
-        (price * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
+        (price * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1),
       );
     };
     const emi = calculateEMI(Number(totalOfferPrice));
@@ -395,7 +396,7 @@ export const addProperty = async (req, res) => {
     const propertyTypeJson = JSON.stringify(
       Array.isArray(propertyType)
         ? propertyType
-        : propertyType?.split(",").map((i) => i.trim()) || []
+        : propertyType?.split(",").map((i) => i.trim()) || [],
     );
 
     // Upload images to S3 (NOW COMPRESSED)
@@ -405,14 +406,14 @@ export const addProperty = async (req, res) => {
     const hallView = await uploadMultipleImagesToS3(req.files?.hallView);
     const bedroomView = await uploadMultipleImagesToS3(req.files?.bedroomView);
     const bathroomView = await uploadMultipleImagesToS3(
-      req.files?.bathroomView
+      req.files?.bathroomView,
     );
     const balconyView = await uploadMultipleImagesToS3(req.files?.balconyView);
     const nearestLandmark = await uploadMultipleImagesToS3(
-      req.files?.nearestLandmark
+      req.files?.nearestLandmark,
     );
     const developedAmenities = await uploadMultipleImagesToS3(
-      req.files?.developedAmenities
+      req.files?.developedAmenities,
     );
 
     // Check for duplicate property name
@@ -434,7 +435,7 @@ export const addProperty = async (req, res) => {
         // Insert property
         const insertSQL = `
           INSERT INTO properties (
-            projectpartnerid, builderid, projectBy, possessionDate, propertyCategory,
+            projectpartnerid, employeeid, builderid, projectBy, possessionDate, propertyCategory,
             propertyApprovedBy, propertyName, address, state, city, pincode, location,
             distanceFromCityCenter, latitude, longitude, totalSalesPrice, totalOfferPrice,
             emi, stampDuty, registrationFee, gst, advocateFee, msebWater, maintenance,
@@ -448,12 +449,13 @@ export const addProperty = async (req, res) => {
             kitchenView, hallView, bedroomView, bathroomView, balconyView,
             nearestLandmark, developedAmenities, seoSlug, updated_at, created_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const values = [
           projectPartnerId,
+          employeeId,
           builderid,
           sanitize(projectBy),
           formattedPossessionDate,
@@ -564,12 +566,12 @@ export const addProperty = async (req, res) => {
                     id: newPropertyId,
                     propertyCityId,
                   });
-                }
+                },
               );
-            }
+            },
           );
         });
-      }
+      },
     );
   } catch (error) {
     console.error("Add Property Error:", error);
@@ -681,7 +683,7 @@ export const update = async (req, res) => {
     registrationFees = (30000 / totalOfferPrice) * 100;
   } else {
     registrationFees = ["RentalFlat", "RentalShop", "RentalOffice"].includes(
-      propertyCategory
+      propertyCategory,
     )
       ? 0
       : 1;
@@ -730,7 +732,7 @@ export const update = async (req, res) => {
             const url = await uploadToS3(
               file.buffer,
               file.originalname,
-              file.mimetype
+              file.mimetype,
             );
             uploadedUrls.push(url);
           }
@@ -839,7 +841,7 @@ export const update = async (req, res) => {
 
         res.status(200).json({ message: "Property updated successfully" });
       });
-    }
+    },
   );
 };
 
@@ -911,7 +913,7 @@ export const del = (req, res) => {
           message: "Property and associated images deleted successfully",
         });
       });
-    }
+    },
   );
 };
 
@@ -952,9 +954,9 @@ export const status = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -995,9 +997,9 @@ export const approve = (req, res) => {
           res
             .status(200)
             .json({ message: "Property status change successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1060,9 +1062,9 @@ export const changePropertyLocation = (req, res) => {
           res
             .status(200)
             .json({ message: "Property Location Change Successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1139,9 +1141,9 @@ export const uploadBrochureAndVideo = (req, res) => {
             videoPath: videoPath || oldVideo,
             videoLink: videoLink || oldVideoLink,
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1170,7 +1172,9 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
       async (err, result) => {
         if (err) {
           console.error("Database error:", err);
-          return res.status(500).json({ message: "Database error", error: err });
+          return res
+            .status(500)
+            .json({ message: "Database error", error: err });
         }
 
         if (result.length === 0) {
@@ -1231,9 +1235,9 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
               brochureFile: newBrochureUrl,
               videoLink: videoLink || oldVideoLink,
             });
-          }
+          },
         );
-      }
+      },
     );
   } catch (error) {
     console.error("Unexpected error:", error);
@@ -1243,7 +1247,8 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
 
 //* ADD Seo Details */
 export const seoDetails = (req, res) => {
-  const { seoSlug, pageTitle, seoTittle, seoDescription, propertyDescription } = req.body;
+  const { seoSlug, pageTitle, seoTittle, seoDescription, propertyDescription } =
+    req.body;
   if (!seoSlug || !seoTittle || !seoDescription || !propertyDescription) {
     return res.status(401).json({ message: "All Field Are Required" });
   }
@@ -1263,7 +1268,14 @@ export const seoDetails = (req, res) => {
 
       db.query(
         "UPDATE properties SET seoSlug = ?, pageTitle = ?, seoTittle = ?, seoDescription = ?, propertyDescription = ? WHERE propertyid = ?",
-        [seoSlug, pageTitle, seoTittle, seoDescription, propertyDescription, Id],
+        [
+          seoSlug,
+          pageTitle,
+          seoTittle,
+          seoDescription,
+          propertyDescription,
+          Id,
+        ],
         (err, result) => {
           if (err) {
             console.error("Error While Add Seo Details:", err);
@@ -1272,9 +1284,9 @@ export const seoDetails = (req, res) => {
               .json({ message: "Database error", error: err });
           }
           res.status(200).json({ message: "Seo Details Add successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1310,9 +1322,9 @@ export const addRejectReason = (req, res) => {
           res
             .status(200)
             .json({ message: "Property Reject Reason Add successfully" });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -1417,7 +1429,7 @@ export const setPropertyCommission = (req, res) => {
           .status(200)
           .json({ message: "Property commission saved successfully" });
       });
-    }
+    },
   );
 };
 
@@ -1490,7 +1502,7 @@ export const updateImages = async (req, res) => {
             if (existing[field]) {
               try {
                 JSON.parse(existing[field]).forEach(
-                  async (url) => await deleteFromS3(url)
+                  async (url) => await deleteFromS3(url),
                 );
               } catch {}
             }
@@ -1529,7 +1541,7 @@ export const updateImages = async (req, res) => {
             .status(200)
             .json({ message: "Property images updated successfully" });
         });
-      }
+      },
     );
   } catch (err) {
     console.error("S3 upload error:", err);
@@ -1578,9 +1590,9 @@ export const deleteImages = async (req, res) => {
                 .status(500)
                 .json({ message: "DB update failed", error: err });
             res.status(200).json({ message: "Images deleted successfully" });
-          }
+          },
         );
-      }
+      },
     );
   } catch (err) {
     console.error("S3 delete error:", err);
@@ -1658,7 +1670,7 @@ export const additionalInfoAdd = (req, res) => {
         message: "Additional Info added successfully",
         Id: insertResult.insertId,
       });
-    }
+    },
   );
 };
 
@@ -1750,7 +1762,7 @@ export const editAdditionalInfo = (req, res) => {
   }
 
   const updateSQL = `UPDATE propertiesinfo SET ${updateFields.join(
-    ", "
+    ", ",
   )} WHERE propertyinfoid = ?`;
 
   updateValues.push(Id);

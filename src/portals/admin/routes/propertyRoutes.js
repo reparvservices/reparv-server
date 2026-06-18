@@ -110,7 +110,7 @@ router.put("/reparv-assured/:id", reparvAssured);
 
 const topPicksUpload = multer({
   storage: memoryStorage,
-  limits: { fileSize: 2 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!file) return cb(null, true);
 
