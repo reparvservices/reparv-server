@@ -275,7 +275,7 @@ export const addProperty = async (req, res) => {
     const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
 
     const projectPartnerId = req.employeeUser?.projectpartnerid || null;
-    const employeeId = req.employeeUser?.employeeid || null;
+    const employeeId = req.employeeUser?.id || null;
 
     const {
       builderid,
