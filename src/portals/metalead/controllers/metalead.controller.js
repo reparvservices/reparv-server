@@ -6,6 +6,33 @@ const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const APP_SECRET = process.env.APP_SECRET;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
+const logNewMetaLead = (lead, { metaLeadId, enquiryId, formId }) => {
+  const source = lead.platform || "meta";
+  console.log(
+    [
+      "",
+      "══════════════════════════════════════════════════════════",
+      "[META LEAD] New lead saved",
+      `  lead_id:            ${lead.lead_id ?? "—"}`,
+      `  meta_leads.id:      ${metaLeadId ?? "—"}`,
+      `  enquirers.id:       ${enquiryId ?? "—"}`,
+      `  name:               ${lead.full_name ?? "—"}`,
+      `  phone:              ${lead.phone_number ?? "—"}`,
+      `  email:              ${lead.email ?? "—"}`,
+      `  city:               ${lead.city ?? "—"}`,
+      `  property_id:        ${lead.property_id ?? "—"}`,
+      `  enquire_for:        ${lead.enquire_for ?? "—"}`,
+      `  source (enquirers): ${source}`,
+      `  form_id:            ${lead.form_id ?? formId ?? "—"}`,
+      `  campaign:           ${lead.campaign_name ?? lead.campaign_id ?? "—"}`,
+      `  ad:                 ${lead.ad_name ?? lead.ad_id ?? "—"}`,
+      `  created_time:       ${lead.created_time ?? "—"}`,
+      "══════════════════════════════════════════════════════════",
+      "",
+    ].join("\n"),
+  );
+};
+
 /* =========================
    Signature Verification
 ========================= */
@@ -29,9 +56,13 @@ export const verifyWebhook = (req, res) => {
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    console.log("[META LEAD] Webhook URL verified (GET subscribe)");
     return res.status(200).send(challenge);
   }
 
+  console.warn(
+    "[META LEAD] Webhook verify failed — check VERIFY_TOKEN matches Meta dashboard",
+  );
   return res.sendStatus(403);
 };
 
@@ -41,13 +72,25 @@ export const verifyWebhook = (req, res) => {
 // In handleWebhook – extract form_id from webhook and pass to processLead
 export const handleWebhook = async (req, res) => {
   if (!verifySignature(req)) {
+    console.warn("[META LEAD] Webhook rejected — invalid signature");
     return res.sendStatus(403);
   }
 
   res.status(200).send("EVENT_RECEIVED");
 
   const body = req.body;
-  if (body.object !== "page") return;
+  if (body.object !== "page") {
+    console.log("[META LEAD] Webhook ignored — object is not page:", body.object);
+    return;
+  }
+
+  const changes = (body.entry || []).flatMap((e) => e.changes || []);
+  if (!changes.some((c) => c.field === "leadgen")) {
+    console.log(
+      "[META LEAD] POST received but no leadgen field — fields:",
+      changes.map((c) => c.field).join(", ") || "(none)",
+    );
+  }
 
   for (const entry of body.entry || []) {
     for (const change of entry.changes || []) {
@@ -55,8 +98,12 @@ export const handleWebhook = async (req, res) => {
         const leadgenId = change.value.leadgen_id;
         const formId = change.value.form_id;
 
+        console.log(
+          `[META LEAD] Webhook received — leadgen_id=${leadgenId}${formId ? ` form_id=${formId}` : ""}`,
+        );
+
         if (!formId) {
-          console.warn("No form_id in webhook for lead:", leadgenId);
+          console.warn("[META LEAD] No form_id in webhook for lead:", leadgenId);
         }
 
         await processLead(leadgenId, formId);
@@ -195,10 +242,11 @@ const processLead = async (leadId, formId = null) => {
   // Only save if we have data (direct or fallback)
   if (leadData) {
     const metaLeadId = await saveLead(leadData);
-    await saveEnquiry(leadData, metaLeadId);
+    const enquiryId = await saveEnquiry(leadData, metaLeadId);
+    logNewMetaLead(leadData, { metaLeadId, enquiryId, formId });
   } else {
     console.warn(
-      `No data fetched for lead ${leadId} – check permissions or lead type`,
+      `[META LEAD] No data fetched for lead ${leadId} — check permissions or lead type`,
     );
   }
 };
@@ -298,9 +346,9 @@ const saveEnquiry = async (lead, metaLeadId) => {
       );
       enquiryId = rows[0]?.enquirersid;
     }
-    console.log("Enquiry saved successfully");
+    return enquiryId ?? null;
   } catch (error) {
-    console.error("SAVE ENQUIRY ERROR:", error.message);
+    console.error("[META LEAD] SAVE ENQUIRY ERROR:", error.message);
     throw error;
   }
 };

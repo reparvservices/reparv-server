@@ -10,8 +10,17 @@ import {
 
 const router = express.Router();
 
+const logWebhookHit = (req, _res, next) => {
+  const hasSig = Boolean(req.headers["x-hub-signature-256"]);
+  console.log(
+    `[META LEAD] ${req.method} ${req.originalUrl || req.url} — signature header: ${hasSig ? "yes" : "no"}`,
+  );
+  next();
+};
+
 router.get(
   "/webhook",
+  logWebhookHit,
   express.json({
     verify: (req, res, buf) => {
       req.rawBody = buf;
@@ -22,6 +31,7 @@ router.get(
 
 router.post(
   "/webhook",
+  logWebhookHit,
   express.json({
     verify: (req, res, buf) => {
       req.rawBody = buf;
