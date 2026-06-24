@@ -6,6 +6,35 @@ const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const APP_SECRET = process.env.APP_SECRET;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
+/** Meta returns e.g. 2026-06-24T12:28:26+0000 — MySQL DATETIME needs YYYY-MM-DD HH:MM:SS */
+const toMySQLDateTime = (value) => {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 19).replace("T", " ");
+};
+
+/** enquirers.contact is 10-digit Indian mobile */
+const normalizeContact = (value) => {
+  if (value == null || value === "") return null;
+  let d = String(value).replace(/\D/g, "");
+  if (d.length === 10 && /^[6-9]/.test(d)) return d;
+  if (d.length === 12 && d.startsWith("91")) return d.slice(2);
+  if (d.length > 10) return d.slice(-10);
+  return d || null;
+};
+
+const META_TEST_PLACEHOLDER_RE = /^<test lead:\s*dummy data/i;
+
+/** Meta test tool sends long placeholders; enquirers columns are shorter than meta_leads */
+const sanitizeEnquiryField = (value, { maxLen, testFallback = null } = {}) => {
+  if (value == null || value === "") return null;
+  let s = String(value).trim();
+  if (META_TEST_PLACEHOLDER_RE.test(s)) return testFallback;
+  if (maxLen != null && s.length > maxLen) s = s.slice(0, maxLen);
+  return s || null;
+};
+
 const logNewMetaLead = (lead, { metaLeadId, enquiryId, formId }) => {
   const source = lead.platform || "meta";
   console.log(
@@ -106,7 +135,12 @@ export const handleWebhook = async (req, res) => {
           console.warn("[META LEAD] No form_id in webhook for lead:", leadgenId);
         }
 
-        await processLead(leadgenId, formId);
+        await processLead(leadgenId, formId).catch((err) => {
+          console.error(
+            `[META LEAD] processLead failed for ${leadgenId}:`,
+            err.message,
+          );
+        });
       }
     }
   }
@@ -143,7 +177,7 @@ const processLead = async (leadId, formId = null) => {
     leadData = {
       lead_id: data.id,
       full_name: formattedFields.full_name || null,
-      phone_number: formattedFields.phone_number || null,
+      phone_number: normalizeContact(formattedFields.phone_number),
       email: formattedFields.email || null,
       city: formattedFields.city || null,
       property_id: formattedFields.property_id
@@ -205,7 +239,7 @@ const processLead = async (leadId, formId = null) => {
           leadData = {
             lead_id: matchingLead.id,
             full_name: formattedFields.full_name || null,
-            phone_number: formattedFields.phone_number || null,
+            phone_number: normalizeContact(formattedFields.phone_number),
             email: formattedFields.email || null,
             city: formattedFields.city || null,
             property_id: formattedFields.property_id
@@ -288,7 +322,7 @@ const saveLead = async (lead) => {
     lead.ad_name ?? null,
     lead.is_organic ?? false,
     lead.platform ?? null,
-    lead.created_time ?? null,
+    toMySQLDateTime(lead.created_time),
     lead.raw_payload ?? null,
   ]);
 
@@ -330,10 +364,13 @@ const saveEnquiry = async (lead, metaLeadId) => {
         lead.property_id ?? null,
         projectPartnerId ?? null,
         lead.platform || "meta",
-        lead.full_name ?? null,
-        lead.phone_number ?? null,
-        lead.enquire_for ?? null,
-        lead.city ?? null,
+        sanitizeEnquiryField(lead.full_name, {
+          maxLen: 50,
+          testFallback: "Test Lead",
+        }),
+        normalizeContact(lead.phone_number),
+        sanitizeEnquiryField(lead.enquire_for),
+        sanitizeEnquiryField(lead.city, { maxLen: 30 }),
         metaLeadId ?? null,
       ],
     );
@@ -349,6 +386,6 @@ const saveEnquiry = async (lead, metaLeadId) => {
     return enquiryId ?? null;
   } catch (error) {
     console.error("[META LEAD] SAVE ENQUIRY ERROR:", error.message);
-    throw error;
+    return null;
   }
 };
