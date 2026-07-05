@@ -147,6 +147,15 @@ export async function cancelUserSubscription({
         cancelAtCycleEnd,
       });
     }
+    if (String(sub.payment_type || "").toLowerCase() === "apple") {
+      return {
+        success: true,
+        message:
+          "Apple subscriptions are managed in iOS Settings → Apple ID → Subscriptions.",
+        provider: "apple",
+        cancel_via_app_store: true,
+      };
+    }
     const e = new Error("No Razorpay subscription linked to this record");
     e.statusCode = 400;
     throw e;

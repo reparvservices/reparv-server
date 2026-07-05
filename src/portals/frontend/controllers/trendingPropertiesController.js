@@ -1,9 +1,10 @@
 import db from "#db";
 
 /** Trending: weighted score (views + likes) */
+const VIEWS_EXPR = "MAX(COALESCE(property_analytics.views, 0))";
 const LIST_ORDER = `
 ORDER BY 
-  (COALESCE(property_analytics.views, 0) * 0.7 + 
+  (${VIEWS_EXPR} * 0.7 + 
    COUNT(DISTINCT user_property_wishlist.guest_user_id) * 0.3) DESC,
   properties.propertyid DESC
 `;
@@ -19,11 +20,11 @@ export const getAllByCity = (req, res) => {
   const sql = `
     SELECT 
       properties.*,
-      COALESCE(property_analytics.views, 0) AS views,
+      ${VIEWS_EXPR} AS views,
       COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes,
 
       -- Trending Score
-      (COALESCE(property_analytics.views, 0) * 0.7 + 
+      (${VIEWS_EXPR} * 0.7 + 
        COUNT(DISTINCT user_property_wishlist.guest_user_id) * 0.3) AS trendingScore
 
     FROM properties

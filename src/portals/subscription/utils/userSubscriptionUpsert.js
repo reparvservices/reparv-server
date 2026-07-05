@@ -278,3 +278,96 @@ export async function activateOrderSubscriptionRow({
   await expireStalePendingRows(userId, role, insertId);
   return insertId;
 }
+
+/** iOS In-App Purchase — does not modify Razorpay subscription rows. */
+export async function activateAppleSubscriptionRow({
+  userId,
+  role,
+  planId,
+  startDate,
+  endDate,
+  finalAmount = 0,
+  appleOriginalTransactionId,
+  appleProductId,
+}) {
+  let rowId = null;
+
+  if (appleOriginalTransactionId) {
+    const rows = await dbQuery(
+      `SELECT id FROM user_subscriptions
+       WHERE apple_original_transaction_id = ?
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1`,
+      [appleOriginalTransactionId],
+    );
+    rowId = rows[0]?.id || null;
+  }
+
+  if (!rowId) {
+    const rows = await dbQuery(
+      `SELECT id FROM user_subscriptions
+       WHERE user_id = ? AND role = ?
+       ORDER BY
+         CASE LOWER(status) WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
+         updated_at DESC,
+         id DESC
+       LIMIT 1`,
+      [userId, role],
+    );
+    rowId = rows[0]?.id || null;
+  }
+
+  if (rowId) {
+    await dbQuery(
+      `UPDATE user_subscriptions SET
+         plan_id = ?,
+         payment_type = 'apple',
+         razorpay_subscription_id = NULL,
+         apple_original_transaction_id = ?,
+         apple_product_id = ?,
+         start_date = ?,
+         next_billing_date = ?,
+         end_date = ?,
+         status = 'active',
+         discount_amount = 0,
+         final_amount = ?,
+         updated_at = NOW()
+       WHERE id = ?`,
+      [
+        planId,
+        appleOriginalTransactionId,
+        appleProductId,
+        startDate,
+        endDate,
+        endDate,
+        finalAmount,
+        rowId,
+      ],
+    );
+    await expireStalePendingRows(userId, role, rowId);
+    return rowId;
+  }
+
+  const result = await dbQuery(
+    `INSERT INTO user_subscriptions
+       (user_id, role, plan_id, payment_type, razorpay_subscription_id,
+        apple_original_transaction_id, apple_product_id,
+        start_date, next_billing_date, end_date, status, discount_amount, final_amount,
+        updated_at)
+     VALUES (?, ?, ?, 'apple', NULL, ?, ?, ?, ?, ?, 'active', 0, ?, NOW())`,
+    [
+      userId,
+      role,
+      planId,
+      appleOriginalTransactionId,
+      appleProductId,
+      startDate,
+      endDate,
+      endDate,
+      finalAmount,
+    ],
+  );
+  const insertId = result.insertId;
+  await expireStalePendingRows(userId, role, insertId);
+  return insertId;
+}

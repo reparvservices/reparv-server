@@ -16,6 +16,17 @@ import frontendContactUsRoutes from "../portals/frontend/routes/contactUsRoutes.
 import frontendNewsRoute from "../portals/frontend/routes/newsRoute.js";
 import frontendSeoRoutes from "../portals/frontend/routes/seoData.routes.js";
 import frontendProjectPartnerRoutes from "../portals/frontend/routes/projectPartnerRoutes.js";
+import weekendVisitRoutes from "../portals/frontend/routes/weekendVisitRoutes.js";
+import verifiedPropertiesPageRoutes from "../portals/frontend/routes/verifiedPropertiesPageRoutes.js";
+import flatsForSalePageRoutes from "../portals/frontend/routes/flatsForSalePageRoutes.js";
+import plotsForSalePageRoutes from "../portals/frontend/routes/plotsForSalePageRoutes.js";
+import rentalPropertiesPageRoutes from "../portals/frontend/routes/rentalPropertiesPageRoutes.js";
+import newProjectsPageRoutes from "../portals/frontend/routes/newProjectsPageRoutes.js";
+import readyToMovePageRoutes from "../portals/frontend/routes/readyToMovePageRoutes.js";
+import topTrustedPropertiesPageRoutes from "../portals/frontend/routes/topTrustedPropertiesPageRoutes.js";
+import firstTimeBuyerPageRoutes from "../portals/frontend/routes/firstTimeBuyerPageRoutes.js";
+import familyDecisionStoriesPageRoutes from "../portals/frontend/routes/familyDecisionStoriesPageRoutes.js";
+import budgetToDreamHomePageRoutes from "../portals/frontend/routes/budgetToDreamHomePageRoutes.js";
 import paymentRoutes from "../portals/shared/routes/paymentRoutes.js";
 import subscriptionCheckoutRoutes from "../portals/subscription/checkout/subscriptionCheckout.routes.js";
 import publicPartnerPlansRoutes from "../portals/subscription/routes/publicPartnerPlans.routes.js";
@@ -48,6 +59,17 @@ export function mountPublicRoutes(app) {
   app.use("/frontend/news", frontendNewsRoute);
   app.use("/frontend/seo-data", frontendSeoRoutes);
   app.use("/frontend/project-partner", frontendProjectPartnerRoutes);
+  app.use("/frontend/weekend-visits", weekendVisitRoutes);
+  app.use("/frontend/verified-properties-page", verifiedPropertiesPageRoutes);
+  app.use("/frontend/flats-for-sale-page", flatsForSalePageRoutes);
+  app.use("/frontend/plots-for-sale-page", plotsForSalePageRoutes);
+  app.use("/frontend/rental-properties-page", rentalPropertiesPageRoutes);
+  app.use("/frontend/new-projects-page", newProjectsPageRoutes);
+  app.use("/frontend/ready-to-move-page", readyToMovePageRoutes);
+  app.use("/frontend/top-trusted-properties-page", topTrustedPropertiesPageRoutes);
+  app.use("/frontend/first-time-buyer-page", firstTimeBuyerPageRoutes);
+  app.use("/frontend/family-decision-stories-page", familyDecisionStoriesPageRoutes);
+  app.use("/frontend/budget-to-dream-home-page", budgetToDreamHomePageRoutes);
 
   app.use("/api/payment", paymentRoutes);
   app.use("/api/subscription/partner-plans", publicPartnerPlansRoutes);

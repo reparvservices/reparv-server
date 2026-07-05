@@ -10,6 +10,10 @@ import {
   deleteEnterprisePlanGroup,
 } from "../../services/subscriptionPlanEnterprise.service.js";
 import { PLAN_TYPE_FROM_PLAN_SQL } from "../../utils/planTypeSql.js";
+import {
+  resolveAppleProductIdFromPlanName,
+  getAppleProductTier,
+} from "../../utils/applePartnerProducts.js";
 
 const VALID_ROLES = new Set(["sales", "territory", "project"]);
 const VALID_BILLING_CYCLES = new Set(["monthly", "yearly"]);
@@ -120,6 +124,7 @@ export const getPlansByPartnerType = async (req, res) => {
         sp.billing_cycle,
         sp.status,
         sp.razorpay_plan_id,
+        sp.apple_product_id,
         (${PLAN_TYPE_FROM_PLAN_SQL}) AS plan_type,
         COALESCE(GROUP_CONCAT(DISTINCT sf.name ORDER BY sf.id SEPARATOR '||'), '') AS features
       FROM subscription_plans sp
@@ -140,8 +145,11 @@ export const getPlansByPartnerType = async (req, res) => {
             .filter(Boolean)
         : [];
       const { razorpay_plan_id: rzPlanId, ...plan } = r;
+      const appleProductId =
+        r.apple_product_id || resolveAppleProductIdFromPlanName(r.planName || r.plan_name, null);
       return {
         ...plan,
+        apple_product_id: appleProductId,
         basePrice: r.basePrice ?? Math.round(Number(r.totalPrice || 0) / 1.18),
         gstAmount:
           r.gstAmount ??
@@ -152,6 +160,8 @@ export const getPlansByPartnerType = async (req, res) => {
         planType: r.plan_type || "paid",
         isTrial: String(r.plan_type || "").toLowerCase() === "trial",
         autopayAvailable: Boolean(rzPlanId),
+        iosPurchaseAvailable: Boolean(appleProductId),
+        apple_tier: getAppleProductTier(appleProductId),
         planDuration: planDurationLabel(
           r.duration,
           r.billing_cycle,
@@ -177,6 +187,7 @@ export const createPlan = async (req, res) => {
       status = "Active",
       feature_ids = [],
       plan_type: planTypeRaw,
+      apple_product_id: appleProductIdRaw,
     } = req.body;
 
     const plan_type = normalizePlanType(planTypeRaw);
@@ -228,6 +239,9 @@ export const createPlan = async (req, res) => {
     }
 
     const cycleForDb = isTrial ? "monthly" : billing_cycle;
+    const apple_product_id = isTrial
+      ? null
+      : resolveAppleProductIdFromPlanName(plan_name, appleProductIdRaw);
 
     const [duplicates] = await dbPromise.query(
       "SELECT id FROM subscription_plans WHERE role = ? AND plan_name = ? AND billing_cycle = ?",
@@ -268,8 +282,8 @@ export const createPlan = async (req, res) => {
 
     const [result] = await dbPromise.query(
       `INSERT INTO subscription_plans
-        (role, plan_name, duration, price, base_price, gst_amount, billing_cycle, razorpay_plan_id, status, plan_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (role, plan_name, duration, price, base_price, gst_amount, billing_cycle, razorpay_plan_id, apple_product_id, status, plan_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         role,
         plan_name,
@@ -279,6 +293,7 @@ export const createPlan = async (req, res) => {
         gstAmount,
         cycleForDb,
         razorpay_plan_id,
+        apple_product_id,
         status,
         plan_type,
       ],
@@ -295,6 +310,7 @@ export const createPlan = async (req, res) => {
     return res.status(201).json({
       message: "Subscription plan created successfully",
       id: result.insertId,
+      apple_product_id,
       ...syncMeta,
     });
   } catch (error) {
@@ -317,6 +333,7 @@ export const updatePlan = async (req, res) => {
       billing_cycle,
       feature_ids,
       plan_type: planTypeRaw,
+      apple_product_id: appleProductIdRaw,
     } = req.body;
 
     if (!id) return res.status(400).json({ message: "Invalid id" });
@@ -432,10 +449,17 @@ export const updatePlan = async (req, res) => {
       syncMeta = { synced: false, reason: "Trial plans do not use Razorpay" };
     }
 
+    const apple_product_id = isTrial
+      ? null
+      : appleProductIdRaw !== undefined
+        ? resolveAppleProductIdFromPlanName(plan_name, appleProductIdRaw)
+        : oldPlan.apple_product_id ||
+          resolveAppleProductIdFromPlanName(plan_name, null);
+
     await dbPromise.query(
       `UPDATE subscription_plans
        SET plan_name = ?, duration = ?, price = ?, base_price = ?, gst_amount = ?,
-           billing_cycle = ?, status = ?, razorpay_plan_id = ?, plan_type = ?
+           billing_cycle = ?, status = ?, razorpay_plan_id = ?, apple_product_id = ?, plan_type = ?
        WHERE id = ?`,
       [
         plan_name,
@@ -446,6 +470,7 @@ export const updatePlan = async (req, res) => {
         nextCycle,
         status || "Active",
         razorpay_plan_id,
+        apple_product_id,
         plan_type,
         id,
       ],
@@ -464,6 +489,7 @@ export const updatePlan = async (req, res) => {
 
     return res.status(200).json({
       message: "Subscription plan updated successfully",
+      apple_product_id,
       ...syncMeta,
       razorpayRecreated: Boolean(billingChanged && razorpay_plan_id),
     });

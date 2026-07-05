@@ -1,14 +1,15 @@
 import db from "#db";
 
 /** Stable sort: views (popular) then id. Avoids ORDER BY RAND() full-table cost. */
-const LIST_ORDER = `ORDER BY COALESCE(property_analytics.views, 0) DESC, properties.propertyid DESC`;
+const VIEWS_EXPR = "MAX(COALESCE(property_analytics.views, 0))";
+const LIST_ORDER = `ORDER BY ${VIEWS_EXPR} DESC, properties.propertyid DESC`;
 
 // **Fetch All Active & Approved Properties (with Likes Count)**
 export const getAll = (req, res) => {
   const sql = `
     SELECT 
       properties.*,
-      property_analytics.views,
+      ${VIEWS_EXPR} AS views,
       COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
     LEFT JOIN property_analytics 
@@ -63,7 +64,7 @@ export const getAllByCity = (req, res) => {
   const sql = `
     SELECT 
       properties.*,
-      property_analytics.views,
+      ${VIEWS_EXPR} AS views,
       COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
 
@@ -124,7 +125,7 @@ export const getAllByBudget = (req, res) => {
   const sql = `
     SELECT 
       properties.*,
-      property_analytics.views,
+      ${VIEWS_EXPR} AS views,
       COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
 
@@ -183,7 +184,7 @@ export const getHotDealProperties = (req, res) => {
   const sql = `
     SELECT 
       properties.*,
-      property_analytics.views,
+      ${VIEWS_EXPR} AS views,
       COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
 
@@ -240,8 +241,8 @@ export const getTopPicksProperties = (req, res) => {
   const sql = `
     SELECT 
       properties.*,
-      projectpartner.businessLogo,
-      property_analytics.views,
+      MAX(projectpartner.businessLogo) AS businessLogo,
+      ${VIEWS_EXPR} AS views,
       COUNT(DISTINCT user_property_wishlist.guest_user_id) AS likes 
     FROM properties
 

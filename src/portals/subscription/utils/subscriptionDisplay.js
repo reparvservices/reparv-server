@@ -42,6 +42,7 @@ export function formatPaymentTypeLabel(paymentType, planType) {
   if (pt === "trial") return "Free trial";
   if (pay === "auto") return "Razorpay autopay";
   if (pay === "manual") return "Manual";
+  if (pay === "apple") return "Apple In-App Purchase";
   return pay || "—";
 }
 

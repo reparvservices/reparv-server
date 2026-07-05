@@ -6,6 +6,7 @@ import {
   getHotDealProperties,
   getPremiumProperties,
   getProjectPartnerByContact,
+  getTrustedBuildersPageData,
 } from "../controllers/projectPartnerController.js";
 import {
   completePartnerJoinLead,
@@ -15,6 +16,7 @@ import {
 
 const router = express.Router();
 
+router.get("/trusted-builders/:city", getTrustedBuildersPageData);
 router.get("/get/:contact", getProjectPartnerByContact);
 router.get("/cities/:id", getCities);
 router.post("/all-properties", getAllProperties);
