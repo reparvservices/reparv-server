@@ -2,11 +2,29 @@ import moment from "moment-timezone";
 import db from "#db/promise";
 import { DEFAULT_LANGUAGE } from "./prompt.js";
 
-const CHANNEL = "web";
+export const CHANNELS = {
+  WEB: "web",
+  VOICE: "voice",
+};
+
+const DEFAULT_CHANNEL = CHANNELS.WEB;
 const MAX_HISTORY = 40;
+const MAX_VOICE_HISTORY = 24;
 
 function now() {
   return moment().format("YYYY-MM-DD HH:mm:ss");
+}
+
+export function normalizeChannel(channel) {
+  const c = String(channel || DEFAULT_CHANNEL).toLowerCase().trim();
+  if (c === CHANNELS.VOICE) return CHANNELS.VOICE;
+  return CHANNELS.WEB;
+}
+
+function historyLimit(channel) {
+  return normalizeChannel(channel) === CHANNELS.VOICE
+    ? MAX_VOICE_HISTORY
+    : MAX_HISTORY;
 }
 
 function parseJson(val, fallback) {
@@ -19,15 +37,16 @@ function parseJson(val, fallback) {
   }
 }
 
-export async function getConversation(userId) {
+export async function getConversation(userId, channel = DEFAULT_CHANNEL) {
+  const resolvedChannel = normalizeChannel(channel);
   const [rows] = await db.query(
     `SELECT * FROM ai_conversations WHERE user_id = ? AND channel = ? LIMIT 1`,
-    [userId, CHANNEL],
+    [userId, resolvedChannel],
   );
   if (!rows?.length) {
     return {
       userId,
-      channel: CHANNEL,
+      channel: resolvedChannel,
       chatHistory: [],
       preferences: { budget: "", city: "", propertyType: "" },
       enquirersid: null,
@@ -53,13 +72,15 @@ export async function getConversation(userId) {
 
 async function saveConversation({
   userId,
+  channel = DEFAULT_CHANNEL,
   chatHistory,
   preferences,
   enquirersid,
   phone_e164,
   language,
 }) {
-  const trimmed = (chatHistory || []).slice(-MAX_HISTORY);
+  const resolvedChannel = normalizeChannel(channel);
+  const trimmed = (chatHistory || []).slice(-historyLimit(resolvedChannel));
   const ts = now();
   const prefsJson = JSON.stringify(
     preferences || { budget: "", city: "", propertyType: "" },
@@ -79,7 +100,7 @@ async function saveConversation({
        updated_at = VALUES(updated_at)`,
     [
       userId,
-      CHANNEL,
+      resolvedChannel,
       histJson,
       prefsJson,
       enquirersid || null,
@@ -90,16 +111,20 @@ async function saveConversation({
     ],
   );
 
-  return getConversation(userId);
+  return getConversation(userId, resolvedChannel);
 }
 
 export async function appendMessages(userId, newMessages, updates = {}) {
-  const conv = await getConversation(userId);
-  const chatHistory = [...conv.chatHistory, ...newMessages].slice(-MAX_HISTORY);
+  const channel = normalizeChannel(updates.channel);
+  const conv = await getConversation(userId, channel);
+  const chatHistory = [...conv.chatHistory, ...newMessages].slice(
+    -historyLimit(channel),
+  );
   const preferences = { ...conv.preferences, ...(updates.preferences || {}) };
 
   return saveConversation({
     userId,
+    channel,
     chatHistory,
     preferences,
     enquirersid: updates.enquirersid ?? conv.enquirersid,

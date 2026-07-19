@@ -1,5 +1,5 @@
 import { renderAgentChatPage } from "./pages/agentChat.page.js";
-import { getConversation } from "./memory.js";
+import { getConversation, normalizeChannel, CHANNELS } from "./memory.js";
 import { runAgent } from "./agent.js";
 import {
   resolveChatSession,
@@ -28,7 +28,8 @@ export async function getConversationHistory(req, res) {
       userId: String(userId),
     });
 
-    const conv = await getConversation(session.storageId);
+    const channel = normalizeChannel(req.query?.channel);
+    const conv = await getConversation(session.storageId, channel);
     const messages = (conv.chatHistory || []).map((entry, index) => ({
       id: `history-${index}`,
       role:
@@ -43,6 +44,7 @@ export async function getConversationHistory(req, res) {
     return res.json({
       success: true,
       messages,
+      channel: conv.channel,
     });
   } catch (err) {
     console.error("[ai/history]", err);
@@ -65,11 +67,19 @@ export async function postAgentChat(req, res) {
       });
     }
 
+    const channel = normalizeChannel(body.channel);
     const session = resolveChatSessionFromRequest(body);
+    const language =
+      body.language ||
+      (channel === CHANNELS.VOICE ? "hi" : DEFAULT_LANGUAGE);
+
     const result = await runAgent({
       session,
       message,
-      language: body.language || DEFAULT_LANGUAGE,
+      language,
+      channel,
+      phone: body.phone || body.phone_e164 || null,
+      voiceContext: body.voiceContext || null,
     });
 
     return res.json({
@@ -79,6 +89,7 @@ export async function postAgentChat(req, res) {
       properties: result.properties,
       toolCalls: result.toolCalls,
       lead: result.lead,
+      channel: result.channel || channel,
       disabled: result.disabled || false,
     });
   } catch (err) {

@@ -286,6 +286,24 @@ export function buildSalesContextBlock(conv, leadProfile, intent) {
   return lines.join("\n");
 }
 
+function formatSpokenPrice(property) {
+  const n = Number(property?.price ?? property?.totalSalesPrice);
+  if (!Number.isFinite(n) || n <= 0) {
+    return property?.priceDisplay || property?.formattedPrice || "";
+  }
+  if (n >= 10000000) return `लगभग ${(n / 10000000).toFixed(1)} करोड़`;
+  if (n >= 100000) return `लगभग ${Math.round(n / 100000)} लाख`;
+  return `लगभग ${n.toLocaleString("en-IN")} रुपये`;
+}
+
+function topSpokenProjects(properties = [], limit = 2) {
+  return properties.slice(0, limit).map((p) => {
+    const name = p.projectName || p.name || p.propertyName || "एक प्रोजेक्ट";
+    const price = formatSpokenPrice(p);
+    return price ? `${name}, ${price}` : name;
+  });
+}
+
 export function buildPropertyReply(stage, properties = [], intent, prefs = {}) {
   const count = properties.length;
   const city =
@@ -310,6 +328,34 @@ export function buildPropertyReply(stage, properties = [], intent, prefs = {}) {
   }
 
   return `${city} mein ${count} options hain — neeche cards check karo. Koi pasand aaya, ya aur options dikhaun?`;
+}
+
+/** Spoken summary for phone/TTS — no UI card references. */
+export function buildVoicePropertyReply(stage, properties = [], intent, prefs = {}) {
+  const count = properties.length;
+  const city =
+    properties[0]?.city ||
+    prefs.city ||
+    extractCityFromProperties(properties) ||
+    "यहाँ";
+  const spoken = topSpokenProjects(properties, 2);
+
+  if (!count) {
+    if (intent === "show_more") {
+      return `${city} में और विकल्प अभी उपलब्ध नहीं हैं। बजट या शहर बदलें, या सेल्स टीम से बात करवाऊँ?`;
+    }
+    return `${city} में अभी मैचिंग प्रॉपर्टी नहीं मिली। कोई और शहर या बजट बताएँ?`;
+  }
+
+  if (intent === "show_more") {
+    return `${city} में ${count} और विकल्प हैं। जैसे ${spoken.join(", और ")}। इनमें से कोई पसंद आया?`;
+  }
+
+  if (stage === SALES_STAGES.SHORTLIST || prefs.interestedPropertyId) {
+    return `बहुत बढ़िया! इस प्रोजेक्ट के बारे में और जानना है या साइट विज़िट तय करें?`;
+  }
+
+  return `${city} में ${count} विकल्प मिले। मुख्य हैं: ${spoken.join(", और ")}। कोई पसंद आया या और सुनें?`;
 }
 
 function extractCityFromProperties(properties = []) {

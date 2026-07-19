@@ -71,6 +71,36 @@ export function buildLanguageInstruction(language = DEFAULT_LANGUAGE) {
   return `\nUser preference: reply in ${lang} when possible, defaulting to Hinglish style if unsure.`;
 }
 
+const VOICE_CHANNEL_RULES = `
+=== VOICE CALL CHANNEL (critical) ===
+- This is a live phone call with TTS. Reply ONLY in short spoken Hindi (Devanagari preferred).
+- Max 1–2 short sentences (~150 characters). No lists, bullets, markdown, URLs, or emoji.
+- Never say "neeche cards" / "check cards" — speak 1–2 project names with approximate price aloud.
+- Ask ONE question at a time. Sound like a natural female sales caller for Reparv.
+- When searchProperties returns results, briefly name top options; do not invent names/prices.
+- Prefer searchProperties limit 3 on voice. Keep tool use fast; answer from DB only.`;
+
+export function buildChannelInstruction(channel = "web") {
+  if (String(channel || "").toLowerCase() === "voice") {
+    return `\n${VOICE_CHANNEL_RULES}`;
+  }
+  return "";
+}
+
+export function buildVoiceContextBlock(voiceContext) {
+  if (!voiceContext || typeof voiceContext !== "object") return "";
+  const name = voiceContext.name || voiceContext.customerName;
+  const collected = voiceContext.collectedData || {};
+  const bits = [];
+  if (name) bits.push(`Caller name: ${name}`);
+  const filled = Object.entries(collected)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${k}=${v}`);
+  if (filled.length) bits.push(`Already collected on call: ${filled.join(", ")}`);
+  if (!bits.length) return "";
+  return `\n=== VOICE CALL METADATA ===\n${bits.join("\n")}\nUse this to avoid re-asking known fields. Prefer searching live inventory when city/type/budget are known.\n=== END VOICE METADATA ===`;
+}
+
 export const TOOL_DEFINITIONS = [
   {
     type: "function",

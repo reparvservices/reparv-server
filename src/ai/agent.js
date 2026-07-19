@@ -4,11 +4,15 @@ import {
   TOOL_DEFINITIONS,
   DEFAULT_LANGUAGE,
   buildLanguageInstruction,
+  buildChannelInstruction,
+  buildVoiceContextBlock,
 } from "./prompt.js";
 import {
   getConversation,
   appendMessages,
   buildOpenAIInputFromHistory,
+  normalizeChannel,
+  CHANNELS,
 } from "./memory.js";
 import { executeTool } from "./tools/index.js";
 import { propertySearch } from "./tools/properties.js";
@@ -26,10 +30,12 @@ import {
   buildSalesContextBlock,
   mergeSalesState,
   buildPropertyReply,
+  buildVoicePropertyReply,
 } from "./salesFlow.js";
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const MAX_TOOL_ROUNDS = 8;
+const MAX_VOICE_TOOL_ROUNDS = 5;
 
 let openaiClient;
 
@@ -108,12 +114,24 @@ async function persistPartialLead(storageId, prefs, leadProfile) {
   }
 }
 
-export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }) {
+export async function runAgent({
+  session,
+  message,
+  language = DEFAULT_LANGUAGE,
+  channel = CHANNELS.WEB,
+  phone = null,
+  voiceContext = null,
+} = {}) {
   const storageId = session.storageId;
+  const resolvedChannel = normalizeChannel(channel);
+  const isVoice = resolvedChannel === CHANNELS.VOICE;
+  const toolRounds = isVoice ? MAX_VOICE_TOOL_ROUNDS : MAX_TOOL_ROUNDS;
+
   if (!isAgentEnabled()) {
     return {
-      reply:
-        "Our AI advisor is temporarily unavailable. Please contact our sales team or try again shortly.",
+      reply: isVoice
+        ? "अभी एडवाइजर उपलब्ध नहीं है। कृपया थोड़ी देर बाद कॉल करें।"
+        : "Our AI advisor is temporarily unavailable. Please contact our sales team or try again shortly.",
       disabled: true,
     };
   }
@@ -123,7 +141,11 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
     throw new Error("Message is required");
   }
 
-  const conv = await getConversation(storageId);
+  const effectiveLanguage = isVoice
+    ? language || "hi"
+    : language || DEFAULT_LANGUAGE;
+
+  const conv = await getConversation(storageId, resolvedChannel);
   const historyInput = buildOpenAIInputFromHistory(conv.chatHistory);
   const leadProfile = await getLeadProfile(storageId).catch(() => null);
 
@@ -134,6 +156,20 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
     leadProfile,
   );
 
+  // Seed prefs from voice call qualification when chat memory is empty
+  if (isVoice && voiceContext?.collectedData) {
+    const vc = voiceContext.collectedData;
+    if (vc.city && !preIntentPrefs.city) preIntentPrefs.city = vc.city;
+    if (vc.propertyType && !preIntentPrefs.propertyType) {
+      preIntentPrefs.propertyType = vc.propertyType;
+    }
+    if (vc.budget && !preIntentPrefs.budgetMax) {
+      const parsed = parseBudgetFromVoice(vc.budget);
+      if (parsed.budgetMax) preIntentPrefs.budgetMax = parsed.budgetMax;
+      if (parsed.budgetMin) preIntentPrefs.budgetMin = parsed.budgetMin;
+    }
+  }
+
   const salesContext = buildSalesContextBlock(
     { ...conv, preferences: preIntentPrefs },
     leadProfile,
@@ -143,7 +179,9 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
   const contextBlock =
     (leadProfile
       ? `\nKnown lead profile: ${JSON.stringify(formatLeadScoreResponse(leadProfile))}`
-      : "") + salesContext;
+      : "") +
+    salesContext +
+    buildVoiceContextBlock(voiceContext);
 
   const openai = getOpenAI();
   const toolResults = [];
@@ -152,11 +190,14 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
   let previousResponseId = null;
   let finalText = "";
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+  for (let round = 0; round < toolRounds; round++) {
     const createParams = {
       model: MODEL,
       instructions:
-        SYSTEM_PROMPT + buildLanguageInstruction(language) + contextBlock,
+        SYSTEM_PROMPT +
+        buildLanguageInstruction(effectiveLanguage) +
+        buildChannelInstruction(resolvedChannel) +
+        contextBlock,
       tools: TOOL_DEFINITIONS,
       input,
     };
@@ -193,26 +234,36 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
           args.excludePropertyIds = shown;
         }
         if (!args.city && livePrefs.city) args.city = livePrefs.city;
+        if (!args.city && preIntentPrefs.city) args.city = preIntentPrefs.city;
         if (!args.propertyType && livePrefs.propertyType) {
           args.propertyType = livePrefs.propertyType;
         }
+        if (!args.propertyType && preIntentPrefs.propertyType) {
+          args.propertyType = preIntentPrefs.propertyType;
+        }
         if (livePrefs.budgetMax && args.budgetMax == null) {
           args.budgetMax = livePrefs.budgetMax;
+        }
+        if (preIntentPrefs.budgetMax && args.budgetMax == null) {
+          args.budgetMax = preIntentPrefs.budgetMax;
         }
         if (livePrefs.budgetMin && args.budgetMin == null) {
           args.budgetMin = livePrefs.budgetMin;
         }
         args.searchRound = livePrefs.searchRound || 0;
         args.sortVariant = livePrefs.searchRound || 0;
-        if (!args.limit) args.limit = 5;
+        if (!args.limit) args.limit = isVoice ? 3 : 5;
       }
 
       if (call.name === "createLead") {
         const livePrefs = mergeSalesState(conv, text, toolResults, leadProfile)
           .preferences;
         if (!args.name && livePrefs.capturedName) args.name = livePrefs.capturedName;
+        if (!args.name && voiceContext?.name) args.name = voiceContext.name;
         if (!args.phone && livePrefs.capturedPhone) args.phone = livePrefs.capturedPhone;
+        if (!args.phone && phone) args.phone = String(phone).replace(/\D/g, "").slice(-10);
         if (!args.city && livePrefs.city) args.city = livePrefs.city;
+        if (!args.city && preIntentPrefs.city) args.city = preIntentPrefs.city;
         if (!args.budgetMax && livePrefs.budgetMax) args.budgetMax = livePrefs.budgetMax;
         if (!args.budgetMin && livePrefs.budgetMin) args.budgetMin = livePrefs.budgetMin;
         if (!args.propertyId && livePrefs.interestedPropertyId) {
@@ -240,8 +291,9 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
   }
 
   if (!finalText) {
-    finalText =
-      "I could not complete that request. Would you like to speak with a sales executive?";
+    finalText = isVoice
+      ? "मैं यह पूरा नहीं कर पाई। क्या सेल्स एग्जीक्यूटिव से बात करवाऊँ?"
+      : "I could not complete that request. Would you like to speak with a sales executive?";
   }
 
   const searchResult = toolResults.find((t) => t.name === "searchProperties");
@@ -257,18 +309,37 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
   await persistPartialLead(storageId, preferences, leadProfile);
 
   const updatedLead = await getLeadProfile(storageId).catch(() => leadProfile);
-  const leadPhone = updatedLead?.phone || preferences.capturedPhone || null;
+  const leadPhone =
+    updatedLead?.phone ||
+    preferences.capturedPhone ||
+    (phone ? String(phone).replace(/\D/g, "").slice(-10) : null) ||
+    null;
 
   let reply = stripMarkdown(finalText);
   if (properties !== undefined) {
-    reply = buildPropertyReply(
-      preferences.salesStage,
-      properties || [],
-      finalIntent,
-      preferences,
-    );
+    reply = isVoice
+      ? buildVoicePropertyReply(
+          preferences.salesStage,
+          properties || [],
+          finalIntent,
+          preferences,
+        )
+      : buildPropertyReply(
+          preferences.salesStage,
+          properties || [],
+          finalIntent,
+          preferences,
+        );
   } else if (isVerbosePropertyReply(finalText)) {
-    reply = stripMarkdown(finalText).slice(0, 220);
+    reply = stripMarkdown(finalText).slice(0, isVoice ? 160 : 220);
+  }
+
+  if (isVoice) {
+    reply = stripMarkdown(reply)
+      .replace(/neeche cards[^.।!?]*/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .slice(0, 220);
   }
 
   await appendMessages(
@@ -284,9 +355,14 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
       },
     ],
     {
-      preferences: { ...preferences, sessionMode: session.mode },
+      channel: resolvedChannel,
+      preferences: {
+        ...preferences,
+        sessionMode: session.mode,
+        channel: resolvedChannel,
+      },
       phone_e164: leadPhone || conv.phone_e164,
-      language,
+      language: effectiveLanguage,
       enquirersid:
         toolResults.find((t) => t.result?.enquirersid)?.result?.enquirersid ||
         conv.enquirersid,
@@ -298,12 +374,41 @@ export async function runAgent({ session, message, language = DEFAULT_LANGUAGE }
     properties: properties || undefined,
     toolCalls: toolResults.map((t) => t.name),
     lead: formatLeadScoreResponse(updatedLead),
+    channel: resolvedChannel,
     session: {
       mode: session.mode,
       userId: session.userId,
       guestId: session.guestId,
     },
   };
+}
+
+function parseBudgetFromVoice(raw) {
+  const text = String(raw || "").toLowerCase();
+  const toInr = (num, unit) => {
+    const n = Number(num);
+    if (!Number.isFinite(n)) return null;
+    if (/cr|crore|करोड़/.test(unit)) return n * 10000000;
+    if (/l|lac|lakh|लाख/.test(unit)) return n * 100000;
+    return n;
+  };
+
+  const range = text.match(
+    /(\d+(?:\.\d+)?)\s*(lakh|lac|l|cr|crore|लाख|करोड़)?\s*(?:to|-|–|से)\s*(\d+(?:\.\d+)?)\s*(lakh|lac|l|cr|crore|लाख|करोड़)?/i,
+  );
+  if (range) {
+    return {
+      budgetMin: toInr(range[1], range[2] || "lakh"),
+      budgetMax: toInr(range[3], range[4] || range[2] || "lakh"),
+    };
+  }
+
+  const single = text.match(/(\d+(?:\.\d+)?)\s*(lakh|lac|l|cr|crore|लाख|करोड़)/i);
+  if (single) {
+    return { budgetMax: toInr(single[1], single[2]) };
+  }
+
+  return {};
 }
 
 export async function searchPropertiesDirect(filters) {
