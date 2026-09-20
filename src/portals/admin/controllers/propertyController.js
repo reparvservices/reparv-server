@@ -3,6 +3,7 @@ import moment from "moment-timezone";
 import fs from "fs";
 import path from "path";
 import csv from "csv-parser";
+import { parsePropertyType } from "#utils/parsePropertyType.js";
 import { convertImagesToWebp } from "#utils/convertImagesToWebp.js";
 import { sanitize } from "#utils/sanitize.js";
 import { deleteFromS3, multipartUploadToS3, uploadToS3 } from "#utils/imageUpload.js";
@@ -340,13 +341,7 @@ export const getById = (req, res) => {
 
     // safely parse JSON fields
     const formatted = result.map((row) => {
-      let parsedType = null;
-      try {
-        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-        parsedType = [];
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,

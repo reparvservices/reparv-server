@@ -1,4 +1,5 @@
 import db from "#db";
+import { parsePropertyType } from "#utils/parsePropertyType.js";
 
 /** Stable sort: views (popular) then id. Avoids ORDER BY RAND() full-table cost. */
 const VIEWS_EXPR = "MAX(COALESCE(property_analytics.views, 0))";
@@ -34,13 +35,7 @@ export const getAll = (req, res) => {
     }
 
     const formatted = result.map((row) => {
-      let parsedType = [];
-
-      try {
-        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,
@@ -89,13 +84,7 @@ export const getAllByCity = (req, res) => {
     }
 
     const formatted = result.map((row) => {
-      let parsedType = [];
-
-      try {
-        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,
@@ -154,13 +143,7 @@ export const getAllByBudget = (req, res) => {
     }
 
     const formatted = result.map((row) => {
-      let parsedType = [];
-
-      try {
-        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyid);
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,
@@ -210,13 +193,7 @@ export const getHotDealProperties = (req, res) => {
     }
 
     const formatted = result.map((row) => {
-      let parsedType = [];
-
-      try {
-        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,
@@ -274,13 +251,7 @@ export const getTopPicksProperties = (req, res) => {
     }
 
     const formatted = result.map((row) => {
-      let parsedType = [];
-
-      try {
-        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,

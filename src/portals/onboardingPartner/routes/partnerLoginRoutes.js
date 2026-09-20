@@ -1,4 +1,5 @@
 import express from "express";
+import { loginRateLimit } from "../../../core/middleware/loginRateLimit.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import db from "#db";
@@ -6,7 +7,7 @@ import db from "#db";
 const router = express.Router();
 
 //  User Login Route (Supports Email or Username)
-router.post("/login", async (req, res) => {
+router.post("/login", loginRateLimit, async (req, res) => {
   try {
     const { emailOrUsername, password } = req.body;
 

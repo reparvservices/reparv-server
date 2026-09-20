@@ -15,4 +15,15 @@ const promisePool = mysql.createPool({
   connectTimeout: 10000,
 });
 
+// See dbconnect.js: relax ONLY_FULL_GROUP_BY so GROUP BY queries selecting
+// functionally-dependent columns from LEFT JOINed tables don't error out.
+promisePool.on("connection", (connection) => {
+  connection.query(
+    "SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY', ''))",
+    (err) => {
+      if (err) console.error("Failed to relax sql_mode:", err);
+    }
+  );
+});
+
 export default promisePool;

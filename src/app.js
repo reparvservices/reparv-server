@@ -2,6 +2,7 @@ import express from "express";
 import compression from "compression";
 import session from "express-session";
 import cookieParser from "cookie-parser";
+import crypto from "crypto";
 import path from "path";
 
 import metaLeadRoutes from "./portals/metalead/routes/metalead.routes.js";
@@ -17,6 +18,17 @@ import { mountPublicRoutes } from "./http/mountPublicRoutes.js";
 import { mountProtectedRoutes } from "./http/mountProtectedRoutes.js";
 import { getPartnerAppUrls } from "./portals/frontend/services/partnerJoinLead.service.js";
 
+/** Escapes text for safe interpolation into HTML markup. */
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
+}
+
 const app = express();
 
 /** Gzip/deflate JSON/HTML responses (skip small payloads). Override: DISABLE_COMPRESSION=1 */
@@ -26,12 +38,30 @@ if (process.env.DISABLE_COMPRESSION !== "1") {
 
 const bodyLimit = process.env.BODY_LIMIT || "100mb";
 
+// SESSION_SECRET should be set in the environment. Falling back to APP_SECRET keeps
+// existing deployments working; if neither is set, generate a per-process random
+// secret (invalidates sessions on restart) instead of signing with a known string.
+const sessionSecret =
+  process.env.SESSION_SECRET ||
+  process.env.APP_SECRET ||
+  crypto.randomBytes(32).toString("hex");
+if (!process.env.SESSION_SECRET && !process.env.APP_SECRET) {
+  console.warn(
+    "[session] SESSION_SECRET is not set — using a random secret for this process. " +
+      "Sessions will be invalidated on every restart. Set SESSION_SECRET in the environment.",
+  );
+}
+
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "your_secret_key",
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false, httpOnly: true },
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    },
   }),
 );
 
@@ -62,13 +92,16 @@ if (!resolveWhatsappWebhookVerifyToken()) {
 app.use(cookieParser());
 //deeplink.js
 app.get("/open", (req, res) => {
-  const { id, role, name } = req.query;
+  const id = String(req.query.id ?? "");
+  const role = String(req.query.role ?? "");
+  const name = String(req.query.name ?? "");
 
-  const deepLink = `reparv://UserProfile/${id}?role=${role}&name=${encodeURIComponent(name)}`;
+  const deepLink = `reparv://UserProfile/${encodeURIComponent(id)}?role=${encodeURIComponent(role)}&name=${encodeURIComponent(name)}`;
   const playStoreUrl =
     "https://play.google.com/store/apps/details?id=com.reparvprojectpartner";
   const appStoreUrl =
     "https://play.google.com/store/apps/details?id=com.reparvprojectpartner";
+  const safeName = escapeHtml(name);
 
   // Detect device and redirect accordingly
   res.send(`
@@ -76,8 +109,8 @@ app.get("/open", (req, res) => {
     <html>
     <head>
       <title>Opening Reparv...</title>
-      <meta property="og:title" content="${name} — Reparv Partner" />
-      <meta property="og:description" content="View ${name}'s profile on Reparv" />
+      <meta property="og:title" content="${safeName} — Reparv Partner" />
+      <meta property="og:description" content="View ${safeName}'s profile on Reparv" />
       <meta property="og:image" content="https://reparv.com/og-preview.png" />
     </head>
     <body>
@@ -87,12 +120,12 @@ app.get("/open", (req, res) => {
         const isIOS = /iphone|ipad/.test(ua);
 
         // Try opening the app
-        window.location.href = "${deepLink}";
+        window.location.href = ${JSON.stringify(deepLink)};
 
         // If app not installed, fallback to store after 2s
         setTimeout(() => {
-          if (isAndroid) window.location.href = "${playStoreUrl}";
-          else if (isIOS) window.location.href = "${appStoreUrl}";
+          if (isAndroid) window.location.href = ${JSON.stringify(playStoreUrl)};
+          else if (isIOS) window.location.href = ${JSON.stringify(appStoreUrl)};
           else window.location.href = "https://reparv.com";
         }, 2000);
       </script>
@@ -125,11 +158,11 @@ app.get("/partner-app/join", (req, res) => {
         const ua = navigator.userAgent.toLowerCase();
         const isAndroid = /android/.test(ua);
         const isIOS = /iphone|ipad/.test(ua);
-        window.location.href = "${deepLink}";
+        window.location.href = ${JSON.stringify(deepLink)};
         setTimeout(() => {
-          if (isAndroid) window.location.href = "${playStore}";
-          else if (isIOS) window.location.href = "${appStore}";
-          else window.location.href = "${playStore}";
+          if (isAndroid) window.location.href = ${JSON.stringify(playStore)};
+          else if (isIOS) window.location.href = ${JSON.stringify(appStore)};
+          else window.location.href = ${JSON.stringify(playStore)};
         }, 2000);
       </script>
     </body>
@@ -146,11 +179,6 @@ app.get("/", (req, res) => {
     success: true,
     message: "Backend is running successfully update 1.1.1.1!",
   });
-});
-
-app.get("/get-cookie", (req, res) => {
-  console.log("Cookies:", req.cookies);
-  res.json({ cookies: req.cookies });
 });
 
 mountPublicRoutes(app);

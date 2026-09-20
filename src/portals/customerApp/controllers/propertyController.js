@@ -3,6 +3,7 @@ import db from "#db";
 import fs from "fs";
 import path from "path";
 import { uploadToS3 } from "#utils/imageUpload.js";
+import { parsePropertyType } from "#utils/parsePropertyType.js";
 import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
 
 function toSlug(text) {
@@ -200,13 +201,7 @@ export const getById = (req, res) => {
 
     // Safely parse JSON fields
     const row = result[0];
-    let parsedType = [];
-
-    try {
-      parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-    } catch (e) {
-      console.warn("Invalid JSON in propertyType:", row.propertyType);
-    }
+    const parsedType = parsePropertyType(row.propertyType);
 
     res.json({
       ...row,

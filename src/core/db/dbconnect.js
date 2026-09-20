@@ -14,4 +14,17 @@ const db = mysql.createPool({
   connectTimeout: 20000,
 });
 
+// Many queries GROUP BY a table's primary key while selecting non-aggregated
+// columns from LEFT JOINed tables that are functionally dependent on it
+// (e.g. property_analytics.views per property). MySQL's ONLY_FULL_GROUP_BY
+// can't prove that dependency and rejects them, so strip it per-connection.
+db.on("connection", (connection) => {
+  connection.query(
+    "SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY', ''))",
+    (err) => {
+      if (err) console.error("Failed to relax sql_mode:", err);
+    }
+  );
+});
+
 export default db;

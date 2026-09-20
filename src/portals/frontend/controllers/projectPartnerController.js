@@ -1,15 +1,10 @@
 import db from "#db";
 import dbPromise from "#db/promise";
 import moment from "moment-timezone";
+import { parsePropertyType } from "#utils/parsePropertyType.js";
 
 const formatPropertyRow = (row) => {
-  let parsedType = [];
-
-  try {
-    parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-  } catch (e) {
-    console.warn("Invalid JSON in propertyType:", row.propertyType);
-  }
+  const parsedType = parsePropertyType(row.propertyType);
 
   return {
     ...row,
@@ -242,15 +237,7 @@ export const getAllProperties = (req, res) => {
     }
 
     const formatted = result.map((row) => {
-      let parsedType = [];
-      try {
-        if (row.propertyType) {
-          const parsed = JSON.parse(row.propertyType);
-          parsedType = Array.isArray(parsed) ? parsed : [parsed];
-        }
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,
@@ -304,15 +291,7 @@ export const getHotDealProperties = (req, res) => {
     }
 
     const formatted = result.map((row) => {
-      let parsedType = [];
-      try {
-        if (row.propertyType) {
-          const parsed = JSON.parse(row.propertyType);
-          parsedType = Array.isArray(parsed) ? parsed : [parsed];
-        }
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,
@@ -363,15 +342,7 @@ export const getPremiumProperties = (req, res) => {
     }
 
     const formatted = result.map((row) => {
-      let parsedType = [];
-      try {
-        if (row.propertyType) {
-          const parsed = JSON.parse(row.propertyType);
-          parsedType = Array.isArray(parsed) ? parsed : [parsed];
-        }
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,

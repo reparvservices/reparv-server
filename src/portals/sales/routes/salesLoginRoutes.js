@@ -1,11 +1,12 @@
 import express from "express";
+import { loginRateLimit } from "../../../core/middleware/loginRateLimit.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import db from "#db";
 
 const router = express.Router();
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginRateLimit, async (req, res) => {
   try {
     const { emailOrUsername, password } = req.body;
 
@@ -118,7 +119,7 @@ router.post("/logout", (req, res) => {
 });
 
 // Get Password
-router.post("/login/forgot-password", async (req, res) => {
+router.post("/login/forgot-password", loginRateLimit, async (req, res) => {
   try {
     const { email } = req.body;
 

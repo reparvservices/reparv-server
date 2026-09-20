@@ -1,5 +1,6 @@
 import db from "#db";
 import moment from "moment-timezone";
+import { parsePropertyType } from "#utils/parsePropertyType.js";
 
 const LIST_ORDER_FILTERED = `GROUP BY p.propertyid ORDER BY COALESCE(pa.views, 0) DESC, p.propertyid DESC`;
 
@@ -61,15 +62,7 @@ export const getAll = (req, res) => {
     }
 
     const formatted = result.map((row) => {
-      let parsedType = [];
-      try {
-        if (row.propertyType) {
-          const parsed = JSON.parse(row.propertyType);
-          parsedType = Array.isArray(parsed) ? parsed : [parsed];
-        }
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,
@@ -148,14 +141,7 @@ export const getAllBySlug = (req, res) => {
 
     // Safely parse JSON fields
     const formatted = result.map((row) => {
-      let parsedType = [];
-      try {
-        if (row.propertyType) {
-          parsedType = JSON.parse(row.propertyType);
-        }
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,
@@ -211,12 +197,7 @@ export const getById = (req, res) => {
 
     // safely parse JSON + format dates
     const row = result[0];
-    let parsedType = [];
-    try {
-      parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-    } catch (e) {
-      console.warn("Invalid JSON in propertyType:", row.propertyType);
-    }
+    const parsedType = parsePropertyType(row.propertyType);
 
     const formatted = {
       ...row,

@@ -1,4 +1,5 @@
 import express from "express";
+import { loginRateLimit } from "../../../core/middleware/loginRateLimit.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import db from "#db";
@@ -10,7 +11,7 @@ import {
 
 const router = express.Router();
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginRateLimit, async (req, res) => {
   console.log("build");
 
   try {

@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
 
+import { loginRateLimit } from "../../../core/middleware/loginRateLimit.js";
 import {
   loginUser,
   updateProfileHeader,
@@ -49,7 +50,7 @@ router.put(
 );
 
 // login
-router.post("/login", loginUser);
+router.post("/login", loginRateLimit, loginUser);
 
 // OTP routes
 router.post("/send-otp", sendsalespersonsOtp);

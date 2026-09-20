@@ -1,5 +1,6 @@
 import db from "#db";
 import moment from "moment-timezone";
+import { parsePropertyType } from "#utils/parsePropertyType.js";
 
 /// Fetch Single Property by SEO Slug
 export const getById = (req, res) => {
@@ -56,12 +57,7 @@ export const getById = (req, res) => {
     const row = result[0];
 
     // Safe JSON parse
-    let propertyType = [];
-    try {
-      propertyType = row.propertyType ? JSON.parse(row.propertyType) : [];
-    } catch (err) {
-      console.warn("Invalid JSON in propertyType:", row.propertyType);
-    }
+    const propertyType = parsePropertyType(row.propertyType);
 
     const response = {
       ...row,
@@ -100,12 +96,7 @@ export const getByIdu = (req, res) => {
 
     // safely parse JSON + format dates
     const formatted = result.map((row) => {
-      let parsedType = [];
-      try {
-        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,
@@ -134,13 +125,7 @@ export const getImages = (req, res) => {
     }
     // safely parse JSON fields
     const formatted = result.map((row) => {
-      let parsedType = null;
-      try {
-        parsedType = row.propertyType ? JSON.parse(row.propertyType) : [];
-      } catch (e) {
-        console.warn("Invalid JSON in propertyType:", row.propertyType);
-        parsedType = [];
-      }
+      const parsedType = parsePropertyType(row.propertyType);
 
       return {
         ...row,
