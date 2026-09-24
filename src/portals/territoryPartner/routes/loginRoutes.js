@@ -3,6 +3,7 @@ import { loginRateLimit } from "../../../core/middleware/loginRateLimit.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import db from "#db";
+import sendForgotPasswordMail from "#utils/sendForgotPasswordMail.js";
 
 const router = express.Router();
 
@@ -32,7 +33,7 @@ router.post("/login", loginRateLimit, async (req, res) => {
             return reject(new Error("Database error"));
           }
           if (results.length === 0) {
-            return reject(new Error("Invalid Email | Username"));
+            return reject({ status: 401, message: "Invalid Email | Username" });
           }
           resolve(results[0]);
         }
@@ -86,7 +87,7 @@ router.post("/login", loginRateLimit, async (req, res) => {
 
   } catch (error) {
     console.error("Login Error:", error);
-    return res.status(500).json({ message: error.message || "Internal server error" });
+    return res.status(error.status || 500).json({ message: error.message || "Internal server error" });
   }
 });
 
@@ -160,6 +161,17 @@ router.post("/login/forgot-password", loginRateLimit, async (req, res) => {
         }
       );
     });
+
+    // Generate random password
+    const generatePassword = () => {
+      const chars =
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
+      let password = "";
+      for (let i = 0; i < 8; i++) {
+        password += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return password;
+    };
 
     const newPassword = generatePassword();
 
