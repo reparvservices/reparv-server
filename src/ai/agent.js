@@ -34,6 +34,15 @@ import {
 } from "./salesFlow.js";
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+// Tools that only read data can run together; the rest change CRM state and run in order
+const READ_ONLY_TOOLS = new Set([
+  "searchProperties",
+  "getProjectDetails",
+  "searchFAQs",
+  "searchArticles",
+  "calculateEMI",
+  "listCities",
+]);
 const MAX_TOOL_ROUNDS = 8;
 const MAX_VOICE_TOOL_ROUNDS = 5;
 
@@ -75,6 +84,14 @@ function isVerbosePropertyReply(text) {
   );
 }
 
+/** Shorten to max chars without cutting a sentence in half when possible. */
+function trimAtSentence(text, max) {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("? "), cut.lastIndexOf("! "), cut.lastIndexOf("। "));
+  return end > max * 0.5 ? cut.slice(0, end + 1) : `${cut.trimEnd()}…`;
+}
+
 function extractOutputText(response) {
   if (response.output_text) return response.output_text.trim();
 
@@ -91,6 +108,41 @@ function extractOutputText(response) {
 
 function extractFunctionCalls(response) {
   return (response.output || []).filter((o) => o.type === "function_call");
+}
+
+/** Short status shown in the chat while a tool runs (streaming only). */
+const TOOL_STATUS = {
+  searchProperties: "Properties dhoondh raha hoon…",
+  getProjectDetails: "Project details dekh raha hoon…",
+  searchFAQs: "Jaankari check kar raha hoon…",
+  searchArticles: "Articles dhoondh raha hoon…",
+  calculateEMI: "EMI calculate kar raha hoon…",
+  listCities: "Cities check kar raha hoon…",
+  createLead: "Aapki details save kar raha hoon…",
+  scheduleSiteVisit: "Site visit book kar raha hoon…",
+  assignToSalesAgent: "Sales team ko connect kar raha hoon…",
+};
+
+/**
+ * One model call with streaming: text deltas are forwarded as they arrive,
+ * and the completed response (with any function calls) is returned.
+ */
+async function createResponseStreaming(openai, params, onEvent) {
+  const stream = await openai.responses.create({ ...params, stream: true });
+  let completed = null;
+  let streamedText = false;
+  for await (const event of stream) {
+    if (event.type === "response.output_text.delta" && event.delta) {
+      streamedText = true;
+      onEvent({ type: "delta", text: event.delta });
+    } else if (event.type === "response.completed") {
+      completed = event.response;
+    } else if (event.type === "response.failed" || event.type === "error") {
+      throw new Error(event.response?.error?.message || event.message || "AI response failed");
+    }
+  }
+  if (!completed) throw new Error("AI stream ended without a response");
+  return { response: completed, streamedText };
 }
 
 async function persistPartialLead(storageId, prefs, leadProfile) {
@@ -121,8 +173,10 @@ export async function runAgent({
   channel = CHANNELS.WEB,
   phone = null,
   voiceContext = null,
+  onEvent = null, // optional: stream progress to the client (web chat)
 } = {}) {
   const storageId = session.storageId;
+  const emit = typeof onEvent === "function" ? onEvent : null;
   const resolvedChannel = normalizeChannel(channel);
   const isVoice = resolvedChannel === CHANNELS.VOICE;
   const toolRounds = isVoice ? MAX_VOICE_TOOL_ROUNDS : MAX_TOOL_ROUNDS;
@@ -205,7 +259,17 @@ export async function runAgent({
       createParams.previous_response_id = previousResponseId;
     }
 
-    const response = await openai.responses.create(createParams);
+    let response;
+    if (emit) {
+      const streamed = await createResponseStreaming(openai, createParams, emit);
+      response = streamed.response;
+      // Text streamed before a tool call is a preamble; the real answer comes later
+      if (streamed.streamedText && extractFunctionCalls(response).length) {
+        emit({ type: "reset" });
+      }
+    } else {
+      response = await openai.responses.create(createParams);
+    }
     previousResponseId = response.id;
 
     const calls = extractFunctionCalls(response);
@@ -214,7 +278,12 @@ export async function runAgent({
       break;
     }
 
-    const outputs = [];
+    if (emit) {
+      const status = TOOL_STATUS[calls[0].name];
+      if (status) emit({ type: "status", text: status });
+    }
+
+    const prepared = [];
     for (const call of calls) {
       let args = {};
       try {
@@ -274,18 +343,48 @@ export async function runAgent({
         }
       }
 
-      const result = await executeTool(call.name, args, {
-        userId: storageId,
-        mode: session.mode,
-      });
-      toolResults.push({ name: call.name, args, result });
+      prepared.push({ call, args });
+    }
 
-      outputs.push({
+    const runTool = async ({ call, args }) => {
+      try {
+        return await executeTool(call.name, args, {
+          userId: storageId,
+          mode: session.mode,
+        });
+      } catch (toolErr) {
+        console.error(`[ai/agent] tool ${call.name} failed:`, toolErr.message);
+        return { error: `${call.name} failed. Tell the user briefly and offer a callback.` };
+      }
+    };
+
+    // Read-only tools in parallel, CRM-writing tools one after another
+    const results = new Array(prepared.length);
+    await Promise.all(
+      prepared.map(async (p, i) => {
+        if (READ_ONLY_TOOLS.has(p.call.name)) results[i] = await runTool(p);
+      }),
+    );
+    for (let i = 0; i < prepared.length; i++) {
+      if (!READ_ONLY_TOOLS.has(prepared[i].call.name)) results[i] = await runTool(prepared[i]);
+    }
+
+    // Show property cards as soon as the search finishes, before the text
+    if (emit) {
+      const found = prepared.findIndex((p) => p.call.name === "searchProperties");
+      if (found !== -1 && Array.isArray(results[found]?.properties)) {
+        emit({ type: "properties", properties: results[found].properties });
+      }
+    }
+
+    const outputs = prepared.map(({ call, args }, i) => {
+      toolResults.push({ name: call.name, args, result: results[i] });
+      return {
         type: "function_call_output",
         call_id: call.call_id,
-        output: JSON.stringify(result),
-      });
-    }
+        output: JSON.stringify(results[i]),
+      };
+    });
 
     input = outputs;
   }
@@ -316,22 +415,28 @@ export async function runAgent({
     null;
 
   let reply = stripMarkdown(finalText);
-  if (properties !== undefined) {
-    reply = isVoice
-      ? buildVoicePropertyReply(
-          preferences.salesStage,
-          properties || [],
-          finalIntent,
-          preferences,
-        )
-      : buildPropertyReply(
-          preferences.salesStage,
-          properties || [],
-          finalIntent,
-          preferences,
-        );
+  if (properties !== undefined && isVoice) {
+    // Spoken replies must stay short and structured
+    reply = buildVoicePropertyReply(
+      preferences.salesStage,
+      properties || [],
+      finalIntent,
+      preferences,
+    );
+  } else if (properties !== undefined) {
+    // Web: keep the model's own reply (it knows what the user asked);
+    // fall back to the template only if it is empty or turned into a list
+    if (!reply || isVerbosePropertyReply(finalText)) {
+      reply = buildPropertyReply(
+        preferences.salesStage,
+        properties || [],
+        finalIntent,
+        preferences,
+      );
+    }
   } else if (isVerbosePropertyReply(finalText)) {
-    reply = stripMarkdown(finalText).slice(0, isVoice ? 160 : 220);
+    // Knowledge answers (FAQ/EMI/articles) need a little more room on web
+    reply = trimAtSentence(stripMarkdown(finalText), isVoice ? 160 : 600);
   }
 
   if (isVoice) {

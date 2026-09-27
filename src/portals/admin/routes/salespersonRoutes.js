@@ -15,6 +15,7 @@ import {
   addFollowUp,
   getProjectPartnerList,
   assignProjectPartner,
+  list,
 } from "../controllers/salespersonController.js";
 
 const router = express.Router();
@@ -33,6 +34,7 @@ const upload = multer({
 
 router.get("/active", getAllActive); // specific path first
 router.get("/get/:id", getById); // more specific dynamic route
+router.get("/list", list);
 router.get("/:partnerlister", getAll);
 router.get("/projectpartner/list/:id", getProjectPartnerList);
 router.post(

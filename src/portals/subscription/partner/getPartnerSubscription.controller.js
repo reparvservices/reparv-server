@@ -1,13 +1,17 @@
 import db from "#db";
 import moment from "moment-timezone";
-import { isPartnerSubscriptionAccessActive } from "../utils/subscriptionAccess.js";
+import {
+  isPartnerSubscriptionAccessActive,
+  pickCurrentSubscription,
+} from "../utils/subscriptionAccess.js";
 import { hasPartnerConsumedTrial } from "../utils/partnerTrialConsumed.js";
+import { getPlanFeatureNames, isAllFeaturePlan } from "../utils/partnerFeatures.js";
 
 const formatStatus = (s) =>
   s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
 
 /**
- * Express handler factory: latest `user_subscriptions` row for a partner role (with plan join).
+ * Express handler factory: current `user_subscriptions` row for a partner role (with plan join).
  * @param {string} role — `sales` | `territory` | `project` | `onboarding`
  */
 export const buildPartnerSubscriptionHandler =
@@ -21,7 +25,6 @@ export const buildPartnerSubscriptionHandler =
       LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
       WHERE us.user_id = ? AND us.role = ?
       ORDER BY COALESCE(us.updated_at, us.created_at) DESC, us.id DESC
-      LIMIT 1
     `;
 
     db.query(sql, [userId, role], async (err, rows) => {
@@ -42,11 +45,13 @@ export const buildPartnerSubscriptionHandler =
           success: true,
           active: false,
           trial_used: trialUsed,
+          features: [],
+          all_features: false,
           message: "No subscription found",
         });
       }
 
-      let sub = rows[0];
+      let sub = pickCurrentSubscription(rows);
       const statusLower = String(sub.status || "").toLowerCase();
       const planTypeTrial = String(sub.plan_type || "").toLowerCase() === "trial";
       const trialEnded =
@@ -65,6 +70,17 @@ export const buildPartnerSubscriptionHandler =
       }
 
       const active = isPartnerSubscriptionAccessActive(sub);
+
+      // Features the current plan unlocks in the partner panel (lowercased names)
+      const allFeatures = active && isAllFeaturePlan(sub.plan_type);
+      let features = [];
+      if (active && !allFeatures) {
+        try {
+          features = [...(await getPlanFeatureNames([sub.plan_id]))];
+        } catch (featErr) {
+          console.warn("getPlanFeatureNames:", featErr?.message || featErr);
+        }
+      }
       const isTrialPlan =
         statusLower === "trial" ||
         String(sub.plan_type || "").toLowerCase() === "trial";
@@ -96,6 +112,9 @@ export const buildPartnerSubscriptionHandler =
           : null,
         status: formatStatus(sub.status),
         razorpay_subscription_id: sub.razorpay_subscription_id,
+        plan_type: sub.plan_type || null,
+        features,
+        all_features: allFeatures,
       });
     });
   };

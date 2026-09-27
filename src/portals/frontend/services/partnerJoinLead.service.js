@@ -202,3 +202,82 @@ export async function listPartnerJoinLeads({ search, status, page = 1, limit = 2
     limit: safeLimit,
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* Account creation from "Join as Partner" (email + password sign-in)  */
+/* ------------------------------------------------------------------ */
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const MIN_PASSWORD_LENGTH = 8;
+
+/** Validate the email/password the partner chose; returns an error message or null. */
+export function validateJoinCredentials(email, password) {
+  if (!email || !EMAIL_RE.test(email)) return "Enter a valid email address";
+  if (email.length > 255) return "Email is too long";
+  if (!password || password.length < MIN_PASSWORD_LENGTH) {
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
+  }
+  if (password.length > 72) return "Password is too long"; // bcrypt limit
+  return null;
+}
+
+export async function partnerEmailAlreadyRegistered(email) {
+  const [rows] = await dbPromise.query(
+    "SELECT id FROM projectpartner WHERE email = ? OR username = ? LIMIT 1",
+    [email, email],
+  );
+  return rows.length > 0;
+}
+
+async function uniqueReferralCode() {
+  for (let i = 0; i < 10; i++) {
+    const code = `REF-${crypto.randomBytes(4).toString("base64url").slice(0, 6)}`;
+    const [rows] = await dbPromise.query(
+      "SELECT id FROM projectpartner WHERE referral = ? LIMIT 1",
+      [code],
+    );
+    if (!rows.length) return code;
+  }
+  throw new Error("Could not generate a referral code");
+}
+
+/**
+ * Create the project partner account (login active) after OTP verification,
+ * the same way admin "Add partner" does, and mark the join lead as registered.
+ */
+export async function createPartnerAccountFromJoin({
+  firstName,
+  lastName,
+  contact,
+  email,
+  passwordHash,
+  now,
+}) {
+  const referral = await uniqueReferralCode();
+  const fullname = `${firstName} ${lastName}`.trim().slice(0, 50);
+
+  const [result] = await dbPromise.query(
+    `INSERT INTO projectpartner
+       (fullname, contact, email, referral, password, loginstatus, status, updated_at, created_at)
+     VALUES (?, ?, ?, ?, ?, 'Active', 'Active', ?, ?)`,
+    [fullname, contact, email, referral, passwordHash, now, now],
+  );
+  const partnerId = result.insertId;
+
+  await dbPromise.query(
+    `INSERT INTO partnerFollowup (partnerId, role, followUp, followUpText, created_at, updated_at)
+     VALUES (?, 'Project Partner', 'New', 'Signed up via Join as Partner', ?, ?)`,
+    [partnerId, now, now],
+  );
+
+  try {
+    await dbPromise.query(
+      `UPDATE partner_join_leads SET status = 'registered', updated_at = ? WHERE contact = ?`,
+      [now, contact],
+    );
+  } catch (err) {
+    if (err?.code !== "ER_NO_SUCH_TABLE") throw err;
+  }
+
+  return partnerId;
+}

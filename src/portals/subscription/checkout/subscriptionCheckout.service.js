@@ -75,6 +75,56 @@ const dbQuery = (sql, params = []) =>
 
 const safeInt = (value) => Number.parseInt(value, 10);
 
+const httpError = (message, statusCode = 400) => {
+  const e = new Error(message);
+  e.statusCode = statusCode;
+  return e;
+};
+
+/** Plan price in rupees, always taken from the database (never from the client). */
+const planAmount = (planRow) => Number(planRow.price) || 0;
+
+/**
+ * A Razorpay payment can activate only one subscription.
+ * Returns true when it was already applied to this same partner (safe retry of verify);
+ * throws when it was applied to someone else (replay).
+ */
+async function wasPaymentAlreadyApplied(paymentId, { role, userId }) {
+  const rows = await dbQuery(
+    `SELECT us.user_id, us.role
+     FROM subscription_recurring_payments rp
+     JOIN user_subscriptions us ON us.id = rp.user_subscription_id
+     WHERE rp.razorpay_payment_id = ?
+     LIMIT 1`,
+    [paymentId],
+  );
+  if (!rows.length) return false;
+  if (Number(rows[0].user_id) === userId && rows[0].role === role) return true;
+  throw httpError("This payment has already been used", 409);
+}
+
+const alreadyAppliedResponse = (role, userId, localPlanId) => ({
+  success: true,
+  message: "Subscription already activated for this payment",
+  data: { user_id: userId, role, plan_id: localPlanId, status: "active" },
+});
+
+/**
+ * The partner and plan a checkout is for come from the Razorpay order/subscription
+ * notes the server set when creating it; request values must match them.
+ */
+function assertCheckoutMatches(notes, { role, userId, localPlanId }) {
+  const notedRole = String(notes?.role || "").toLowerCase();
+  const notedUser = safeInt(notes?.local_user_id);
+  const notedPlan = safeInt(notes?.local_plan_id);
+  if (!notedRole || !notedUser || !notedPlan) {
+    throw httpError("This payment is not a Reparv partner subscription checkout");
+  }
+  if (notedRole !== role || notedUser !== userId || notedPlan !== localPlanId) {
+    throw httpError("Payment does not match the selected partner or plan");
+  }
+}
+
 const addPlanDuration = (startDate, duration, billingCycle) => {
   const end = new Date(startDate);
   if (String(billingCycle).toLowerCase() === "yearly") {
@@ -165,8 +215,6 @@ function parseCheckoutIdentity(payload) {
   const role = String(payload.role || "").toLowerCase();
   const userId = safeInt(payload.user_id);
   const localPlanId = safeInt(payload.plan_id || payload.planId);
-  const discountAmount = safeInt(payload.discount_amount || 0) || 0;
-  const finalAmount = safeInt(payload.final_amount || 0) || 0;
 
   if (!["sales", "territory", "project"].includes(role) || !userId || !localPlanId) {
     const e = new Error("role, user_id and plan_id are required");
@@ -174,19 +222,19 @@ function parseCheckoutIdentity(payload) {
     throw e;
   }
 
-  return { role, userId, localPlanId, discountAmount, finalAmount };
+  // discount_amount / final_amount from the client are ignored: there is no
+  // coupon system and the charge must always be the plan price.
+  return { role, userId, localPlanId };
 }
 
 /**
  * One-time Razorpay Order checkout (UPI, cards, etc.) — no recurring mandate required.
  */
 export async function startPartnerPaymentOrder(payload) {
-  const { role, userId, localPlanId, discountAmount, finalAmount } =
-    parseCheckoutIdentity(payload);
+  const { role, userId, localPlanId } = parseCheckoutIdentity(payload);
   const planRow = await loadPaidPartnerPlan(localPlanId, role);
 
-  const computedFinalAmount =
-    finalAmount > 0 ? finalAmount : safeInt(planRow.price) || 0;
+  const computedFinalAmount = planAmount(planRow);
   const amountPaise = Math.round(computedFinalAmount * 100);
   if (amountPaise < 100) {
     const e = new Error("Plan amount must be at least ₹1");
@@ -210,7 +258,7 @@ export async function startPartnerPaymentOrder(payload) {
     userId,
     role,
     planId: localPlanId,
-    discountAmount,
+    discountAmount: 0,
     finalAmount: computedFinalAmount,
   });
 
@@ -232,8 +280,7 @@ export async function startPartnerPaymentOrder(payload) {
 }
 
 export async function completePartnerPaymentOrder(payload) {
-  const { role, userId, localPlanId, discountAmount, finalAmount } =
-    parseCheckoutIdentity(payload);
+  const { role, userId, localPlanId } = parseCheckoutIdentity(payload);
   const paymentId = String(payload.razorpay_payment_id || "").trim();
   const orderId = String(payload.razorpay_order_id || "").trim();
   const signature = String(payload.razorpay_signature || "").trim();
@@ -259,20 +306,39 @@ export async function completePartnerPaymentOrder(payload) {
     throw e;
   }
 
-  const payment = await razorpay.payments.fetch(paymentId);
-  const payStatus = String(payment?.status || "").toLowerCase();
-  if (!["captured", "authorized"].includes(payStatus)) {
-    const e = new Error(`Payment not completed (status: ${payment?.status})`);
-    e.statusCode = 400;
-    throw e;
+  if (await wasPaymentAlreadyApplied(paymentId, { role, userId })) {
+    return alreadyAppliedResponse(role, userId, localPlanId);
+  }
+
+  // Partner + plan are whatever this order was created for
+  const order = await razorpay.orders.fetch(orderId);
+  if (order?.notes?.checkout !== "partner_subscription") {
+    throw httpError("This payment is not a Reparv partner subscription checkout");
+  }
+  assertCheckoutMatches(order.notes, { role, userId, localPlanId });
+
+  let payment = await razorpay.payments.fetch(paymentId);
+  if (payment?.order_id !== orderId) {
+    throw httpError("Payment does not belong to this order");
+  }
+  if (Number(payment.amount) < Number(order.amount)) {
+    throw httpError("Payment amount is less than the plan price");
+  }
+  let payStatus = String(payment?.status || "").toLowerCase();
+  if (payStatus === "authorized") {
+    // Capture now; uncaptured payments are auto-refunded by Razorpay
+    payment = await razorpay.payments.capture(paymentId, payment.amount, payment.currency || "INR");
+    payStatus = String(payment?.status || "").toLowerCase();
+  }
+  if (payStatus !== "captured") {
+    throw httpError(`Payment not completed (status: ${payment?.status})`);
   }
 
   const planRow = await loadPaidPartnerPlan(localPlanId, role);
   const startDate = new Date();
   const duration = Math.max(1, safeInt(planRow.duration) || 1);
   const endDate = addPlanDuration(startDate, duration, planRow.billing_cycle);
-  const computedFinalAmount =
-    finalAmount > 0 ? finalAmount : safeInt(planRow.price) || 0;
+  const computedFinalAmount = Number(order.amount) / 100;
 
   await activateOrderSubscriptionRow({
     userId,
@@ -280,7 +346,7 @@ export async function completePartnerPaymentOrder(payload) {
     planId: localPlanId,
     startDate,
     endDate,
-    discountAmount,
+    discountAmount: 0,
     finalAmount: computedFinalAmount,
   });
 
@@ -329,8 +395,6 @@ export async function startPartnerRecurringSubscription(payload) {
   const userId = safeInt(payload.user_id);
   const localPlanId = safeInt(payload.plan_id || payload.planId);
   const paymentType = payload.payment_type === "manual" ? "manual" : "auto";
-  const discountAmount = safeInt(payload.discount_amount || 0) || 0;
-  const finalAmount = safeInt(payload.final_amount || 0) || 0;
 
   if (!["sales", "territory", "project"].includes(role) || !userId || !localPlanId) {
     const e = new Error("role, user_id and plan_id are required");
@@ -389,8 +453,8 @@ export async function startPartnerRecurringSubscription(payload) {
     planId: localPlanId,
     paymentType,
     razorpaySubscriptionId: rzSubscription.id,
-    discountAmount,
-    finalAmount,
+    discountAmount: 0,
+    finalAmount: planAmount(planRow),
   });
 
   return {
@@ -418,8 +482,6 @@ export async function completePartnerRecurringSubscription(payload) {
   const subscriptionId = String(payload.razorpay_subscription_id || "").trim();
   const signature = String(payload.razorpay_signature || "").trim();
   const email = String(payload.email || "").trim();
-  const discountAmount = safeInt(payload.discount_amount || 0) || 0;
-  const finalAmount = safeInt(payload.final_amount || 0) || 0;
 
   const missing = [];
   if (!["sales", "territory", "project"].includes(role)) missing.push("role");
@@ -444,7 +506,14 @@ export async function completePartnerRecurringSubscription(payload) {
     throw e;
   }
 
+  if (await wasPaymentAlreadyApplied(paymentId, { role, userId })) {
+    return alreadyAppliedResponse(role, userId, localPlanId);
+  }
+
   const rzSubscription = await razorpay.subscriptions.fetch(subscriptionId);
+  // Partner + plan are whatever this Razorpay subscription was created for
+  assertCheckoutMatches(rzSubscription.notes, { role, userId, localPlanId });
+
   const planRows = await dbQuery(
     `SELECT id, plan_name, duration, price, billing_cycle
      FROM subscription_plans
@@ -472,7 +541,7 @@ export async function completePartnerRecurringSubscription(payload) {
       Math.max(1, safeInt(planRow.duration) || 1),
       planRow.billing_cycle,
     );
-  const computedFinalAmount = finalAmount > 0 ? finalAmount : safeInt(planRow.price) || 0;
+  const computedFinalAmount = planAmount(planRow);
 
   await activateRecurringSubscriptionRow({
     userId,
@@ -482,7 +551,7 @@ export async function completePartnerRecurringSubscription(payload) {
     startDate,
     nextBillingDate,
     endDate,
-    discountAmount,
+    discountAmount: 0,
     finalAmount: computedFinalAmount,
   });
 

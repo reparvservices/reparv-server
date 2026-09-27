@@ -7,6 +7,7 @@ import path from "path";
 import sendProjectPartnerChangeEmail from "#utils/sendProjectPartnerChangeEmail.js";
 import { uploadToS3 } from "#utils/imageUpload.js";
 import { attachSubscriptionsToPartners } from "../../subscription/utils/partnerSubscriptionAttach.js";
+import { listPartnersPaged } from "../../subscription/utils/pagedPartnerList.js";
 const saltRounds = 10;
 export const getAll = async (req, res) => {
   const partnerLister = req.params.partnerlister;
@@ -1137,5 +1138,18 @@ export const assignProjectPartner = async (req, res) => {
   } catch (error) {
     console.error("Error assigning project partner:", error);
     res.status(500).json({ message: "Internal server error", error });
+  }
+};
+
+/**
+ * GET /admin/territorypartner/list
+ * Query: limit, offset, search, lister, filter, date_from, date_to
+ */
+export const list = async (req, res) => {
+  try {
+    return res.json(await listPartnersPaged("territory", req.query));
+  } catch (err) {
+    console.error("Error fetching paged territory partners:", err);
+    return res.status(500).json({ message: "Database error" });
   }
 };

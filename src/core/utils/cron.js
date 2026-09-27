@@ -258,6 +258,39 @@ export const checkEnquiriesWithTime = () => {
 };
 
 cron.schedule("0 0 * * *", cleanInactiveUntil);
+
+/**
+ * Mark subscriptions whose period has ended as expired.
+ * Access is already denied after end_date; this keeps statuses, admin lists
+ * and analytics correct. Autopay rows get 2 days' grace for a late renewal
+ * webhook (which sets them active again anyway).
+ * Uses the app clock (same way end_date is written), not the DB's NOW().
+ */
+export const expireEndedSubscriptions = () => {
+  const now = new Date();
+  const autopayCutoff = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+  db.query(
+    `UPDATE user_subscriptions
+     SET status = 'expired', updated_at = NOW()
+     WHERE LOWER(status) IN ('active', 'trial')
+       AND end_date IS NOT NULL
+       AND end_date < IF(payment_type = 'auto', ?, ?)`,
+    [autopayCutoff, now],
+    (err, result) => {
+      if (err) {
+        console.error("[subscriptions] expiry job failed:", err.message);
+        return;
+      }
+      if (result.affectedRows) {
+        console.log(`[subscriptions] expired ${result.affectedRows} ended subscription(s)`);
+      }
+    },
+  );
+};
+
+// Daily shortly after midnight, plus once at startup to catch up
+cron.schedule("15 0 * * *", expireEndedSubscriptions);
+expireEndedSubscriptions();
 // 🕐 Run every minute to reject old enquiries
 cron.schedule("* * * * *", checkEnquiriesWithTime);
 // 🕣 NEW: Run every day at 8:30 AM to alert territory partners for 9–10 slot

@@ -44,10 +44,18 @@ STAGE 4 — CLOSE THE LEAD
 - Offer site visit: scheduleSiteVisit when user gives date + phone + project.
 - After createLead, thank them and say sales team will follow up.
 
+=== KNOWLEDGE TOOLS (use instead of guessing) ===
+- Buying process, documents, RERA, stamp duty, home loan, Reparv services/fees → call searchFAQs with the user's question, answer from the result in your own words.
+- EMI / "kitni EMI aayegi" → call calculateEMI (use the property price from results or the user's number; defaults 20% down, 8.5%, 20 yrs — say which you assumed).
+- "Which cities / kahan kahan properties hain" → call listCities.
+- Guides, market trends, locality info → call searchArticles and offer the best article.
+- If a knowledge tool finds nothing, say so briefly and offer a callback from the sales team.
+
 === HARD RULES ===
 - Always use tool results and database data. Never invent prices or projects.
 - Keep replies SHORT: 1–3 sentences (~200 chars). WhatsApp style, not email.
 - Property cards show automatically — NEVER list properties, prices, or URLs in text.
+- After searchProperties, write ONE specific sentence from the actual results (what type, where, starting price) and ONE follow-up question. Match what the user asked for (e.g. plots → talk about plots). Never repeat an earlier reply word for word.
 - searchProperties: add budget/area filters ONLY when user explicitly stated them.
 - If search returns 0, retry with fewer filters before saying nothing available.
 - createLead requires valid 10-digit Indian mobile. Never pass phone as enquirersId.
@@ -104,6 +112,62 @@ export function buildVoiceContextBlock(voiceContext) {
 export const TOOL_DEFINITIONS = [
   {
     type: "function",
+    name: "searchFAQs",
+    description:
+      "Search Reparv's FAQ knowledge base (buying process, documents, RERA, home loans, stamp duty, Reparv services). Use for any factual question before answering.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "The user's question in a few keywords" },
+        limit: { type: "number", description: "Max answers, default 4" },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "searchArticles",
+    description: "Find Reparv blog articles/guides on a topic (buying tips, localities, market trends, loans).",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        limit: { type: "number", description: "Max articles, default 3" },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "calculateEMI",
+    description:
+      "Calculate monthly home-loan EMI, total interest and loan amount. Give propertyPrice (and optional down payment %) or loanAmount.",
+    parameters: {
+      type: "object",
+      properties: {
+        propertyPrice: { type: "number", description: "Property price in INR" },
+        loanAmount: { type: "number", description: "Loan amount in INR (overrides price - down payment)" },
+        downPaymentPercent: { type: "number", description: "Default 20" },
+        interestRate: { type: "number", description: "Annual %, default 8.5" },
+        tenureYears: { type: "number", description: "Default 20" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "listCities",
+    description: "List cities where Reparv has live property listings, with the number of listings.",
+    parameters: {
+      type: "object",
+      properties: { limit: { type: "number", description: "Default 20" } },
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
     name: "searchProperties",
     description:
       "Search and show properties. Call immediately when user wants to see options. For 'show more' or 'different options', pass excludePropertyIds so already-shown properties are not repeated.",
@@ -111,6 +175,12 @@ export const TOOL_DEFINITIONS = [
       type: "object",
       properties: {
         city: { type: "string", description: "City name e.g. Nagpur, Pune" },
+        listingType: {
+          type: "string",
+          enum: ["buy", "rent"],
+          description:
+            "rent when the user wants to rent/lease (kiraya, 'rent pe'); otherwise buy. Always set it.",
+        },
         area: {
           type: "string",
           description: "Specific locality only if user named it e.g. Jamtha, Waneri",
@@ -125,7 +195,8 @@ export const TOOL_DEFINITIONS = [
         },
         budgetMax: {
           type: "number",
-          description: "Max budget in INR only if user stated it",
+          description:
+            "Max budget in INR only if user stated it. For rent this is MONTHLY rent (20 hazar = 20000); for buy it is the total price (50 lakh = 5000000).",
         },
         bedrooms: {
           type: "string",

@@ -5,6 +5,7 @@ import {
   getAllActive,
   add,
   edit,
+  getById,
 } from "../controllers/salespersonController.js";
 
 const router = express.Router();
@@ -27,6 +28,7 @@ const upload = multer({
 // Routes
 router.get("/active", getAllActive); // specific path first
 router.get("/", getAll);
+router.get("/:id", getById);
 
 router.post(
   "/add",

@@ -1273,6 +1273,10 @@ export const status = (req, res) => {
         return res.status(500).json({ message: "Database error", error: err });
       }
 
+      if (!result.length) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
       let status = "";
       if (result[0].status === "Active") {
         status = "Inactive";
@@ -1316,11 +1320,15 @@ export const approve = (req, res) => {
         return res.status(500).json({ message: "Database error", error: err });
       }
 
+      if (!result.length) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
       let approve = "";
-      if (result[0].approve === "Not Approved" || "Rejected") {
-        approve = "Approved";
-      } else {
+      if (result[0].approve === "Approved") {
         approve = "Not Approved";
+      } else {
+        approve = "Approved";
       }
 
       db.query(
@@ -1357,6 +1365,10 @@ export const hotDeal = (req, res) => {
       if (err) {
         console.error("Database error:", err);
         return res.status(500).json({ message: "Database error", error: err });
+      }
+
+      if (!result.length) {
+        return res.status(404).json({ message: "Property not found" });
       }
 
       let hotDeal = "";
@@ -1402,6 +1414,10 @@ export const reparvAssured = (req, res) => {
         return res.status(500).json({ message: "Database error", error: err });
       }
 
+      if (!result.length) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
       let reparvAssured = "";
       if (result[0].reparvAssured === "Active") {
         reparvAssured = "Inactive";
@@ -1411,7 +1427,7 @@ export const reparvAssured = (req, res) => {
       //console.log(status);
       db.query(
         "UPDATE properties SET reparvAssured = ? WHERE propertyid = ?",
-        [hotDeal, Id],
+        [reparvAssured, Id],
         (err, result) => {
           if (err) {
             console.error("Error changing reparv assured status :", err);
@@ -1518,7 +1534,7 @@ export const getPropertyLocation = (req, res) => {
 export const changePropertyLocation = (req, res) => {
   const { latitude, longitude } = req.body;
   if (!latitude || !longitude) {
-    return res.status(401).json({ message: "All Field Are Required" });
+    return res.status(400).json({ message: "All Field Are Required" });
   }
   const Id = parseInt(req.params.id);
   if (isNaN(Id)) {
@@ -1751,7 +1767,7 @@ export const seoDetails = (req, res) => {
   const { seoSlug, pageTitle, seoTittle, seoDescription, propertyDescription } =
     req.body;
   if (!seoSlug || !seoTittle || !seoDescription || !propertyDescription) {
-    return res.status(401).json({ message: "All Field Are Required" });
+    return res.status(400).json({ message: "All Field Are Required" });
   }
   const Id = parseInt(req.params.id);
   if (isNaN(Id)) {
@@ -1840,7 +1856,7 @@ export const changeProjectPartner = async (req, res) => {
 export const addRejectReason = (req, res) => {
   const { rejectReason } = req.body;
   if (!rejectReason) {
-    return res.status(401).json({ message: "All Field Are Required" });
+    return res.status(400).json({ message: "All Field Are Required" });
   }
   const Id = parseInt(req.params.id);
   if (isNaN(Id)) {

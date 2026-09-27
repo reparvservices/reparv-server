@@ -304,6 +304,31 @@ function topSpokenProjects(properties = [], limit = 2) {
   });
 }
 
+/** "plots", "flats", "properties"… from the categories in the results. */
+function describePropertyKind(properties) {
+  const kinds = new Set(
+    properties.map((p) => {
+      const c = String(p.propertyType || "").toLowerCase();
+      if (c.includes("plot") || c.includes("land")) return "plots";
+      if (c.includes("flat") || c.includes("apartment")) return "flats";
+      if (c.includes("villa") || c.includes("house") || c.includes("bunglow") || c.includes("bungalow")) return "homes";
+      if (c.includes("shop") || c.includes("office") || c.includes("commercial") || c.includes("showroom")) return "commercial spaces";
+      return "properties";
+    }),
+  );
+  const kind = kinds.size === 1 ? [...kinds][0] : "properties";
+  if (properties.length === 1) return kind.replace(/s$/, "").replace(/space$/, "space");
+  return kind;
+}
+
+/** Lowest listed price among the results, e.g. "₹12.00 L". */
+function startingPrice(properties) {
+  const priced = properties
+    .filter((p) => Number(p.priceInr) > 0 && p.price && p.price !== "Price on request")
+    .sort((a, b) => Number(a.priceInr) - Number(b.priceInr));
+  return priced[0]?.price || null;
+}
+
 export function buildPropertyReply(stage, properties = [], intent, prefs = {}) {
   const count = properties.length;
   const city =
@@ -319,15 +344,19 @@ export function buildPropertyReply(stage, properties = [], intent, prefs = {}) {
     return `${city} mein abhi matching property nahi mili. Koi aur city ya budget try karein?`;
   }
 
+  const kind = describePropertyKind(properties);
+  const from = startingPrice(properties);
+  const fromText = from ? ` — ${from} se shuru` : "";
+
   if (intent === "show_more") {
-    return `${city} mein ${count} aur alag options hain — neeche cards dekho. Koi pasand aaya?`;
+    return `${city} mein ${count} aur ${kind}${fromText}. Koi pasand aaya, ya budget/area batayein?`;
   }
 
   if (stage === SALES_STAGES.SHORTLIST || prefs.interestedPropertyId) {
     return `Bahut badhiya choice! Is project ke baare mein aur jaanna hai ya site visit schedule karein?`;
   }
 
-  return `${city} mein ${count} options hain — neeche cards check karo. Koi pasand aaya, ya aur options dikhaun?`;
+  return `${city} mein ${count} ${kind} mile${fromText}. Koi pasand aaya, ya aur dikhaun?`;
 }
 
 /** Spoken summary for phone/TTS — no UI card references. */

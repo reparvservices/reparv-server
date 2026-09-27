@@ -3,6 +3,7 @@ import { getProjectDetails } from "./project.js";
 import { createLead, assignToSalesAgent } from "./crm.js";
 import { scheduleSiteVisit } from "./siteVisit.js";
 import { calculateLeadScore } from "./leads.js";
+import { searchFAQs, searchArticles, calculateEMI, listCities } from "./knowledge.js";
 
 export async function executeTool(name, args, context) {
   const { userId } = context;
@@ -36,6 +37,19 @@ export async function executeTool(name, args, context) {
         assignedTo: args.assignedTo,
         enquirersId: args.enquirersId,
       });
+
+    // Read-only knowledge
+    case "searchFAQs":
+      return searchFAQs(args);
+
+    case "searchArticles":
+      return searchArticles(args);
+
+    case "calculateEMI":
+      return calculateEMI(args);
+
+    case "listCities":
+      return listCities(args);
 
     default:
       return { error: `Unknown tool: ${name}` };

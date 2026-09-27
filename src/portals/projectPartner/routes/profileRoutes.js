@@ -5,6 +5,7 @@ import {
   editProfile,
   changePassword,
   v2EditProfile,
+  updateProfileDetails,
 } from "../controllers/profileController.js";
 import {
   createSchedule,
@@ -44,6 +45,9 @@ router.put(
 );
 
 router.put("/changepassword", changePassword);
+
+// Registration details completed after "Join as Partner" signup
+router.put("/details", updateProfileDetails);
 
 router.post("/contact", submitContactForm);
 

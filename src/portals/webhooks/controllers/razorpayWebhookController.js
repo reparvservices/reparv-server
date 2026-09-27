@@ -16,11 +16,15 @@ function resolveWebhookSecret() {
 function verifySignature(rawBody, signature) {
   const secret = resolveWebhookSecret();
   if (!secret) {
-    console.warn("[razorpay webhook] RAZORPAY_WEBHOOK_SECRET not set — skipping verify");
-    return true;
+    // Without a secret anyone could post fake "payment charged" events
+    console.error("[razorpay webhook] RAZORPAY_WEBHOOK_SECRET not set — rejecting webhook");
+    return false;
   }
+  if (typeof signature !== "string" || !signature) return false;
   const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-  return expected === signature;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signature);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 /**

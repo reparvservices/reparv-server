@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import {
   logInboundMessage,
   resolveEnquiryByPhone,
@@ -18,11 +19,23 @@ function extractIncomingMessages(body) {
         const id = m?.id;
         let textBody = "";
 
+        // Keep every message type readable in the admin chat
+        const media = m?.[m?.type] || {};
         if (m?.type === "text" && m?.text?.body) {
           textBody = m.text.body;
         } else if (m?.type === "interactive") {
-          // Keep it readable in admin chat.
-          textBody = "[interactive message]";
+          const reply = m.interactive?.button_reply || m.interactive?.list_reply;
+          textBody = reply?.title ? `[reply] ${reply.title}` : "[interactive message]";
+        } else if (m?.type === "button") {
+          textBody = m.button?.text ? `[button] ${m.button.text}` : "[button]";
+        } else if (["image", "video", "document", "audio", "sticker"].includes(m?.type)) {
+          const detail = media.caption || media.filename || "";
+          textBody = `[${m.type}]${detail ? ` ${detail}` : ""}`;
+        } else if (m?.type === "location" && m.location) {
+          const { latitude, longitude, name, address } = m.location;
+          textBody = `[location] ${[name, address].filter(Boolean).join(", ") || `${latitude}, ${longitude}`}`;
+        } else if (m?.type === "reaction") {
+          textBody = `[reaction] ${m.reaction?.emoji || ""}`.trim();
         } else {
           textBody = `[${m?.type || "unknown"}]`;
         }
@@ -75,7 +88,26 @@ export const verifyWebhook = (req, res) => {
   return res.status(200).send(challenge);
 };
 
+const appSecret = () =>
+  (process.env.WHATSAPP_APP_SECRET || process.env.META_APP_SECRET || "").trim();
+
+/** Meta signs webhook bodies with the app secret (X-Hub-Signature-256). */
+function hasValidSignature(req) {
+  const secret = appSecret();
+  if (!secret) return true; // not configured: accept (logged at startup)
+  const header = String(req.headers["x-hub-signature-256"] || "");
+  if (!header.startsWith("sha256=") || !req.rawBody) return false;
+  const expected = crypto.createHmac("sha256", secret).update(req.rawBody).digest("hex");
+  const a = Buffer.from(header.slice(7));
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 export const receiveWebhook = (req, res) => {
+  if (!hasValidSignature(req)) {
+    console.warn("[webhooks/whatsapp-chat] rejected webhook with invalid signature");
+    return res.sendStatus(401);
+  }
   // Always respond quickly.
   res.sendStatus(200);
 

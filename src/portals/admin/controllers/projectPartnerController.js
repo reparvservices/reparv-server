@@ -8,6 +8,7 @@ import { attachSubscriptionsToPartners } from "../../subscription/utils/partnerS
 import { enrichPartnerWithSubscription } from "../../subscription/utils/subscriptionBucket.js";
 import { buildPartnerListQueries } from "../../subscription/utils/partnerListQuery.js";
 import dbPromise from "#db/promise";
+import { fetchLatestFollowUps } from "../../subscription/utils/latestFollowUps.js";
 
 const saltRounds = 10;
 
@@ -98,7 +99,28 @@ export const listProjectPartners = async (req, res) => {
 
     const total = Number(countRows[0]?.total) || 0;
     const sum = summaryRows[0] || {};
-    const data = listRows.map(formatPartnerListRow);
+    const followUps = await fetchLatestFollowUps(
+      "Project Partner",
+      listRows.map((row) => row.id),
+    );
+    const data = listRows.map((row) => {
+      const latest = followUps.get(Number(row.id));
+      // Never send credentials or bank details to the list
+      const {
+        password: _pw,
+        otp: _otp,
+        bankname: _bn,
+        accountholdername: _ahn,
+        accountnumber: _an,
+        ifsc: _ifsc,
+        ...safe
+      } = row;
+      return formatPartnerListRow({
+        ...safe,
+        followUp: latest?.followUp || null,
+        followUpDate: latest?.created_at || null,
+      });
+    });
 
     return res.status(200).json({
       success: true,

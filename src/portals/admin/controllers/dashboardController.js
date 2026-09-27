@@ -249,7 +249,8 @@ export const getSummary = async (req, res) => {
         subscriptionRevenueThisMonth(),
       ]);
 
-    const c = counts || {};
+    // query() resolves to [rows]; the single COUNT row is rows[0]
+    const c = (Array.isArray(counts) ? counts[0] : counts) || {};
     const sub = subscriptionRows?.[0] || {};
     const subTotalAll = Number(subscriptionTotalRows?.[0]?.total) || 0;
     const totalLeads = Number(c.totalEnquirersAll) || 0;
@@ -326,4 +327,28 @@ export const getData = (req, res) => {
 
     return res.json(results[0]);
   });
+};
+
+/** Counts for the admin Users page (cheap COUNT queries, no dashboard extras). */
+export const getUsersOverview = async (req, res) => {
+  try {
+    const [[row]] = await dbPromise.query(`
+      SELECT
+        (SELECT COUNT(*) FROM projectpartner) AS totalProjectPartner,
+        (SELECT COUNT(*) FROM salespersons) AS totalSalesPerson,
+        (SELECT COUNT(*) FROM territorypartner) AS totalTerritoryPartner,
+        (SELECT COUNT(*) FROM employees) AS totalEmployee,
+        (SELECT COUNT(*) FROM departments) AS totalDepartment,
+        (SELECT COUNT(*) FROM roles) AS totalRole,
+        (SELECT COUNT(*) FROM guestUsers) AS totalGuestUser,
+        (SELECT COUNT(enquirersid) FROM enquirers WHERE status = 'Token') AS totalCustomer
+    `);
+    const counts = Object.fromEntries(
+      Object.entries(row || {}).map(([k, v]) => [k, Number(v) || 0]),
+    );
+    return res.json({ success: true, counts });
+  } catch (error) {
+    console.error("getUsersOverview error:", error);
+    return res.status(500).json({ success: false, message: "Failed to load user counts" });
+  }
 };

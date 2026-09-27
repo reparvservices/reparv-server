@@ -23,7 +23,9 @@ export const getProfile = (req, res) => {
     if (result.length === 0) {
       return res.status(404).json({ message: "User not found" });
     }
-    res.json(result[0]);
+    // Never send credentials or OTPs to the browser
+    const { password: _pw, otp: _otp, ...profile } = result[0];
+    res.json(profile);
   });
 };
 
@@ -376,4 +378,71 @@ export const changePassword = async (req, res) => {
     console.error("Error:", error);
     res.status(500).json({ message: "Internal server error", error });
   }
+};
+
+const PARTNER_INTERESTS = new Set([
+  "Mutual Growth Opportunity",
+  "Strong Interest in Infrastructure and Development",
+  "Complementary Skills and Experience",
+  "Market Expansion Vision",
+  "Long-Term Value Creation",
+  "Collaborative Approach",
+  "Technology Integration",
+  "Interest in Sustainable and Smart Projects",
+]);
+
+/**
+ * PUT /project-partner/profile/details
+ * Registration details a partner completes after signing up through "Join as Partner".
+ * Body: { email, state, city, intrest, refrence }  (column names as in projectpartner)
+ */
+export const updateProfileDetails = (req, res) => {
+  const userId = req.projectPartnerUser?.id;
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized Access, Please Login Again!" });
+  }
+
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const state = String(req.body.state || "").trim();
+  const city = String(req.body.city || "").trim();
+  const intrest = String(req.body.intrest || "").trim();
+  const refrence = String(req.body.refrence || "").trim().slice(0, 30); // column is VARCHAR(30)
+
+  if (!email || !state || !city || !intrest) {
+    return res.status(400).json({ message: "Email, state, city and interest are required" });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ message: "Enter a valid email address" });
+  }
+  if (!PARTNER_INTERESTS.has(intrest)) {
+    return res.status(400).json({ message: "Select a valid interest" });
+  }
+
+  db.query(
+    "SELECT id FROM projectpartner WHERE email = ? AND id <> ? LIMIT 1",
+    [email, userId],
+    (dupErr, dup) => {
+      if (dupErr) {
+        console.error("updateProfileDetails:", dupErr);
+        return res.status(500).json({ message: "Database error" });
+      }
+      if (dup.length) {
+        return res.status(409).json({ message: "This email is already used by another partner" });
+      }
+
+      db.query(
+        `UPDATE projectpartner
+         SET email = ?, state = ?, city = ?, intrest = ?, refrence = ?, updated_at = ?
+         WHERE id = ?`,
+        [email, state, city, intrest, refrence || null, moment().format("YYYY-MM-DD HH:mm:ss"), userId],
+        (err) => {
+          if (err) {
+            console.error("updateProfileDetails:", err);
+            return res.status(500).json({ message: "Database error" });
+          }
+          return res.json({ success: true, message: "Profile details saved" });
+        },
+      );
+    },
+  );
 };

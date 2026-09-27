@@ -6,6 +6,28 @@ import {
 } from "#utils/whatsappAdminChat.js";
 import db from "#db";
 
+/** Turn a WhatsApp Cloud API error into something an admin can act on. */
+function describeWhatsAppError(err) {
+  const e = err?.response?.data?.error || err?.error || {};
+  const code = Number(e.code);
+  if (code === 190) {
+    return "WhatsApp access token has expired. Update WHATSAPP_ACCESS_TOKEN on the server (use a permanent System User token).";
+  }
+  if (code === 131047) {
+    return "More than 24 hours since this customer last messaged you. WhatsApp only allows approved template messages until they reply.";
+  }
+  if (code === 131026 || code === 131030) {
+    return "This number can't receive WhatsApp messages (not on WhatsApp or not allowed for this account).";
+  }
+  if (code === 131056 || code === 130429 || code === 80007) {
+    return "WhatsApp rate limit reached. Wait a moment and try again.";
+  }
+  if (code === 100 || code === 10 || code === 200) {
+    return `WhatsApp rejected the request (${e.message || "permission or parameter error"}). Check the phone number ID and token permissions.`;
+  }
+  return e.message || err?.message || "WhatsApp send error";
+}
+
 export const listConversations = (req, res) => {
   db.query(
     `SELECT t1.phone_e164,
@@ -103,8 +125,8 @@ export const sendMessage = async (req, res) => {
     } catch (err) {
       console.error("sendTextMessage error:", err?.response?.data || err);
       return res.status(502).json({
-        message: "WhatsApp send error",
-        details: err?.response?.data || err.message,
+        message: describeWhatsAppError(err),
+        code: err?.response?.data?.error?.code || null,
       });
     }
   });

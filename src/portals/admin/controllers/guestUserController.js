@@ -7,6 +7,85 @@ import sendEmail from "#utils/nodeMailer.js";
 import { deleteFromS3, uploadToS3 } from "#utils/imageUpload.js";
 
 const saltRounds = 10;
+// Columns safe to send to the admin list (no password, OTP, bank details or tokens)
+const GUEST_LIST_COLUMNS = `id, fullname, contact, email, userimage, username, role,
+  address, state, city, pincode, adharno, panno, adharimage, panimage,
+  status, loginstatus, auth_provider, created_at, updated_at`;
+
+/**
+ * GET /admin/guestuser/list?limit=&offset=&search=&status=&date_from=&date_to=
+ * Returns { data, total, limit, offset, counts }.
+ */
+export const list = async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 200);
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+  const search = String(req.query.search || "").trim();
+  const status = String(req.query.status || "").trim();
+  const { date_from: dateFrom, date_to: dateTo } = req.query;
+
+  const where = [];
+  const params = [];
+  if (search) {
+    const like = `%${search}%`;
+    where.push(
+      "(fullname LIKE ? OR email LIKE ? OR contact LIKE ? OR city LIKE ? OR username LIKE ?)",
+    );
+    params.push(like, like, like, like, like);
+  }
+  if (status === "Active" || status === "Inactive") {
+    where.push("status = ?");
+    params.push(status);
+  }
+  if (dateFrom) {
+    where.push("created_at >= ?");
+    params.push(`${dateFrom} 00:00:00`);
+  }
+  if (dateTo) {
+    where.push("created_at <= ?");
+    params.push(`${dateTo} 23:59:59`);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  try {
+    const q = db.promise();
+    const [[rows], [[{ total }]], [[counts]]] = await Promise.all([
+      q.query(
+        `SELECT ${GUEST_LIST_COLUMNS} FROM guestUsers ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
+        [...params, limit, offset],
+      ),
+      q.query(`SELECT COUNT(*) AS total FROM guestUsers ${whereSql}`, params),
+      q.query(`SELECT
+          COUNT(*) AS total,
+          SUM(status = 'Active') AS active,
+          SUM(status <> 'Active' OR status IS NULL) AS inactive,
+          SUM(loginstatus = 'Active') AS loginActive
+        FROM guestUsers`),
+    ]);
+
+    const data = rows.map((row) => ({
+      ...row,
+      created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+      updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
+    }));
+
+    return res.json({
+      data,
+      total: Number(total) || 0,
+      limit,
+      offset,
+      counts: {
+        total: Number(counts?.total) || 0,
+        active: Number(counts?.active) || 0,
+        inactive: Number(counts?.inactive) || 0,
+        loginActive: Number(counts?.loginActive) || 0,
+      },
+    });
+  } catch (err) {
+    console.error("Error fetching guest user list:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
+};
+
 // **Fetch All **
 export const getAll = (req, res) => {
   const sql = "SELECT * FROM guestUsers ORDER BY id DESC";

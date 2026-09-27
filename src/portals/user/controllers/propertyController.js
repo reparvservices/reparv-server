@@ -194,6 +194,17 @@ export const addProperty = async (req, res) => {
       return res.status(409).json({ message: "Property name already exists!" });
     }
 
+    // Check city before inserting so an unknown city doesn't leave a half-saved row
+    const [cityResult] = await db
+      .promise()
+      .query("SELECT cityNACL FROM cities WHERE city = ? LIMIT 1", [city]);
+
+    if (!cityResult.length) {
+      return res.status(404).json({ message: "City not found in database" });
+    }
+
+    const cityNACL = cityResult[0].cityNACL;
+
     // 2 Insert property (store URL arrays as JSON strings)
     const insertSQL = `
       INSERT INTO properties (
@@ -240,16 +251,6 @@ export const addProperty = async (req, res) => {
     const [insertResult] = await db.promise().query(insertSQL, values);
     const newPropertyId = insertResult.insertId;
 
-    // 3 Get cityNACL
-    const [cityResult] = await db
-      .promise()
-      .query("SELECT cityNACL FROM cities WHERE city = ? LIMIT 1", [city]);
-
-    if (!cityResult.length) {
-      return res.status(404).json({ message: "City not found in database" });
-    }
-
-    const cityNACL = cityResult[0].cityNACL;
     const propertyCityId = `${cityNACL}-${newPropertyId}`;
 
     // 4 Update propertyCityId

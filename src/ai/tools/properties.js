@@ -91,21 +91,33 @@ function buildPropertyUrl(seoSlug) {
   return `${PROPERTY_BASE_URL.replace(/\/$/, "")}/property-info/${seoSlug}`;
 }
 
-function normalizePropertyType(raw) {
+/**
+ * Map what the user asked for to properties.propertyCategory patterns
+ * (NewFlat, ResaleFlat, RentalFlat, NewPlot, FarmLand, RowHouse, NewShop…).
+ */
+function categoryPatterns(raw) {
   const t = String(raw || "").toLowerCase();
-  if (/plot|land|zameen/.test(t)) return "Plot";
-  if (/apartment|flat|bhk/.test(t)) return "Apartment";
-  if (/villa|bungalow/.test(t)) return "Villa";
-  if (/house|home|bungalow/.test(t)) return "House";
-  if (/commercial|shop|office/.test(t)) return "Commercial";
-  return raw;
+  const patterns = [];
+  if (/plot|land|zameen|jameen/.test(t)) patterns.push("%Plot%", "%Land%");
+  if (/apartment|flat|bhk/.test(t)) patterns.push("%Flat%");
+  if (/villa|bungalow|bunglow|house|home|ghar|row ?house/.test(t)) {
+    patterns.push("%Villa%", "%House%", "%Bunglow%", "%Bungalow%");
+  }
+  if (/commercial|shop|office|showroom|godown|warehouse|industrial/.test(t)) {
+    patterns.push("%Shop%", "%Office%", "%Commercial%", "%Showroom%", "%Godown%", "%Industrial%");
+  }
+  return [...new Set(patterns)];
 }
+
+const wantsRental = (raw) => /rent|rental|kiraya|kiraye|lease/i.test(String(raw || ""));
+const wantsResale = (raw) => /resale|old|purana|second/i.test(String(raw || ""));
 
 async function runPropertySearch(filters = {}) {
   const {
     city,
     area,
     propertyType,
+    listingType,
     budgetMin,
     budgetMax,
     bedrooms,
@@ -140,33 +152,53 @@ async function runPropertySearch(filters = {}) {
     conditions.push("p.totalSalesPrice >= ?");
     params.push(Number(budgetMin));
   }
+  // Rentals only when asked for (or a monthly-rent sized budget); a ₹15k rent
+  // must not show up for a "under ₹60 lakh" buying search
+  const rentalRequested =
+    String(listingType || "").toLowerCase() === "rent" ||
+    wantsRental(propertyType) ||
+    (budgetMax != null && Number(budgetMax) < 200000);
+  if (rentalRequested) {
+    conditions.push("p.propertyCategory LIKE 'Rental%'");
+  } else {
+    conditions.push("(p.propertyCategory IS NULL OR p.propertyCategory NOT LIKE 'Rental%')");
+    if (wantsResale(propertyType)) conditions.push("p.propertyCategory LIKE 'Resale%'");
+  }
+
   if (propertyType) {
-    const normalized = normalizePropertyType(propertyType);
-    conditions.push(
-      "(p.propertyCategory LIKE ? OR p.propertyType LIKE ? OR p.propertyCategory LIKE ? OR p.propertyType LIKE ?)",
-    );
-    params.push(
-      `%${normalized}%`,
-      `%${normalized}%`,
-      `%${propertyType}%`,
-      `%${propertyType}%`,
-    );
+    const patterns = categoryPatterns(propertyType);
+    if (patterns.length) {
+      conditions.push(`(${patterns.map(() => "p.propertyCategory LIKE ?").join(" OR ")})`);
+      params.push(...patterns);
+    } else if (!wantsRental(propertyType) && !wantsResale(propertyType)) {
+      conditions.push("(p.propertyCategory LIKE ? OR p.propertyType LIKE ?)");
+      params.push(`%${propertyType}%`, `%${propertyType}%`);
+    }
   }
   if (possessionStatus) {
     conditions.push("(p.propertyStatusFeature LIKE ? OR p.possessionDate IS NOT NULL)");
     params.push(`%${possessionStatus}%`);
   }
 
+  // BHK is usually on the listing itself (propertyType JSON); unit inventory
+  // (propertiesinfo) only exists for some projects
+  const bhk = String(bedrooms || "").match(/(\d+(?:\.5)?)\s*bhk/i);
+  const bedroomText = bhk ? `${bhk[1]} BHK` : bedrooms;
   const bedroomClause = bedrooms
-    ? `AND EXISTS (
-        SELECT 1 FROM propertiesinfo pi2
-        WHERE pi2.propertyid = p.propertyid
-          AND pi2.status = 'Available'
-          AND (pi2.type LIKE ? OR pi2.flatno LIKE ?)
+    ? `AND (
+        p.propertyType LIKE ?
+        OR EXISTS (
+          SELECT 1 FROM propertiesinfo pi2
+          WHERE pi2.propertyid = p.propertyid
+            AND pi2.status = 'Available'
+            AND (pi2.type LIKE ? OR pi2.flatno LIKE ?)
+        )
       )`
     : "";
 
-  const bedroomParams = bedrooms ? [`%${bedrooms}%`, `%${bedrooms}%`] : [];
+  const bedroomParams = bedrooms
+    ? [`%"${bedroomText}"%`, `%${bedroomText}%`, `%${bedroomText}%`]
+    : [];
 
   const excludeIds = (Array.isArray(excludePropertyIds) ? excludePropertyIds : [])
     .map((id) => Number(id))
@@ -256,6 +288,10 @@ export async function propertySearch(filters = {}) {
 
   if (results.length === 0 && (searchFilters.budgetMin != null || searchFilters.budgetMax != null)) {
     const { budgetMin, budgetMax, ...broader } = searchFilters;
+    // Dropping a small (monthly) budget must not turn a rent search into a buy search
+    if (budgetMax != null && Number(budgetMax) < 200000 && !broader.listingType) {
+      broader.listingType = "rent";
+    }
     results = await runPropertySearch(broader);
   }
 

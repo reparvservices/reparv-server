@@ -15,6 +15,7 @@ import {
   addFollowUp,
   getProjectPartnerList,
   assignProjectPartner,
+  list,
 } from "../controllers/territoryPartnerController.js";
 
 const router = express.Router();
@@ -33,6 +34,7 @@ const upload = multer({
 
 router.get("/active", getAllActive);
 router.get("/get/:id", getById);
+router.get("/list", list);
 router.get("/:partnerlister", getAll);
 router.get("/projectpartner/list/:id", getProjectPartnerList);
 

@@ -13,6 +13,7 @@ import { resolveWhatsappWebhookVerifyToken } from "./portals/webhooks/controller
 
 import { attachCors } from "./core/http/cors.js";
 import { verifyToken } from "./core/middleware/verifyToken.js";
+import { requireAdminAccess } from "./core/middleware/adminAccess.js";
 import { requireActivePartnerSubscription } from "./core/middleware/requireActivePartnerSubscription.js";
 import { mountPublicRoutes } from "./http/mountPublicRoutes.js";
 import { mountProtectedRoutes } from "./http/mountProtectedRoutes.js";
@@ -80,9 +81,25 @@ app.use(
   razorpayWebhookRoutes,
 );
 
+// WhatsApp webhooks: keep the raw body so the Meta signature can be verified
+app.use(
+  "/webhooks/whatsapp-chat",
+  express.json({
+    limit: bodyLimit,
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
+
 app.use(express.json({ limit: bodyLimit }));
 
 app.use("/webhooks/whatsapp-chat", whatsappChatWebhookRoutes);
+if (!(process.env.WHATSAPP_APP_SECRET || process.env.META_APP_SECRET)) {
+  console.warn(
+    "[webhooks/whatsapp-chat] WHATSAPP_APP_SECRET is not set — incoming webhook signatures are not verified.",
+  );
+}
 if (!resolveWhatsappWebhookVerifyToken()) {
   console.warn(
     "[webhooks/whatsapp-chat] WHATSAPP_WEBHOOK_VERIFY_TOKEN (or VERIFY_TOKEN) is not set — Meta callback URL verification will return 403 until it is set in the process environment.",
@@ -193,6 +210,8 @@ app.get("/health", (req, res) => {
 mountPublicRoutes(app);
 
 app.use(verifyToken);
+// Admin role check (verifyToken only proves *some* login)
+app.use(requireAdminAccess);
 app.use(requireActivePartnerSubscription);
 mountProtectedRoutes(app);
 

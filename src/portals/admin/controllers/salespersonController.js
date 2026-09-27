@@ -8,6 +8,7 @@ import sendProjectPartnerChangeEmail from "#utils/sendProjectPartnerChangeEmail.
 import { deleteFromS3, uploadToS3 } from "#utils/imageUpload.js";
 import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
 import { attachSubscriptionsToPartners } from "../../subscription/utils/partnerSubscriptionAttach.js";
+import { listPartnersPaged } from "../../subscription/utils/pagedPartnerList.js";
 
 const saltRounds = 10;
 
@@ -1155,5 +1156,18 @@ export const assignProjectPartner = async (req, res) => {
   } catch (error) {
     console.error("Error assigning project partner:", error);
     res.status(500).json({ message: "Internal server error", error });
+  }
+};
+
+/**
+ * GET /admin/salespersons/list
+ * Query: limit, offset, search, lister, filter, date_from, date_to
+ */
+export const list = async (req, res) => {
+  try {
+    return res.json(await listPartnersPaged("sales", req.query));
+  } catch (err) {
+    console.error("Error fetching paged sales partners:", err);
+    return res.status(500).json({ message: "Database error" });
   }
 };

@@ -1,8 +1,26 @@
+import jwt from "jsonwebtoken";
 import otpStore from "#utils/otpStore.js";
 import { sendOtpSMS } from "#utils/sendOtpSMS.js";
 import { sendAuthOtpTemplate } from "#utils/whatsappAdminChat.js";
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes — matches WhatsApp auth template validity
+const MAX_VERIFY_ATTEMPTS = 5; // then the code is discarded (stops guessing)
+const PHONE_VERIFIED_PURPOSE = "phone_verified";
+const PHONE_VERIFIED_TTL = "30m";
+
+/**
+ * Check a proof-of-OTP token issued by verifyOtp for this phone number.
+ * Used by forms that must come from a verified phone (e.g. site visit booking).
+ */
+export function isPhoneVerificationValid(token, phone) {
+  if (!token || !phone || !process.env.JWT_SECRET) return false;
+  try {
+    const payload = jwt.verify(String(token), process.env.JWT_SECRET);
+    return payload?.purpose === PHONE_VERIFIED_PURPOSE && payload?.phone === String(phone);
+  } catch {
+    return false;
+  }
+}
 
 function shouldUseWhatsAppOtp() {
   if (process.env.OTP_VIA_WHATSAPP === "0") return false;
@@ -88,15 +106,28 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({ message: "OTP expired" });
     }
 
-    if (record.otp !== otp) {
+    if (String(record.otp) !== String(otp)) {
+      record.attempts = (record.attempts || 0) + 1;
+      if (record.attempts >= MAX_VERIFY_ATTEMPTS) {
+        otpStore.delete(phone);
+        return res.status(429).json({ message: "Too many wrong attempts. Please request a new OTP." });
+      }
       return res.status(401).json({ message: "Invalid OTP" });
     }
 
     otpStore.delete(phone);
 
+    // Short-lived proof that this phone was verified; forms send it back
+    const verificationToken = jwt.sign(
+      { phone, purpose: PHONE_VERIFIED_PURPOSE },
+      process.env.JWT_SECRET,
+      { expiresIn: PHONE_VERIFIED_TTL },
+    );
+
     return res.status(200).json({
       success: true,
       message: "OTP verified",
+      verificationToken,
     });
   } catch (err) {
     console.error("Verify OTP Error:", err);

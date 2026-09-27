@@ -274,16 +274,19 @@ export const edit = async (req, res) => {
       uploadToS3(req.files?.["reraImage"]?.[0]),
     ]);
 
-    // Get old images
+    // Get old images (only for this project partner's own sales partners)
     db.query(
-      "SELECT adharimage, panimage, reraimage FROM salespersons WHERE salespersonsid = ?",
-      [salespersonsid],
+      "SELECT adharimage, panimage, reraimage FROM salespersons WHERE salespersonsid = ? AND projectpartnerid = ?",
+      [salespersonsid, req.projectPartnerUser?.id],
       async (selectErr, results) => {
         if (selectErr)
           return res.status(500).json({
             message: "Database error while fetching old images",
             error: selectErr,
           });
+        if (!results.length) {
+          return res.status(404).json({ message: "Sales partner not found" });
+        }
 
         const oldData = results[0];
 
@@ -348,4 +351,28 @@ export const edit = async (req, res) => {
     console.error("Error updating sales person:", err);
     res.status(500).json({ message: "Internal Server Error", error: err });
   }
+};
+
+/** One of the signed-in project partner's own sales partners (no secrets). */
+export const getById = (req, res) => {
+  const userId = req.projectPartnerUser?.id;
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized Access, Please Login Again!" });
+  }
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ message: "Invalid Partner ID" });
+
+  db.query(
+    "SELECT * FROM salespersons WHERE salespersonsid = ? AND projectpartnerid = ?",
+    [id, userId],
+    (err, rows) => {
+      if (err) {
+        console.error("Error fetching sales partner:", err);
+        return res.status(500).json({ message: "Database error" });
+      }
+      if (!rows.length) return res.status(404).json({ message: "Sales partner not found" });
+      const { password: _pw, otp: _otp, ...partner } = rows[0];
+      return res.json(partner);
+    },
+  );
 };

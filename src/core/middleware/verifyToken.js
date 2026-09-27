@@ -1,9 +1,7 @@
 import jwt from "jsonwebtoken";
+import { isAdminPath, isPublicAdminRequest } from "./adminAccess.js";
 
 const publicRoutes = [
-  "/admin/login",
-  "/admin/auth/me",
-  "/admin/setup/create-user",
   "/builder/login",
   "/employee/login",
   "/promoter/login",
@@ -16,24 +14,6 @@ const publicRoutes = [
   "/user/send-otp",
   "/user/verify-otp",
   "/user/auth/google",
-  "/admin/faqs",
-  "/admin/authorities",
-  "/admin/states",
-  "/admin/cities",
-  "/admin/promoter/add",
-  "/admin/salespersons/status",
-  "/admin/salespersons/add",
-  "/admin/salespersons/assignlogin",
-  "/admin/partner/add",
-  "/admin/partner/assignlogin",
-  "/admin/partner/status",
-  "/admin/projectpartner/status",
-  "/admin/projectpartner/add",
-  "/admin/projectpartner/assignlogin",
-  "/admin/territorypartner/add",
-  "/admin/territorypartner/status",
-  "/admin/territorypartner/assignlogin",
-  "/admin/marketing-content",
   "/api/payment/create-order",
   "/api/payment/verify-payment",
   "/api/user",
@@ -118,18 +98,10 @@ const publicRoutes = [
   "/projectpartner/roles",
   "/project-partner/profile/contact",
   "/project-partner/profile/schedule",
-  "/admin/faqs/:location",
-  "/admin/propertyAnalytics",
-  "/admin/blogAnalytics",
-  "/admin/call-enquirers/add",
-  "/admin/whatsapp-enquirers/add",
   "/project-partner/properties/additionalinfo/",
   "/customerapp/ticket",
   "customerapp/user/google-login",
   "/customerapp/loans",
-  "/admin/blog",
-  "/admin/subscribers",
-  "/admin/partner",
   "/projectpartner/builders/add",
   "/projectpartner/builders",
   "/projectPartner/property/",
@@ -204,7 +176,11 @@ function assignPartnerFromBearer(req, decoded, path) {
 }
 
 export function verifyToken(req, res, next) {
-  if (publicRoutes.some((route) => req.path.startsWith(route))) {
+  // /admin endpoints use exact method + path rules (see adminAccess.js);
+  // prefix matching here used to make admin write APIs public.
+  if (isAdminPath(req.path)) {
+    if (isPublicAdminRequest(req.method, req.path)) return next();
+  } else if (publicRoutes.some((route) => req.path.startsWith(route))) {
     return next();
   }
 

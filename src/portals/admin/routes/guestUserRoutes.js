@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import {
   getAll,
+  list,
   getAllActive,
   add,
   edit,
@@ -28,6 +29,7 @@ const upload = multer({
 
 /* ---------- ROUTES ---------- */
 router.get("/", getAll);
+router.get("/list", list);
 router.get("/active", getAllActive);
 router.get("/:id", getById);
 

@@ -1,5 +1,6 @@
 import db from "#db";
 import moment from "moment-timezone";
+import { isPhoneVerificationValid } from "../../shared/controllers/otpController.js";
 
 export const add = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -13,6 +14,7 @@ export const add = async (req, res) => {
     minbudget,
     maxbudget,
     source,
+    otpToken,
   } = req.body;
 
   if (
@@ -26,6 +28,14 @@ export const add = async (req, res) => {
     !source
   ) {
     return res.status(400).json({ message: "All fields are required" });
+  }
+
+  // Site visit bookings must come from an OTP-verified phone number
+  if (!isPhoneVerificationValid(otpToken, phone)) {
+    return res.status(401).json({
+      code: "OTP_REQUIRED",
+      message: "Please verify your phone number with OTP to book a site visit.",
+    });
   }
   
   const minBudget = parseFloat(minbudget);

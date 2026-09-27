@@ -5,19 +5,8 @@ const REPARY_SCOPE_SQL = `(pp.partneradder IS NULL OR pp.partneradder = '')`;
 
 const FOLLOW_UP_SQL = `(pp.paymentstatus = 'Follow Up' AND pp.loginstatus = 'Inactive')`;
 
-const LATEST_FOLLOWUP_JOIN = `
-  LEFT JOIN (
-    SELECT p1.partnerId, p1.followUp, p1.created_at AS followUpDate
-    FROM partnerFollowup p1
-    INNER JOIN (
-      SELECT partnerId, MAX(created_at) AS latest
-      FROM partnerFollowup
-      WHERE role = 'Project Partner'
-      GROUP BY partnerId
-    ) p2 ON p1.partnerId = p2.partnerId AND p1.created_at = p2.latest
-    WHERE p1.role = 'Project Partner'
-  ) pf ON pf.partnerId = pp.id
-`;
+// Latest follow-ups are attached per page by fetchLatestFollowUps (see
+// listProjectPartners); joining all of partnerFollowup here made every query slow.
 
 /** Canonical project subscription per partner (one row per user_id). */
 export const CANONICAL_SUB_JOIN_SQL = `
@@ -42,7 +31,6 @@ export const CANONICAL_SUB_JOIN_SQL = `
 
 export const PARTNER_LIST_FROM_SQL = `
   FROM projectpartner pp
-  ${LATEST_FOLLOWUP_JOIN}
   ${CANONICAL_SUB_JOIN_SQL}
   WHERE ${REPARY_SCOPE_SQL}
 `;
@@ -149,8 +137,6 @@ export function buildPartnerListQueries(options) {
   const listSql = `
     SELECT
       pp.*,
-      pf.followUp,
-      pf.followUpDate,
       sub.id AS subscription_id,
       sub.status AS subscription_status,
       sub.plan_name AS subscription_plan_name,
