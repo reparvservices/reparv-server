@@ -22,6 +22,12 @@ const PROJECT_PARTNER_API_FEATURES = [
   [/^\/project-partner\/(customers|builders|employees|roles|departments)(\/|$)/, PARTNER_FEATURES.CRM],
   [/^\/project-partner\/(sales|territory)/, PARTNER_FEATURES.TEAM],
   [/^\/project-partner\/calender/, PARTNER_FEATURES.SITE_VISITS],
+  // Mobile app (reparv-project-partner-app) — same features as the web panel
+  [/^\/projectpartner\/property/, PARTNER_FEATURES.PROPERTIES],
+  [/^\/projectpartner\/enquiries/, PARTNER_FEATURES.LEADS],
+  [/^\/projectpartner\/(builders|employee|departments|roles)(\/|$)/, PARTNER_FEATURES.CRM],
+  [/^\/projectpartner\/partner(\/|$)/, PARTNER_FEATURES.TEAM],
+  [/^\/projectpartner\/event(\/|$)/, PARTNER_FEATURES.SITE_VISITS],
 ];
 
 export function requiredFeatureForApi(path, role) {
