@@ -24,6 +24,7 @@ export async function ensurePropertiesSchema() {
       "pp_approval_notified",
       "TINYINT(1) NOT NULL DEFAULT 0",
     );
+    await ensureColumn("properties", "instagramReelLink", "TEXT NULL");
   })();
 
   return schemaReady;

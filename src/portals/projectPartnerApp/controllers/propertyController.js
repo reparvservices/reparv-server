@@ -6,6 +6,10 @@ import { deleteFromS3, uploadToS3 } from "#utils/imageUpload.js";
 import { convertImagesToWebp } from "#utils/convertImagesToWebp.js";
 import { uploadVideoToS3 } from "#utils/videoUpload.js";
 import { sanitize } from "#utils/sanitize.js";
+import {
+  parsePropertyVideoLinks,
+  pickPropertyVideoLinkUpdates,
+} from "#utils/videoLinks.js";
 function toSlug(text) {
   return text
     .toLowerCase() // Convert to lowercase
@@ -371,6 +375,11 @@ export const update = async (req, res) => {
       return res.status(400).json({ message: "Invalid property ID" });
     }
 
+    const videoLinkUpdates = pickPropertyVideoLinkUpdates(req.body);
+    if (videoLinkUpdates.error) {
+      return res.status(400).json({ message: videoLinkUpdates.error });
+    }
+
     const {
       builderid,
       projectBy,
@@ -659,13 +668,19 @@ export const update = async (req, res) => {
       propertyVideo ?? null,
     ];
 
+    // Video links — only the ones the client sent
+    const videoLinkClauses = Object.keys(videoLinkUpdates.fields).map(
+      (key) => `${key} = ?`,
+    );
+    const videoLinkValues = Object.values(videoLinkUpdates.fields);
+
     const updateSQL = `
       UPDATE properties SET
-        ${[...coreFields, ...sentImageClauses].join(",\n        ")}
+        ${[...coreFields, ...sentImageClauses, ...videoLinkClauses].join(",\n        ")}
       WHERE propertyid = ?
     `;
 
-    const values = [...coreValues, ...sentImageValues, Id];
+    const values = [...coreValues, ...sentImageValues, ...videoLinkValues, Id];
 
     db.query(updateSQL, values, (err, result) => {
       if (err) {
@@ -719,6 +734,8 @@ export const addPropertyNew = async (req, res) => {
       longitude,
       projectpartnerid,
       propertyVideo,
+      videoLink,
+      instagramReelLink,
     } = req.body;
 
     console.log(req.body);
@@ -743,6 +760,13 @@ export const addPropertyNew = async (req, res) => {
         success: false,
         message: `Missing fields: ${missing.join(", ")}`,
       });
+    }
+
+    const videoLinks = parsePropertyVideoLinks({ videoLink, instagramReelLink });
+    if (videoLinks.error) {
+      return res
+        .status(400)
+        .json({ success: false, message: videoLinks.error });
     }
 
     // ── Duplicate check ──────────────────────────────────────────────────────
@@ -882,6 +906,8 @@ export const addPropertyNew = async (req, res) => {
             carpetArea,
             ${imageColumnNames},
             propertyVideo,
+            videoLink,
+            instagramReelLink,
             seoSlug,
             created_at,
             updated_at
@@ -889,7 +915,7 @@ export const addPropertyNew = async (req, res) => {
           VALUES (
             ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
             ${imagePlaceholders},
-            ?,?,NOW(),NOW()
+            ?,?,?,?,NOW(),NOW()
           )
         `;
 
@@ -912,6 +938,8 @@ export const addPropertyNew = async (req, res) => {
           carpetArea, // null for farm/plot types
           ...imageColumns,
           propertyVideo,
+          videoLinks.videoLink,
+          videoLinks.instagramReelLink,
           seoSlug,
         ];
 

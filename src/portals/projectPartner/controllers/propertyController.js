@@ -8,6 +8,10 @@ import { convertImagesToWebp } from "#utils/convertImagesToWebp.js";
 import { sanitize } from "#utils/sanitize.js";
 import { deleteFromS3, uploadToS3 } from "#utils/imageUpload.js";
 import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
+import {
+  parsePropertyVideoLinks,
+  pickPropertyVideoLinkUpdates,
+} from "#utils/videoLinks.js";
 
 function toSlug(text) {
   return text
@@ -419,6 +423,8 @@ export const v2AddProperty = async (req, res) => {
     projectBy,
     contact,
     email,
+    videoLink,
+    instagramReelLink,
 
     frontView = [],
     sideView = [],
@@ -435,6 +441,11 @@ export const v2AddProperty = async (req, res) => {
     return res.status(400).json({
       message: "Property name, category, city, and state are required",
     });
+  }
+
+  const videoLinks = parsePropertyVideoLinks({ videoLink, instagramReelLink });
+  if (videoLinks.error) {
+    return res.status(400).json({ message: videoLinks.error });
   }
 
   try {
@@ -471,13 +482,13 @@ export const v2AddProperty = async (req, res) => {
           propertyName, totalSalesPrice,
           totalOfferPrice, builtUpArea, carpetArea,
           state, city, pincode, address, latitude, longitude,
-          projectBy, contact, email,
+          projectBy, contact, email, videoLink, instagramReelLink,
           frontView, sideView, kitchenView, hallView,
           bedroomView, bathroomView, balconyView,
           nearestLandmark, developedAmenities, seoSlug,
           updated_at, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       const [insertResult] = await conn.query(insertSQL, [
@@ -497,6 +508,8 @@ export const v2AddProperty = async (req, res) => {
         projectBy || null,
         contact || null,
         email || null,
+        videoLinks.videoLink,
+        videoLinks.instagramReelLink,
         JSON.stringify(frontView),
         JSON.stringify(sideView),
         JSON.stringify(kitchenView),
@@ -894,6 +907,11 @@ export const v2Update = async (req, res) => {
     return res.status(400).json({ message: "Required fields missing" });
   }
 
+  const videoLinkUpdates = pickPropertyVideoLinkUpdates(req.body);
+  if (videoLinkUpdates.error) {
+    return res.status(400).json({ message: videoLinkUpdates.error });
+  }
+
   // EMI
   const emi = calculateEMI(Number(totalOfferPrice));
 
@@ -946,7 +964,7 @@ export const v2Update = async (req, res) => {
             ageOfPropertyFeature=?, amenitiesFeature=?, propertyStatusFeature=?, smartHomeFeature=?,
             securityBenefit=?, primeLocationBenefit=?, rentalIncomeBenefit=?, qualityBenefit=?, capitalAppreciationBenefit=?, ecofriendlyBenefit=?,
             frontView=?, sideView=?, kitchenView=?, hallView=?, bedroomView=?, bathroomView=?, balconyView=?,
-            nearestLandmark=?, developedAmenities=?, updated_at=?
+            nearestLandmark=?, developedAmenities=?, videoLink=?, instagramReelLink=?, updated_at=?
           WHERE propertyid = ?
         `;
 
@@ -1017,6 +1035,14 @@ export const v2Update = async (req, res) => {
           mergeImages(existing.balconyView, balconyView),
           mergeImages(existing.nearestLandmark, nearestLandmark),
           mergeImages(existing.developedAmenities, developedAmenities),
+
+          // video links: keep stored value unless the field was sent
+          videoLinkUpdates.fields.videoLink !== undefined
+            ? videoLinkUpdates.fields.videoLink
+            : existing.videoLink,
+          videoLinkUpdates.fields.instagramReelLink !== undefined
+            ? videoLinkUpdates.fields.instagramReelLink
+            : existing.instagramReelLink,
 
           currentdate,
           Id,
