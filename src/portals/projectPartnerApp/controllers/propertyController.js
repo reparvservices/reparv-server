@@ -432,6 +432,7 @@ export const update = async (req, res) => {
       ecofriendlyBenefit,
       propertyVideo,
       approvedBy,
+      contact,
     } = req.body;
 
     // ── Validation ────────────────────────────────────────────────────────────
@@ -554,9 +555,7 @@ export const update = async (req, res) => {
 
     // ── Core SET clauses ──────────────────────────────────────────────────────
     const coreFields = [
-      "builderid = ?",
       "projectBy = ?",
-      "possessionDate = ?",
       "propertyCategory = ?",
       "propertyApprovedBy = ?",
       "propertyName = ?",
@@ -565,7 +564,6 @@ export const update = async (req, res) => {
       "city = ?",
       "pincode = ?",
       "location = ?",
-      "distanceFromCityCenter = ?",
       "latitude = ?",
       "longitude = ?",
       "totalSalesPrice = ?",
@@ -578,13 +576,11 @@ export const update = async (req, res) => {
       "msebWater = ?",
       "maintenance = ?",
       "other = ?",
-      "tags = ?",
       "propertyType = ?",
       "builtYear = ?",
       "ownershipType = ?",
       "builtUpArea = ?", // "1.5 Acre" for farm, number for others
       "carpetArea = ?", // null for farm types
-      "parkingAvailability = ?",
       "totalFloors = ?",
       "floorNo = ?",
       "loanAvailability = ?",
@@ -594,10 +590,8 @@ export const update = async (req, res) => {
       "waterSupply = ?",
       "powerBackup = ?",
       "locationFeature = ?",
-      "sizeAreaFeature = ?",
       "parkingFeature = ?",
       "terraceFeature = ?",
-      "ageOfPropertyFeature = ?",
       "amenitiesFeature = ?",
       "propertyStatusFeature = ?",
       "smartHomeFeature = ?",
@@ -607,14 +601,11 @@ export const update = async (req, res) => {
       "qualityBenefit = ?",
       "capitalAppreciationBenefit = ?",
       "ecofriendlyBenefit = ?",
-      "propertyVideo = ?",
       "updated_at = NOW()",
     ];
 
     const coreValues = [
-      builderid ?? null,
       sanitize(projectBy) ?? null,
-      sanitize(formattedPossessionDate) ?? null,
       propertyCategory,
       approvedBy ?? null,
       propertyName,
@@ -623,7 +614,6 @@ export const update = async (req, res) => {
       city,
       pincode,
       location,
-      distanceFromCityCenter ?? null,
       latitude ?? null,
       longitude ?? null,
       totalSalesPrice,
@@ -636,13 +626,11 @@ export const update = async (req, res) => {
       msebWater ?? null,
       maintenance ?? null,
       other ?? null,
-      tags ?? null,
       propertyTypeJson,
       builtYear ?? null,
       ownershipType ?? null,
       builtUpArea, // parsed above — "1.5 Acre" or numeric string
       carpetArea, // null for farm types
-      parkingAvailability ?? null,
       totalFloors ?? null,
       floorNo ?? null,
       loanAvailability ?? null,
@@ -652,10 +640,8 @@ export const update = async (req, res) => {
       waterSupply ?? null,
       powerBackup ?? null,
       locationFeature ?? null,
-      sizeAreaFeature ?? null,
       parkingFeature ?? null,
       terraceFeature ?? null,
-      ageOfPropertyFeature ?? null,
       amenitiesFeature ?? null,
       propertyStatusFeature ?? null,
       smartHomeFeature ?? null,
@@ -665,8 +651,26 @@ export const update = async (req, res) => {
       qualityBenefit ?? null,
       capitalAppreciationBenefit ?? null,
       ecofriendlyBenefit ?? null,
-      propertyVideo ?? null,
     ];
+
+    // Optional columns the app's edit flow does not send — only update them
+    // when present, so an edit never wipes values set elsewhere.
+    const OPTIONAL_FIELDS = {
+      builderid: () => builderid ?? null,
+      possessionDate: () => sanitize(formattedPossessionDate) ?? null,
+      distanceFromCityCenter: () => distanceFromCityCenter ?? null,
+      tags: () => tags ?? null,
+      parkingAvailability: () => parkingAvailability ?? null,
+      sizeAreaFeature: () => sizeAreaFeature ?? null,
+      ageOfPropertyFeature: () => ageOfPropertyFeature ?? null,
+      propertyVideo: () => propertyVideo ?? null,
+      contact: () => sanitize(contact) ?? null,
+    };
+    const optionalKeys = Object.keys(OPTIONAL_FIELDS).filter((key) =>
+      Object.prototype.hasOwnProperty.call(req.body, key),
+    );
+    const optionalClauses = optionalKeys.map((key) => `${key} = ?`);
+    const optionalValues = optionalKeys.map((key) => OPTIONAL_FIELDS[key]());
 
     // Video links — only the ones the client sent
     const videoLinkClauses = Object.keys(videoLinkUpdates.fields).map(
@@ -676,11 +680,17 @@ export const update = async (req, res) => {
 
     const updateSQL = `
       UPDATE properties SET
-        ${[...coreFields, ...sentImageClauses, ...videoLinkClauses].join(",\n        ")}
+        ${[...coreFields, ...optionalClauses, ...sentImageClauses, ...videoLinkClauses].join(",\n        ")}
       WHERE propertyid = ?
     `;
 
-    const values = [...coreValues, ...sentImageValues, ...videoLinkValues, Id];
+    const values = [
+      ...coreValues,
+      ...optionalValues,
+      ...sentImageValues,
+      ...videoLinkValues,
+      Id,
+    ];
 
     db.query(updateSQL, values, (err, result) => {
       if (err) {

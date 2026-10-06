@@ -39,7 +39,7 @@ router.get("/reverse", async (req, res) => {
 
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "YourAppName/1.0 (your@email.com)",
+        "User-Agent": "Reparv/1.0 (contact@reparv.in)",
       },
     });
 
