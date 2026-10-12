@@ -17,7 +17,7 @@ export const getAll = (req, res) => {
     LEFT JOIN user_property_wishlist w
       ON w.property_id = p.propertyid
     WHERE p.status='Active' 
-      AND p.approve='Approved'
+      AND p.approve='Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
   `;
   const params = [];
 
@@ -100,7 +100,7 @@ export const getAllBySlug = (req, res) => {
     LEFT JOIN user_property_wishlist w
       ON w.property_id = p.propertyid
     WHERE p.status = 'Active' 
-      AND p.approve = 'Approved'
+      AND p.approve = 'Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
   `;
 
   const params = [];
@@ -218,7 +218,7 @@ export const getAllCity = (req, res) => {
   const sql = `
     SELECT DISTINCT city 
     FROM properties 
-    WHERE status = 'Active' AND approve = 'Approved' 
+    WHERE status = 'Active' AND approve = 'Approved' AND (listingType IS NULL OR listingType <> 'Buy') 
     ORDER BY city
   `;
   db.query(sql, (err, result) => {
@@ -235,7 +235,7 @@ export const getAllLocation = (req, res) => {
   const sql = `
       SELECT DISTINCT location 
       FROM properties 
-      WHERE status='Active' AND approve='Approved'
+      WHERE status='Active' AND approve='Approved' AND (listingType IS NULL OR listingType <> 'Buy')
     `;
 
   db.query(sql, (err, result) => {
@@ -262,7 +262,7 @@ export const getLocationsByCityAndCategory = (req, res) => {
     WHERE LOWER(p.city) = LOWER(?) 
     AND LOWER(p.propertyCategory) = LOWER(?)
     AND p.status='Active' 
-    AND p.approve='Approved'
+    AND p.approve='Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
   `;
   const params = [city.trim(), propertyCategory.trim()];
 

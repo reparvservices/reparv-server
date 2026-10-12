@@ -32,7 +32,7 @@ export const getTrustedBuildersPageData = async (req, res) => {
       FROM properties p
       INNER JOIN projectpartner pp ON pp.id = p.projectpartnerid
       WHERE p.status = 'Active'
-        AND p.approve = 'Approved'
+        AND p.approve = 'Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
         AND pp.status = 'Active'
         AND ${cityFilter}
     `;
@@ -56,7 +56,7 @@ export const getTrustedBuildersPageData = async (req, res) => {
           FROM properties p2
           WHERE p2.projectpartnerid = pp.id
             AND p2.status = 'Active'
-            AND p2.approve = 'Approved'
+            AND p2.approve = 'Approved' AND (p2.listingType IS NULL OR p2.listingType <> 'Buy')
             AND TRIM(p2.city) = ?
             AND p2.frontView IS NOT NULL
           ORDER BY p2.propertyid DESC
@@ -66,7 +66,7 @@ export const getTrustedBuildersPageData = async (req, res) => {
       INNER JOIN properties p ON p.projectpartnerid = pp.id
       WHERE pp.status = 'Active'
         AND p.status = 'Active'
-        AND p.approve = 'Approved'
+        AND p.approve = 'Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
         AND ${cityFilter}
       GROUP BY pp.id
       ORDER BY projectCount DESC, pp.id DESC
@@ -89,7 +89,7 @@ export const getTrustedBuildersPageData = async (req, res) => {
       LEFT JOIN user_property_wishlist
         ON user_property_wishlist.property_id = p.propertyid
       WHERE p.status = 'Active'
-        AND p.approve = 'Approved'
+        AND p.approve = 'Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
         AND pp.status = 'Active'
         AND TRIM(p.city) = ?
       GROUP BY p.propertyid
@@ -104,7 +104,7 @@ export const getTrustedBuildersPageData = async (req, res) => {
       FROM properties p
       INNER JOIN projectpartner pp ON pp.id = p.projectpartnerid
       WHERE p.status = 'Active'
-        AND p.approve = 'Approved'
+        AND p.approve = 'Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
         AND pp.status = 'Active'
         AND TRIM(p.city) <> ''
       GROUP BY TRIM(p.city)
@@ -116,7 +116,7 @@ export const getTrustedBuildersPageData = async (req, res) => {
       SELECT DISTINCT TRIM(city) AS city
       FROM properties
       WHERE status = 'Active'
-        AND approve = 'Approved'
+        AND approve = 'Approved' AND (listingType IS NULL OR listingType <> 'Buy')
         AND TRIM(city) <> ''
       ORDER BY city ASC
     `;
@@ -213,7 +213,7 @@ export const getAllProperties = (req, res) => {
     LEFT JOIN user_property_wishlist
       ON user_property_wishlist.property_id = properties.propertyid
     WHERE properties.status = 'Active' 
-      AND properties.approve = 'Approved' 
+      AND properties.approve = 'Approved' AND (properties.listingType IS NULL OR properties.listingType <> 'Buy') 
       AND properties.projectpartnerid = ?
       AND properties.city = ?
   `;

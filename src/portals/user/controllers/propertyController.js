@@ -1,4 +1,8 @@
 import db from "#db";
+import {
+  resolveListingFields,
+  pickBasicDetails,
+} from "#utils/propertyListing.js";
 import moment from "moment-timezone";
 import { sanitize } from "#utils/sanitize.js";
 import { parsePropertyType } from "#utils/parsePropertyType.js";
@@ -152,6 +156,8 @@ export const addProperty = async (req, res) => {
 
   const {
     propertyCategory,
+    listingType,
+    propertyKind,
     propertyName,
     totalSalesPrice,
     totalOfferPrice,
@@ -182,6 +188,15 @@ export const addProperty = async (req, res) => {
     });
   }
 
+  // Sell / Buy / Rent + Residential / Commercial / Agriculture
+  const listing = resolveListingFields({
+    listingType,
+    propertyKind,
+    propertyCategory,
+  });
+  // Basic-info fields that depend on the property type (all optional)
+  const details = pickBasicDetails(req.body);
+
   try {
     // 1 Check duplicate property name
     const [existing] = await db
@@ -208,20 +223,22 @@ export const addProperty = async (req, res) => {
     // 2 Insert property (store URL arrays as JSON strings)
     const insertSQL = `
       INSERT INTO properties (
-        guestUserId, propertyCategory, propertyName,
+        guestUserId, propertyCategory, listingType, propertyKind, propertyName,
         totalSalesPrice, totalOfferPrice, builtUpArea, carpetArea, address,
         state, city, projectBy, contact, email, seoSlug,
         frontView, sideView, kitchenView, hallView,
         bedroomView, bathroomView, balconyView,
         nearestLandmark, developedAmenities,
-        updated_at, created_at
+        updated_at, created_at${details.columns.map((c) => `, ${c}`).join("")}
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${", ?".repeat(details.columns.length)})
     `;
 
     const values = [
       partnerId,
       propertyCategory,
+      listing.listingType,
+      listing.propertyKind,
       propertyName,
       totalSalesPrice || null,
       totalOfferPrice || null,
@@ -246,6 +263,7 @@ export const addProperty = async (req, res) => {
 
       currentdate,
       currentdate,
+      ...details.values,
     ];
 
     const [insertResult] = await db.promise().query(insertSQL, values);
@@ -425,6 +443,8 @@ export const update = async (req, res) => {
 
   const {
     propertyCategory,
+    listingType,
+    propertyKind,
     propertyName,
     address,
     state,
@@ -511,6 +531,12 @@ export const update = async (req, res) => {
     }
 
     const existing = rows[0];
+    const listing = resolveListingFields({
+      listingType,
+      propertyKind,
+      propertyCategory,
+      existing,
+    });
 
     // IMAGE MERGE (keep old if not sent)
     const keepOrReplace = (incoming, existingValue) =>
@@ -524,6 +550,8 @@ export const update = async (req, res) => {
     const updateSQL = `
       UPDATE properties SET
         propertyCategory=?,
+        listingType=?,
+        propertyKind=?,
         propertyName=?,
         address=?,
         state=?,
@@ -596,6 +624,8 @@ export const update = async (req, res) => {
 
     const values = [
       propertyCategory,
+      listing.listingType,
+      listing.propertyKind,
       propertyName,
       address || null,
       state,

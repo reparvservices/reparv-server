@@ -205,7 +205,7 @@ export const getLikedProperties = (req, res) => {
 
     WHERE upw.guest_user_id = ?
       AND p.status = 'Active'
-      AND p.approve = 'Approved'
+      AND p.approve = 'Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
 
     GROUP BY p.propertyid
     ORDER BY upw.id DESC
@@ -236,7 +236,7 @@ export const getEnquiryProperties = (req, res) => {
     WHERE e.status != 'Token'
       AND (e.customerid = ? OR e.contact = ?)
       AND p.status = 'Active'
-      AND p.approve = 'Approved'
+      AND p.approve = 'Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
     ORDER BY e.created_at DESC
   `;
 
@@ -264,7 +264,7 @@ export const getVisitedProperties = (req, res) => {
     WHERE e.status = 'Visit Scheduled'
       AND (e.customerid = ? OR e.contact = ?)
       AND p.status = 'Active'
-      AND p.approve = 'Approved'
+      AND p.approve = 'Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
     ORDER BY e.created_at DESC
   `;
 
@@ -292,7 +292,7 @@ export const getBookedProperties = (req, res) => {
     WHERE e.status = 'Token'
       AND (e.customerid = ? OR e.contact = ?)
       AND p.status = 'Active'
-      AND p.approve = 'Approved'
+      AND p.approve = 'Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
     ORDER BY e.created_at DESC
   `;
 

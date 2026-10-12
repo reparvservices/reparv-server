@@ -5,7 +5,7 @@ import moment from "moment-timezone";
 export const getAll = (req, res) => {
   const {city, propertyCategory } = req.query;
 
-  let sql = `SELECT * FROM properties WHERE status='Active' AND approve='Approved'`;
+  let sql = `SELECT * FROM properties WHERE status='Active' AND approve='Approved' AND (listingType IS NULL OR listingType <> 'Buy')`;
   const params = [];
 
   if (propertyCategory !== "properties") {
@@ -32,7 +32,7 @@ export const getAll = (req, res) => {
 // ** Fetch All City **
 export const getAllCity = (req, res) => {
   const sql =
-    "select distinct city from properties where status='Active' and approve='Approved' and propertyCategory=? ";
+    "select distinct city from properties where status='Active' and approve='Approved' AND (listingType IS NULL OR listingType <> 'Buy') and propertyCategory=? ";
   db.query(sql, [propertyCategory], (err, result) => {
     if (err) {
       console.error("Error fetching:", err);
@@ -46,7 +46,7 @@ export const getAllLocation = (req, res) => {
     const sql = `
       SELECT DISTINCT location 
       FROM properties 
-      WHERE status='Active' AND approve='Approved'
+      WHERE status='Active' AND approve='Approved' AND (listingType IS NULL OR listingType <> 'Buy')
     `;
   
     db.query(sql, (err, result) => {
@@ -67,7 +67,7 @@ export const getLocationsByCityAndCategory = (req, res) => {
   
     const sql = `SELECT DISTINCT location FROM properties 
                  WHERE city = ? AND propertyCategory = ? 
-                 AND status='Active' AND approve='Approved'`;
+                 AND status='Active' AND approve='Approved' AND (listingType IS NULL OR listingType <> 'Buy')`;
   
     db.query(sql, [city.trim(), propertyCategory.trim()], (err, result) => {
       if (err) {

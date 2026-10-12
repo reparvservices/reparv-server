@@ -36,7 +36,7 @@ export const getAllByCity = (req, res) => {
       ON user_property_wishlist.property_id = properties.propertyid
 
     WHERE properties.status = 'Active'
-      AND properties.approve = 'Approved'
+      AND properties.approve = 'Approved' AND (properties.listingType IS NULL OR properties.listingType <> 'Buy')
       AND properties.city = ?
 
     GROUP BY properties.propertyid

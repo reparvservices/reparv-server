@@ -1,4 +1,9 @@
 import db from "#db";
+import {
+  resolveListingFields,
+  withListingFields,
+  pickBasicDetails,
+} from "#utils/propertyListing.js";
 import moment from "moment-timezone";
 import fs from "fs";
 import path from "path";
@@ -174,10 +179,10 @@ export const getById = (req, res) => {
     const formatted = result.map((row) => {
       const parsedType = parsePropertyType(row.propertyType);
 
-      return {
+      return withListingFields({
         ...row,
         propertyType: parsedType,
-      };
+      });
     });
 
     res.json(formatted[0]);
@@ -409,6 +414,8 @@ export const v2AddProperty = async (req, res) => {
 
   const {
     propertyCategory,
+    listingType,
+    propertyKind,
     propertyName,
     totalSalesPrice,
     totalOfferPrice,
@@ -442,6 +449,14 @@ export const v2AddProperty = async (req, res) => {
       message: "Property name, category, city, and state are required",
     });
   }
+
+  const listing = resolveListingFields({
+    listingType,
+    propertyKind,
+    propertyCategory,
+  });
+  // Basic-info fields that depend on the property type (all optional)
+  const details = pickBasicDetails(req.body);
 
   const videoLinks = parsePropertyVideoLinks({ videoLink, instagramReelLink });
   if (videoLinks.error) {
@@ -478,7 +493,7 @@ export const v2AddProperty = async (req, res) => {
 
       const insertSQL = `
         INSERT INTO properties (
-          projectpartnerid, propertyCategory,
+          projectpartnerid, propertyCategory, listingType, propertyKind,
           propertyName, totalSalesPrice,
           totalOfferPrice, builtUpArea, carpetArea,
           state, city, pincode, address, latitude, longitude,
@@ -486,14 +501,16 @@ export const v2AddProperty = async (req, res) => {
           frontView, sideView, kitchenView, hallView,
           bedroomView, bathroomView, balconyView,
           nearestLandmark, developedAmenities, seoSlug,
-          updated_at, created_at
+          updated_at, created_at${details.columns.map((c) => `, ${c}`).join("")}
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${", ?".repeat(details.columns.length)})
       `;
 
       const [insertResult] = await conn.query(insertSQL, [
         partnerId,
         propertyCategory,
+        listing.listingType,
+        listing.propertyKind,
         propertyName,
         totalSalesPrice || null,
         totalOfferPrice || null,
@@ -522,6 +539,7 @@ export const v2AddProperty = async (req, res) => {
         toSlug(propertyName),
         currentdate,
         currentdate,
+        ...details.values,
       ]);
 
       const newPropertyId = insertResult.insertId;
@@ -839,6 +857,8 @@ export const v2Update = async (req, res) => {
     projectBy,
     possessionDate,
     propertyCategory,
+    listingType,
+    propertyKind,
     propertyApprovedBy,
     propertyName,
     address,
@@ -942,6 +962,12 @@ export const v2Update = async (req, res) => {
         return res.status(404).json({ message: "Property not found" });
 
       const existing = result[0];
+      const listing = resolveListingFields({
+        listingType,
+        propertyKind,
+        propertyCategory,
+        existing,
+      });
 
       // Helper: merge old + new images
       const mergeImages = (existingField, newField) => {
@@ -956,7 +982,7 @@ export const v2Update = async (req, res) => {
       try {
         const updateSQL = `
           UPDATE properties SET 
-            builderid=?, projectBy=?, possessionDate=?, propertyCategory=?, propertyApprovedBy=?, propertyName=?, address=?, state=?, city=?, pincode=?, location=?,
+            builderid=?, projectBy=?, possessionDate=?, propertyCategory=?, listingType=?, propertyKind=?, propertyApprovedBy=?, propertyName=?, address=?, state=?, city=?, pincode=?, location=?,
             distanceFromCityCenter=?, latitude=?, longitude=?, contact=?, email=?, totalSalesPrice=?, totalOfferPrice=?, emi=?, stampDuty=?, registrationFee=?, gst=?, advocateFee=?, 
             msebWater=?, maintenance=?, other=?, tags=?, propertyType=?, builtYear=?, ownershipType=?,
             builtUpArea=?, carpetArea=?, parkingAvailability=?, totalFloors=?, floorNo=?, loanAvailability=?,
@@ -973,6 +999,8 @@ export const v2Update = async (req, res) => {
           sanitize(projectBy),
           sanitize(formattedPossessionDate),
           propertyCategory,
+          listing.listingType,
+          listing.propertyKind,
           propertyApprovedBy,
           propertyName,
           address,

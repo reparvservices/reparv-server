@@ -208,7 +208,7 @@ export const getBudgetToDreamHomePageData = async (req, res) => {
       LEFT JOIN user_property_wishlist
         ON user_property_wishlist.property_id = p.propertyid
       WHERE p.status = 'Active'
-        AND p.approve = 'Approved'
+        AND p.approve = 'Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
         AND TRIM(p.city) = ?
         AND p.propertyCategory IN (${categoryPlaceholders})
       GROUP BY p.propertyid

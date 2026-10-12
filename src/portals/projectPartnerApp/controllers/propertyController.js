@@ -1,5 +1,10 @@
 import moment from "moment-timezone";
 import db from "#db";
+import {
+  resolveListingFields,
+  derivePropertyKind,
+  pickBasicDetails,
+} from "#utils/propertyListing.js";
 import fs from "fs";
 import path from "path";
 import { deleteFromS3, uploadToS3 } from "#utils/imageUpload.js";
@@ -385,6 +390,8 @@ export const update = async (req, res) => {
       projectBy,
       possessionDate,
       propertyCategory,
+      listingType,
+      propertyKind,
       propertyName,
       address,
       state,
@@ -500,7 +507,9 @@ export const update = async (req, res) => {
       "FarmHouse",
       "ResaleFarmHouse",
     ];
-    const isFarm = FARM_TYPES.includes(propertyCategory);
+    const isFarm =
+      FARM_TYPES.includes(propertyCategory) ||
+      derivePropertyKind(propertyCategory) === "Agriculture";
 
     let builtUpArea = null;
     let carpetArea = null;
@@ -669,6 +678,22 @@ export const update = async (req, res) => {
     const optionalKeys = Object.keys(OPTIONAL_FIELDS).filter((key) =>
       Object.prototype.hasOwnProperty.call(req.body, key),
     );
+    // Sell / Buy / Rent + Residential / Commercial / Agriculture
+    const [[existingListing] = []] = await db
+      .promise()
+      .query(
+        "SELECT propertyCategory, listingType, propertyKind FROM properties WHERE propertyid = ?",
+        [Id],
+      );
+    const listing = resolveListingFields({
+      listingType,
+      propertyKind,
+      propertyCategory,
+      existing: existingListing,
+    });
+    coreFields.push("listingType = ?", "propertyKind = ?");
+    coreValues.push(listing.listingType, listing.propertyKind);
+
     const optionalClauses = optionalKeys.map((key) => `${key} = ?`);
     const optionalValues = optionalKeys.map((key) => OPTIONAL_FIELDS[key]());
 
@@ -736,6 +761,8 @@ export const addPropertyNew = async (req, res) => {
       areas,
       ofprice,
       category,
+      listing_type,
+      property_kind,
       state,
       city,
       address,
@@ -779,6 +806,17 @@ export const addPropertyNew = async (req, res) => {
         .json({ success: false, message: videoLinks.error });
     }
 
+    // Sell / Buy / Rent + Residential / Commercial / Agriculture.
+    // Older app builds send only `category` (New Launch / Resale / Rental).
+    const listing = resolveListingFields({
+      listingType: listing_type ?? (category === "Rental" ? "Rent" : undefined),
+      propertyKind: property_kind,
+      propertyCategory: property_type,
+    });
+
+    // Basic-info fields that depend on the property type (all optional)
+    const details = pickBasicDetails(req.body);
+
     // ── Duplicate check ──────────────────────────────────────────────────────
     db.query(
       "SELECT propertyid FROM properties WHERE propertyName = ?",
@@ -811,7 +849,9 @@ export const addPropertyNew = async (req, res) => {
           "FarmHouse",
           "ResaleFarmHouse",
         ];
-        const isFarm = FARM_TYPES.includes(property_type);
+        const isFarm =
+          FARM_TYPES.includes(property_type) ||
+          derivePropertyKind(property_type) === "Agriculture";
 
         let builtUpArea = null;
         let carpetArea = null;
@@ -901,6 +941,8 @@ export const addPropertyNew = async (req, res) => {
             projectpartnerid,
             propertyType,
             propertyCategory,
+            listingType,
+            propertyKind,
             propertyName,
             totalSalesPrice,
             totalOfferPrice,
@@ -920,12 +962,12 @@ export const addPropertyNew = async (req, res) => {
             instagramReelLink,
             seoSlug,
             created_at,
-            updated_at
+            updated_at${details.columns.map((c) => `,\n            ${c}`).join("")}
           )
           VALUES (
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
             ${imagePlaceholders},
-            ?,?,?,?,NOW(),NOW()
+            ?,?,?,?,NOW(),NOW()${",?".repeat(details.columns.length)}
           )
         `;
 
@@ -933,6 +975,8 @@ export const addPropertyNew = async (req, res) => {
           projectpartnerid,
           bhk_type,
           property_type,
+          listing.listingType,
+          listing.propertyKind,
           property_name,
           price,
           ofprice,
@@ -951,6 +995,7 @@ export const addPropertyNew = async (req, res) => {
           videoLinks.videoLink,
           videoLinks.instagramReelLink,
           seoSlug,
+          ...details.values,
         ];
 
         db.query(insertSQL, values, (err, result) => {

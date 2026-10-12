@@ -19,7 +19,7 @@ export const getAll = (req, res) => {
       ON user_property_wishlist.property_id = properties.propertyid
 
     WHERE properties.status = 'Active'
-      AND properties.approve = 'Approved'
+      AND properties.approve = 'Approved' AND (properties.listingType IS NULL OR properties.listingType <> 'Buy')
 
     GROUP BY properties.propertyid
     ${LIST_ORDER}
@@ -70,7 +70,7 @@ export const getAllByCity = (req, res) => {
       ON user_property_wishlist.property_id = properties.propertyid
 
     WHERE properties.status = 'Active'
-      AND properties.approve = 'Approved'
+      AND properties.approve = 'Approved' AND (properties.listingType IS NULL OR properties.listingType <> 'Buy')
       AND properties.city = ?
 
     GROUP BY properties.propertyid
@@ -125,7 +125,7 @@ export const getAllByBudget = (req, res) => {
       ON user_property_wishlist.property_id = properties.propertyid
 
     WHERE properties.status = 'Active'
-      AND properties.approve = 'Approved'
+      AND properties.approve = 'Approved' AND (properties.listingType IS NULL OR properties.listingType <> 'Buy')
       AND properties.city = ?
       AND properties.totalSalesPrice BETWEEN ? AND ?
 
@@ -178,7 +178,7 @@ export const getHotDealProperties = (req, res) => {
       ON user_property_wishlist.property_id = properties.propertyid
 
     WHERE properties.status = 'Active'
-      AND properties.approve = 'Approved'
+      AND properties.approve = 'Approved' AND (properties.listingType IS NULL OR properties.listingType <> 'Buy')
       AND properties.hotDeal = 'active'
       AND properties.city = ?
 
@@ -233,7 +233,7 @@ export const getTopPicksProperties = (req, res) => {
       ON projectpartner.id = properties.projectpartnerid
 
     WHERE properties.status = 'Active'
-      AND properties.approve = 'Approved'
+      AND properties.approve = 'Approved' AND (properties.listingType IS NULL OR properties.listingType <> 'Buy')
       AND properties.topPicksStatus = 'active'
       AND properties.city = ?
 

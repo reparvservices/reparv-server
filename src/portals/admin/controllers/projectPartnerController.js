@@ -275,7 +275,8 @@ export const getById = async (req, res) => {
       return res.status(404).json({ message: "Project Partner not found" });
     }
 
-    const partner = partnerResult[0];
+    // Never expose credentials / OTP to the admin client
+    const { password: _password, otp: _otp, ...partner } = partnerResult[0];
 
     const [latestSub] = await db.promise().query(
       `SELECT us.start_date, us.end_date, us.payment_type, sp.duration AS plan

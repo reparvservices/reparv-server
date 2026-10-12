@@ -18,7 +18,7 @@ export const getProperties = async () => {
       seoSlug IS NOT NULL
       AND seoSlug != ''
       AND status = 'Active'
-      AND properties.approve = 'Approved'
+      AND properties.approve = 'Approved' AND (properties.listingType IS NULL OR properties.listingType <> 'Buy')
     ORDER BY updated_at DESC
     LIMIT 50000
   `;

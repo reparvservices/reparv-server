@@ -141,7 +141,7 @@ export const getWeekendVisitPageData = async (req, res) => {
       LEFT JOIN user_property_wishlist
         ON user_property_wishlist.property_id = p.propertyid
       WHERE p.status = 'Active'
-        AND p.approve = 'Approved'
+        AND p.approve = 'Approved' AND (p.listingType IS NULL OR p.listingType <> 'Buy')
         AND TRIM(p.city) = ?
       GROUP BY p.propertyid
       ORDER BY views DESC, p.propertyid DESC
@@ -151,7 +151,7 @@ export const getWeekendVisitPageData = async (req, res) => {
       SELECT DISTINCT TRIM(city) AS city
       FROM properties
       WHERE status = 'Active'
-        AND approve = 'Approved'
+        AND approve = 'Approved' AND (listingType IS NULL OR listingType <> 'Buy')
         AND TRIM(city) <> ''
       ORDER BY city ASC
     `;
