@@ -1,7 +1,15 @@
+import {
+  pickPropertyVideoLinkUpdates,
+  pickPropertyVideoFileUpdate,
+  pickBrochureFileUpdate,
+} from "#utils/videoLinks.js";
 import db from "#db";
 import {
   resolveListingFields,
   pickBasicDetails,
+  isBuyListingType,
+  BUY_LISTING_REMOVED_MESSAGE,
+  pickListingExtras,
 } from "#utils/propertyListing.js";
 import moment from "moment-timezone";
 import { sanitize } from "#utils/sanitize.js";
@@ -33,6 +41,25 @@ const calculateEMI = (principal, rate = 9, years = 20) => {
 };
 
 // **Fetch All Properties with Likes Count**
+/* Is a property name free? (same rule as addProperty: name or page URL must be unique) */
+export const checkPropertyName = async (req, res) => {
+  const name = String(req.query?.name || "").trim();
+  if (!name) return res.status(400).json({ message: "Property name is required" });
+
+  try {
+    const [rows] = await db
+      .promise()
+      .query(
+        "SELECT propertyid FROM properties WHERE propertyName = ? OR seoSlug = ? LIMIT 1",
+        [name, toSlug(name)],
+      );
+    return res.json({ available: rows.length === 0 });
+  } catch (error) {
+    console.error("checkPropertyName error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 export const getAll = (req, res) => {
   const sql = `
     SELECT 
@@ -147,6 +174,9 @@ export const getImages = (req, res) => {
 };
 
 export const addProperty = async (req, res) => {
+  if (isBuyListingType(req.body?.listingType)) {
+    return res.status(400).json({ message: BUY_LISTING_REMOVED_MESSAGE });
+  }
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const partnerId = req.guestUser?.id;
 
@@ -195,15 +225,32 @@ export const addProperty = async (req, res) => {
     propertyCategory,
   });
   // Basic-info fields that depend on the property type (all optional)
-  const details = pickBasicDetails(req.body);
+  const basics = pickBasicDetails(req.body);
+  const extras = pickListingExtras(req.body);
+  if (extras.error) {
+    return res.status(400).json({ message: extras.error });
+  }
+  const videoLinks = pickPropertyVideoLinkUpdates(req.body);
+  const videoFile = pickPropertyVideoFileUpdate(req.body);
+  const brochure = pickBrochureFileUpdate(req.body);
+  const videoError = videoLinks.error || videoFile.error || brochure.error;
+  if (videoError) {
+    return res.status(400).json({ message: videoError });
+  }
+  const videoFields = { ...videoLinks.fields, ...videoFile.fields, ...brochure.fields };
+  const details = {
+    columns: [...basics.columns, ...extras.columns, ...Object.keys(videoFields)],
+    values: [...basics.values, ...extras.values, ...Object.values(videoFields)],
+  };
 
   try {
-    // 1 Check duplicate property name
+    // 1 Check duplicate property name (or a name that maps to the same page URL)
     const [existing] = await db
       .promise()
-      .query("SELECT propertyid FROM properties WHERE propertyName = ?", [
-        propertyName,
-      ]);
+      .query(
+        "SELECT propertyid FROM properties WHERE propertyName = ? OR seoSlug = ? LIMIT 1",
+        [propertyName, toSlug(propertyName)],
+      );
 
     if (existing.length > 0) {
       return res.status(409).json({ message: "Property name already exists!" });
@@ -429,6 +476,16 @@ export const updateOld = async (req, res) => {
 };
 
 export const update = async (req, res) => {
+  if (isBuyListingType(req.body?.listingType)) {
+    return res.status(400).json({ message: BUY_LISTING_REMOVED_MESSAGE });
+  }
+  const videoError =
+    pickPropertyVideoLinkUpdates(req.body).error ||
+    pickPropertyVideoFileUpdate(req.body).error ||
+    pickBrochureFileUpdate(req.body).error;
+  if (videoError) {
+    return res.status(400).json({ message: videoError });
+  }
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const partnerId = req.guestUser?.id;
 
@@ -697,6 +754,39 @@ export const update = async (req, res) => {
     ];
 
     await db.promise().query(updateSQL, values);
+
+    // Configuration (BHK) and description aren't in the main update above:
+    // only change them when the request sends them, so other edit forms can't wipe them.
+    const extras = pickListingExtras({
+      propertyType: req.body?.propertyType,
+      propertyDescription: req.body?.propertyDescription,
+    });
+    if (!extras.error && extras.columns.length) {
+      await db
+        .promise()
+        .query(
+          `UPDATE properties SET ${extras.columns.map((c) => `${c} = ?`).join(", ")} WHERE propertyid = ?`,
+          [...extras.values, Id],
+        );
+    }
+
+    // Video links / uploaded video / brochure: only when sent (empty string clears)
+    const videoLinks = pickPropertyVideoLinkUpdates(req.body);
+    const videoFile = pickPropertyVideoFileUpdate(req.body);
+    const brochure = pickBrochureFileUpdate(req.body);
+    const videoFields =
+      videoLinks.error || videoFile.error || brochure.error
+        ? {}
+        : { ...videoLinks.fields, ...videoFile.fields, ...brochure.fields };
+    const videoColumns = Object.keys(videoFields);
+    if (videoColumns.length) {
+      await db
+        .promise()
+        .query(
+          `UPDATE properties SET ${videoColumns.map((c) => `${c} = ?`).join(", ")} WHERE propertyid = ?`,
+          [...Object.values(videoFields), Id],
+        );
+    }
 
     return res.status(200).json({
       message: "Property updated successfully",

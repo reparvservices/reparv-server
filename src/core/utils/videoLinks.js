@@ -47,3 +47,39 @@ export function pickPropertyVideoLinkUpdates(body = {}) {
 
   return { fields: Object.fromEntries(sent.map((key) => [key, parsed[key]])) };
 }
+
+// An uploaded property video (properties.propertyVideo): the S3 URL (or key)
+// returned after a direct upload. Only common web video formats are accepted.
+const PROPERTY_VIDEO_REGEX =
+  /^(?:https:\/\/[\w.-]+\.amazonaws\.com\/|uploads\/|videos\/)[^\s?#]+\.(?:mp4|mov|webm|m4v)$/i;
+
+/**
+ * For adds and edits: validates propertyVideo only when it is in the body.
+ * An empty string clears it. Returns { fields } or { error }.
+ */
+export function pickPropertyVideoFileUpdate(body = {}) {
+  if (!Object.prototype.hasOwnProperty.call(body, "propertyVideo")) return { fields: {} };
+  const value = typeof body.propertyVideo === "string" ? body.propertyVideo.trim() : "";
+  if (value && !PROPERTY_VIDEO_REGEX.test(value)) {
+    return { error: "Property video must be an uploaded MP4, MOV or WEBM file" };
+  }
+  return { fields: { propertyVideo: value || null } };
+}
+
+// Project brochure (properties.brochureFile) uploaded directly to S3 by the
+// website listing forms: a PDF or an image.
+const BROCHURE_FILE_REGEX =
+  /^(?:https:\/\/[\w.-]+\.amazonaws\.com\/|uploads\/|brochures\/)[^\s?#]+\.(?:pdf|jpe?g|png|webp)$/i;
+
+/**
+ * For adds and edits: validates brochureFile only when it is in the body.
+ * An empty string clears it. Returns { fields } or { error }.
+ */
+export function pickBrochureFileUpdate(body = {}) {
+  if (!Object.prototype.hasOwnProperty.call(body, "brochureFile")) return { fields: {} };
+  const value = typeof body.brochureFile === "string" ? body.brochureFile.trim() : "";
+  if (value && !BROCHURE_FILE_REGEX.test(value)) {
+    return { error: "Brochure must be an uploaded PDF, JPG, PNG or WEBP file" };
+  }
+  return { fields: { brochureFile: value || null } };
+}

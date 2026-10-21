@@ -11,12 +11,15 @@ import {
   editAdditionalInfo,
   propertyInfo,
   del,
+  checkPropertyName,
 } from "../controllers/propertyController.js";
 
 const router = express.Router();
 
 /* ---------- PROPERTY ROUTES ---------- */
 router.get("/", getAll);
+// Must stay above "/:id"
+router.get("/check-name", checkPropertyName);
 router.get("/:id", getById);
 router.get("/images/:id", getImages);
 router.delete("/images/delete/:id", deleteImages);

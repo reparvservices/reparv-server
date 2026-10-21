@@ -1,14 +1,23 @@
 /**
  * Partner listing classification.
  *
- * listingType  : Sell | Buy | Rent   (Buy = partner's buying requirement)
+ * listingType  : Sell | Rent
+ *   ("Buy" requirements were removed: a requirement is not a property, so
+ *    it doesn't belong in the properties table. Requests with it are rejected.)
  * propertyKind : Residential | Commercial | Agriculture
  *
  * Older rows have NULL in both columns; values are derived from
  * propertyCategory so existing listings keep working.
  */
 
-export const LISTING_TYPES = ["Sell", "Buy", "Rent"];
+export const LISTING_TYPES = ["Sell", "Rent"];
+
+export const BUY_LISTING_REMOVED_MESSAGE =
+  "Listing type 'Buy' is no longer supported. Please list the property for Sell or Rent.";
+
+/** True when a request still asks for the removed "Buy" listing type */
+export const isBuyListingType = (value) =>
+  typeof value === "string" && value.trim().toLowerCase() === "buy";
 export const PROPERTY_KINDS = ["Residential", "Commercial", "Agriculture"];
 
 const COMMERCIAL_CATEGORIES = new Set([
@@ -73,9 +82,7 @@ const resolveListingType = (listingType, category, existing) => {
   const explicit = normalizeListingType(listingType);
   if (explicit) return explicit;
   if (deriveListingType(category) === "Rent") return "Rent";
-  // Non-rental category: keep a stored Sell/Buy choice
-  const stored = normalizeListingType(existing?.listingType);
-  return stored && stored !== "Rent" ? stored : "Sell";
+  return "Sell";
 };
 
 export const resolveListingFields = ({
@@ -114,6 +121,7 @@ export const withListingFields = (row) =>
 /**
  * SQL condition that hides Buy requirements from public / buyer-facing
  * property lists. `alias` is the table alias incl. dot, e.g. "p." .
+ * Kept as a safety net for any legacy "Buy" rows (none exist today).
  */
 export const notBuyRequirementSql = (alias = "") =>
   `(${alias}listingType IS NULL OR ${alias}listingType <> 'Buy')`;
@@ -140,5 +148,62 @@ export const pickBasicDetails = (body = {}) => {
     columns.push(key);
     values.push(String(v).trim());
   });
+  return { columns, values };
+};
+
+/**
+ * Listing details the website add form sends besides the basics:
+ * configuration (BHK), locality, pincode, map pin and description.
+ * Returns { columns, values } for the fields present, or { error }.
+ */
+export const pickListingExtras = (body = {}) => {
+  const columns = [];
+  const values = [];
+  const add = (column, value) => {
+    columns.push(column);
+    values.push(value);
+  };
+
+  if (body.propertyType !== undefined && body.propertyType !== null && body.propertyType !== "") {
+    const list = (Array.isArray(body.propertyType) ? body.propertyType : [body.propertyType])
+      .map((v) => String(v).trim())
+      .filter(Boolean);
+    if (list.length > 10 || list.some((v) => v.length > 40)) {
+      return { error: "Invalid property configuration" };
+    }
+    add("propertyType", JSON.stringify(list));
+  }
+
+  if (body.location !== undefined && String(body.location).trim() !== "") {
+    const location = String(body.location).trim();
+    if (location.length > 100) return { error: "Locality must be under 100 characters" };
+    add("location", location);
+  }
+
+  if (body.pincode !== undefined && String(body.pincode).trim() !== "") {
+    const pincode = String(body.pincode).trim();
+    if (!/^[1-9]\d{5}$/.test(pincode)) return { error: "Enter a valid 6-digit pincode" };
+    add("pincode", Number(pincode));
+  }
+
+  const hasLat = body.latitude !== undefined && String(body.latitude).trim() !== "";
+  const hasLng = body.longitude !== undefined && String(body.longitude).trim() !== "";
+  if (hasLat || hasLng) {
+    const lat = Number(body.latitude);
+    const lng = Number(body.longitude);
+    if (!hasLat || !hasLng || !Number.isFinite(lat) || !Number.isFinite(lng) ||
+        lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return { error: "Invalid map location" };
+    }
+    add("latitude", lat.toFixed(8));
+    add("longitude", lng.toFixed(8));
+  }
+
+  if (body.propertyDescription !== undefined && String(body.propertyDescription).trim() !== "") {
+    const description = String(body.propertyDescription).trim();
+    if (description.length > 3000) return { error: "Description must be under 3000 characters" };
+    add("propertyDescription", description);
+  }
+
   return { columns, values };
 };

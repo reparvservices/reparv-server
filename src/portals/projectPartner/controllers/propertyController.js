@@ -3,6 +3,8 @@ import {
   resolveListingFields,
   withListingFields,
   pickBasicDetails,
+  isBuyListingType,
+  BUY_LISTING_REMOVED_MESSAGE,
 } from "#utils/propertyListing.js";
 import moment from "moment-timezone";
 import fs from "fs";
@@ -405,6 +407,9 @@ export const addProperty = async (req, res) => {
 };
 
 export const v2AddProperty = async (req, res) => {
+  if (isBuyListingType(req.body?.listingType)) {
+    return res.status(400).json({ message: BUY_LISTING_REMOVED_MESSAGE });
+  }
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const partnerId = req.projectPartnerUser?.id;
 
@@ -845,6 +850,9 @@ export const addPropertyOld = async (req, res) => {
 };
 
 export const v2Update = async (req, res) => {
+  if (isBuyListingType(req.body?.listingType)) {
+    return res.status(400).json({ message: BUY_LISTING_REMOVED_MESSAGE });
+  }
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const Id = req.params.id;
 

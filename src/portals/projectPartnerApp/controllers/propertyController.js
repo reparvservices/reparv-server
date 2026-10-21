@@ -4,6 +4,8 @@ import {
   resolveListingFields,
   derivePropertyKind,
   pickBasicDetails,
+  isBuyListingType,
+  BUY_LISTING_REMOVED_MESSAGE,
 } from "#utils/propertyListing.js";
 import fs from "fs";
 import path from "path";
@@ -369,6 +371,9 @@ const imgJson = (key, val) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export const update = async (req, res) => {
+  if (isBuyListingType(req.body?.listingType)) {
+    return res.status(400).json({ message: BUY_LISTING_REMOVED_MESSAGE });
+  }
   try {
     const Id = req.params.id;
 
@@ -750,6 +755,9 @@ export const update = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const addPropertyNew = async (req, res) => {
+  if (isBuyListingType(req.body?.listingType)) {
+    return res.status(400).json({ message: BUY_LISTING_REMOVED_MESSAGE });
+  }
   try {
     const {
       property_type,

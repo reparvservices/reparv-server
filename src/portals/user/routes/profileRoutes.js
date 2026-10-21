@@ -4,6 +4,8 @@ import {
   getProfile,
   editProfile,
   changeContact,
+  sendContactChangeOtp,
+  verifyContactChangeOtp,
 } from "../controllers/profileController.js";
 
 const router = express.Router();
@@ -30,5 +32,8 @@ router.get("/", getProfile);
 router.put("/edit", upload.single("image"), editProfile);
 
 router.put("/changecontact", changeContact);
+// Verified phone number change (OTP sent to the new number)
+router.post("/contact/send-otp", sendContactChangeOtp);
+router.post("/contact/verify-otp", verifyContactChangeOtp);
 
 export default router;

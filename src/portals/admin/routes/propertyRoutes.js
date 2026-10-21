@@ -29,6 +29,8 @@ import {
   changeProjectPartner,
   setTopPicks,
   reparvAssured,
+  getDetails,
+  updateMediaLinks,
 } from "../controllers/propertyController.js";
 
 const router = express.Router();
@@ -51,6 +53,7 @@ const upload = multer({
 
 /* ================= ROUTES ================= */
 router.get("/get/:lister", getAll);
+router.get("/details/:id", getDetails);
 router.get("/:id", getById);
 router.get("/images/get/:id", getImages);
 router.delete("/images/delete/:id", deleteImages);
@@ -203,6 +206,7 @@ router.put(
 );
 
 router.delete("/brochure/delete/:id", deleteBrochureFile);
+router.put("/media/:id", updateMediaLinks);
 
 /* ================= CSV UPLOAD ================= */
 const csvUpload = multer({

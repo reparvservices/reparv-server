@@ -8,6 +8,10 @@ import { convertImagesToWebp } from "#utils/convertImagesToWebp.js";
 import { sanitize } from "#utils/sanitize.js";
 import { deleteFromS3, multipartUploadToS3, uploadToS3 } from "#utils/imageUpload.js";
 import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
+import {
+  pickPropertyVideoLinkUpdates,
+  pickPropertyVideoFileUpdate,
+} from "#utils/videoLinks.js";
 
 function toSlug(text) {
   return text
@@ -351,6 +355,72 @@ export const getById = (req, res) => {
 
     res.json(formatted[0]);
   });
+};
+
+/**
+ * Everything the admin property details page needs in one call:
+ * the property, who listed it, analytics and enquiry count.
+ * Lister columns are prefixed (lister_*) so they never overwrite the
+ * property's own contact / email.
+ */
+export const getDetails = async (req, res) => {
+  const Id = parseInt(req.params.id);
+  if (isNaN(Id)) {
+    return res.status(400).json({ message: "Invalid Property ID" });
+  }
+
+  const sql = `
+    SELECT
+      p.*,
+      b.company_name,
+      CASE
+        WHEN p.projectpartnerid IS NOT NULL THEN 'Project Partner'
+        WHEN p.employeeid IS NOT NULL THEN 'Reparv Employee'
+        WHEN p.guestUserId IS NOT NULL THEN 'Guest User'
+        WHEN p.partnerid IS NOT NULL THEN 'Onboarding Partner'
+        ELSE NULL
+      END AS lister_type,
+      COALESCE(pp.fullname, e.name, g.fullname, op.fullname) AS lister_name,
+      COALESCE(pp.contact, e.contact, g.contact, op.contact) AS lister_contact,
+      COALESCE(pp.email, e.email, g.email, op.email) AS lister_email,
+      COALESCE(pp.city, g.city, op.city) AS lister_city,
+      (SELECT COUNT(DISTINCT w.guest_user_id) FROM user_property_wishlist w WHERE w.property_id = p.propertyid) AS likes,
+      (SELECT COUNT(*) FROM enquirers en WHERE en.propertyid = p.propertyid AND en.status != 'Token') AS enquiries,
+      COALESCE(pa.views, 0) AS views,
+      COALESCE(pa.share, 0) AS shares,
+      COALESCE(pa.calls, 0) AS calls,
+      COALESCE(pa.whatsapp_enquiry, 0) AS whatsapp
+    FROM properties p
+    LEFT JOIN builders b ON b.builderid = p.builderid
+    LEFT JOIN projectpartner pp ON pp.id = p.projectpartnerid
+    LEFT JOIN employees e ON e.id = p.employeeid
+    LEFT JOIN guestUsers g ON g.id = p.guestUserId
+    LEFT JOIN onboardingpartner op ON op.partnerid = p.partnerid
+    LEFT JOIN property_analytics pa ON pa.property_id = p.propertyid
+    WHERE p.propertyid = ?
+    LIMIT 1
+  `;
+
+  try {
+    const [rows] = await db.promise().query(sql, [Id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Property not found" });
+    }
+    const row = rows[0];
+    return res.json({
+      ...row,
+      propertyType: parsePropertyType(row.propertyType),
+      created_at: row.created_at
+        ? moment(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
+        : null,
+      updated_at: row.updated_at
+        ? moment(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A")
+        : null,
+    });
+  } catch (err) {
+    console.error("Error fetching property details:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
 };
 
 export const checkPropertyName = (req, res) => {
@@ -1712,6 +1782,44 @@ export const uploadBrochureAndVideoLink = async (req, res) => {
     return res.status(500).json({
       message: "Server error",
     });
+  }
+};
+
+/**
+ * Property videos: YouTube link, Instagram reel link and the uploaded video
+ * file URL. Only the fields sent are changed; an empty string clears one.
+ */
+export const updateMediaLinks = async (req, res) => {
+  const propertyId = parseInt(req.params.id);
+  if (isNaN(propertyId)) {
+    return res.status(400).json({ message: "Invalid Property ID" });
+  }
+
+  const links = pickPropertyVideoLinkUpdates(req.body);
+  if (links.error) return res.status(400).json({ message: links.error });
+  const video = pickPropertyVideoFileUpdate(req.body);
+  if (video.error) return res.status(400).json({ message: video.error });
+
+  const fields = { ...links.fields, ...video.fields };
+  const columns = Object.keys(fields);
+  if (!columns.length) {
+    return res.status(400).json({ message: "Nothing to update" });
+  }
+
+  try {
+    const [result] = await db
+      .promise()
+      .query(
+        `UPDATE properties SET ${columns.map((c) => `${c} = ?`).join(", ")}, updated_at = NOW() WHERE propertyid = ?`,
+        [...columns.map((c) => fields[c]), propertyId],
+      );
+    if (!result.affectedRows) {
+      return res.status(404).json({ message: "Property not found" });
+    }
+    return res.json({ message: "Videos updated successfully", ...fields });
+  } catch (error) {
+    console.error("updateMediaLinks error:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
