@@ -5,6 +5,10 @@ import path from "path";
 import { uploadToS3 } from "#utils/imageUpload.js";
 import { parsePropertyType } from "#utils/parsePropertyType.js";
 import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
+import {
+  addProperty as addWebsiteListing,
+  checkPropertyName,
+} from "../../user/controllers/propertyController.js";
 
 function toSlug(text) {
   return text
@@ -250,6 +254,17 @@ const imgJson = (key, v) => {
 
 /* ---------- ADD PROPERTY ---------- */
 export const addProperty = async (req, res) => {
+  // New app listing form sends the same payload as the website's "List Property"
+  // (propertyCategory, listingType, location, pincode, map pin, details, videos…)
+  if (req.body?.propertyCategory) {
+    const customerId = req.body.customerid;
+    if (!customerId) {
+      return res.status(401).json({ message: "Please log in to list a property" });
+    }
+    req.guestUser = { id: customerId };
+    return addWebsiteListing(req, res);
+  }
+
   try {
     const {
       property_type,
@@ -892,3 +907,6 @@ export const getPropertyLikeCount = (req, res) => {
     });
   }
 };
+
+// Live "is this name free?" check for the app listing form (same rule as the website)
+export { checkPropertyName };

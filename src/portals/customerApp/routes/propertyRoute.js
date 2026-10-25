@@ -11,6 +11,7 @@ import {
   getPropertyLikeCount,
   getById,
   removeFromWishlist,
+  checkPropertyName,
 } from "../controllers/propertyController.js";
 
 const router = express.Router();
@@ -34,6 +35,8 @@ const upload = multer({
 router.post("/add-wishlist", addInWishList);
 router.get("/get-wishlist/:user_id", getUserWishlist);
 router.post("/post", addProperty);
+// Must stay above "/:id"
+router.get("/check-name", checkPropertyName);
 router.get("/myproperty/:id", getAll);
 router.put("/update/:propertyid", updateProperty);
 router.get("/:id", getById);
