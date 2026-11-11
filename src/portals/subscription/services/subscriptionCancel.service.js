@@ -9,6 +9,7 @@ import razorpay from "#utils/razorpayClient.js";
 import { refreshSubscriptionBillingState } from "./recurringPayment.service.js";
 import { cancelEnterpriseSubscription } from "./subscriptionEnterpriseCancel.service.js";
 import { PLAN_TYPE_SELECT_SQL } from "../utils/planTypeSql.js";
+import { pickCurrentSubscription } from "../utils/subscriptionAccess.js";
 
 const tsToDate = (unixSeconds) => {
   if (!unixSeconds) return null;
@@ -85,13 +86,13 @@ async function loadSubscription({ userId, role, userSubscriptionId }) {
     return rows[0] || null;
   }
   const [rows] = await dbPromise.query(
-    `SELECT * FROM user_subscriptions
-     WHERE user_id = ? AND role = ?
-     ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
-     LIMIT 1`,
+    `SELECT us.*, (${PLAN_TYPE_SELECT_SQL}) AS plan_type
+     FROM user_subscriptions us
+     LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
+     WHERE us.user_id = ? AND us.role = ?`,
     [userId, role],
   );
-  return rows[0] || null;
+  return pickCurrentSubscription(rows);
 }
 
 async function loadSubscriptionRowById(subId) {
@@ -130,6 +131,7 @@ export async function cancelUserSubscription({
   role,
   userSubscriptionId = null,
   cancelAtCycleEnd = true,
+  allowEnterprise = true,
 }) {
   const sub = await loadSubscription({ userId, role, userSubscriptionId });
   if (!sub) {
@@ -142,6 +144,11 @@ export async function cancelUserSubscription({
   if (!rzSubId) {
     const planType = String(sub.plan_type || "").toLowerCase();
     if (planType === "enterprise") {
+      if (!allowEnterprise) {
+        const e = new Error("Enterprise plans are managed by Reparv. Please contact support.");
+        e.statusCode = 403;
+        throw e;
+      }
       return cancelEnterpriseSubscription({
         userSubscriptionId: sub.id,
         cancelAtCycleEnd,
@@ -153,7 +160,8 @@ export async function cancelUserSubscription({
   }
 
   const statusLower = String(sub.status || "").toLowerCase();
-  if (statusLower === "cancelled") {
+  // A plan set to end later can still be ended immediately
+  if (statusLower === "cancelled" && cancelAtCycleEnd) {
     const e = new Error("Subscription is already cancelled");
     e.statusCode = 400;
     throw e;

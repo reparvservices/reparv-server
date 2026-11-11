@@ -16,6 +16,7 @@ import cityRoutes from "../portals/admin/routes/cityRoutes.js";
 import mapRoutes from "../portals/admin/routes/mapRoutes.js";
 import promoterRoutes from "../portals/admin/routes/promoterRoutes.js";
 import adsManagerRoutes from "../portals/admin/routes/adsManagerRoutes.js";
+import advertisementRoutes from "../portals/admin/routes/advertisementRoutes.js";
 import salespersonRoutes from "../portals/admin/routes/salespersonRoutes.js";
 import partnerRoutes from "../portals/admin/routes/partnerRoutes.js";
 import projectPartnerRoutes from "../portals/admin/routes/projectPartnerRoutes.js";
@@ -249,6 +250,7 @@ export function mountProtectedRoutes(app) {
   app.use("/admin/map", mapRoutes);
   app.use("/admin/promoter", promoterRoutes);
   app.use("/admin/ads-manager", adsManagerRoutes);
+  app.use("/admin/advertisements", advertisementRoutes);
   app.use("/admin/salespersons", salespersonRoutes);
   app.use("/admin/partner", partnerRoutes);
   app.use("/admin/projectpartner", projectPartnerRoutes);

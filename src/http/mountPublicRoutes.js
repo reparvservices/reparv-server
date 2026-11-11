@@ -11,6 +11,7 @@ import enquiryRoutes from "../portals/frontend/routes/enquiryRoutes.js";
 import frontendBlogRoutes from "../portals/frontend/routes/blogRoutes.js";
 import sliderImagesRoutes from "../portals/frontend/routes/sliderRoutes.js";
 import testimonialFeedbackRoutes from "../portals/frontend/routes/testimonialRoutes.js";
+import frontendAdvertisementRoutes from "../portals/frontend/routes/advertisementRoutes.js";
 import frontendEmiRoutes from "../portals/frontend/routes/emiRoutes.js";
 import frontendContactUsRoutes from "../portals/frontend/routes/contactUsRoutes.js";
 import frontendNewsRoute from "../portals/frontend/routes/newsRoute.js";
@@ -54,6 +55,7 @@ export function mountPublicRoutes(app) {
   app.use("/frontend/blog", frontendBlogRoutes);
   app.use("/frontend/slider", sliderImagesRoutes);
   app.use("/frontend/testimonial", testimonialFeedbackRoutes);
+  app.use("/frontend/advertisements", frontendAdvertisementRoutes);
   app.use("/frontend/emi", frontendEmiRoutes);
   app.use("/frontend/contact-us", frontendContactUsRoutes);
   app.use("/frontend/news", frontendNewsRoute);

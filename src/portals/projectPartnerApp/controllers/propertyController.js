@@ -6,6 +6,9 @@ import {
   pickBasicDetails,
   isBuyListingType,
   BUY_LISTING_REMOVED_MESSAGE,
+  LISTING_IMAGE_KEYS,
+  toPropertyTypeJson,
+  listingValidationError,
 } from "#utils/propertyListing.js";
 import fs from "fs";
 import path from "path";
@@ -307,35 +310,7 @@ const resolveImageField = async (field, req, existing) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // All image section keys — must match frontend PROPERTY_TYPE_SECTIONS exactly
 // ─────────────────────────────────────────────────────────────────────────────
-const ALL_IMAGE_KEYS = [
-  // Residential / common
-  "frontView",
-  "sideView",
-  "hallView",
-  "kitchenView",
-  "bedroomView",
-  "bathroomView",
-  "balconyView",
-  "nearestLandmark",
-  "developedAmenities",
-  // Shop / Office / Warehouse / Showroom
-  "interiorView",
-  "entranceView",
-  "roadView",
-  "parkingView",
-  "officeArea",
-  "cabinView",
-  "washroomView",
-  "warehouseArea",
-  "loadingArea",
-  "showroomInterior",
-  "displayArea",
-  // Farm House
-  "terraceSitout",
-  "farmGardenArea",
-  // Extra / Other (always JSON array)
-  "extraImages",
-];
+const ALL_IMAGE_KEYS = LISTING_IMAGE_KEYS;
 
 /**
  * Normalise any image value from req.body into a valid JSON string for MySQL.
@@ -755,7 +730,7 @@ export const update = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const addPropertyNew = async (req, res) => {
-  if (isBuyListingType(req.body?.listingType)) {
+  if (isBuyListingType(req.body?.listingType ?? req.body?.listing_type)) {
     return res.status(400).json({ message: BUY_LISTING_REMOVED_MESSAGE });
   }
   try {
@@ -777,7 +752,6 @@ export const addPropertyNew = async (req, res) => {
       pincode,
       latitude,
       longitude,
-      projectpartnerid,
       propertyVideo,
       videoLink,
       instagramReelLink,
@@ -786,7 +760,9 @@ export const addPropertyNew = async (req, res) => {
     console.log(req.body);
 
     // ── Auth guard ───────────────────────────────────────────────────────────
-    if (!projectpartnerid) {
+    // The partner always comes from the verified login, never the request body
+    const partnerId = req.projectPartnerUser?.id;
+    if (!partnerId) {
       return res
         .status(401)
         .json({ success: false, message: "Login required" });
@@ -826,245 +802,248 @@ export const addPropertyNew = async (req, res) => {
     const details = pickBasicDetails(req.body);
 
     // ── Duplicate check ──────────────────────────────────────────────────────
-    db.query(
-      "SELECT propertyid FROM properties WHERE propertyName = ?",
-      [property_name],
-      (err, result) => {
-        if (err) {
-          return res
-            .status(500)
-            .json({ success: false, message: "Database error" });
-        }
-        if (result.length > 0) {
-          return res.status(409).json({
-            success: false,
-            message: "Property name already exists",
-          });
-        }
+    const [existing] = await db
+      .promise()
+      .query("SELECT propertyid FROM properties WHERE propertyName = ?", [
+        property_name,
+      ]);
+    if (existing.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Property name already exists",
+      });
+    }
 
-        // ── Area parse ───────────────────────────────────────────────────────
-        let parsedAreas = [];
-        try {
-          parsedAreas =
-            typeof areas === "string" ? JSON.parse(areas) : areas || [];
-        } catch {
-          parsedAreas = [];
-        }
+    // ── City lookup before insert (propertyCityId depends on it) ─────────────
+    const [cityResult] = await db
+      .promise()
+      .query("SELECT cityNACL FROM cities WHERE city = ? LIMIT 1", [city]);
+    if (cityResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "City not found in database",
+      });
+    }
+    const cityNACL = cityResult[0].cityNACL;
 
-        const FARM_TYPES = [
-          "FarmLand",
-          "ResaleFarmLand",
-          "FarmHouse",
-          "ResaleFarmHouse",
-        ];
-        const isFarm =
-          FARM_TYPES.includes(property_type) ||
-          derivePropertyKind(property_type) === "Agriculture";
+    // ── Area parse ───────────────────────────────────────────────────────
+    let parsedAreas = [];
+    try {
+      parsedAreas =
+        typeof areas === "string" ? JSON.parse(areas) : areas || [];
+    } catch {
+      parsedAreas = [];
+    }
 
-        let builtUpArea = null;
-        let carpetArea = null;
+    const FARM_TYPES = [
+      "FarmLand",
+      "ResaleFarmLand",
+      "FarmHouse",
+      "ResaleFarmHouse",
+    ];
+    const isFarm =
+      FARM_TYPES.includes(property_type) ||
+      derivePropertyKind(property_type) === "Agriculture";
 
-        if (isFarm) {
-          // Farm types: areas array has { label: 'Farm Land Area', value: '1.5', unit: 'Acre' }
-          const landArea = parsedAreas.find(
-            (a) =>
-              a?.label?.toLowerCase().includes("land") ||
-              a?.label?.toLowerCase().includes("farm"),
-          );
+    let builtUpArea = null;
+    let carpetArea = null;
 
-          console.log("Farm Land Area:", landArea);
+    if (isFarm) {
+      // Farm types: areas array has { label: 'Farm Land Area', value: '1.5', unit: 'Acre' }
+      const landArea = parsedAreas.find(
+        (a) =>
+          a?.label?.toLowerCase().includes("land") ||
+          a?.label?.toLowerCase().includes("farm"),
+      );
 
-          if (landArea) {
-            const value = landArea?.value?.toString()?.trim();
-            const unit = landArea?.unit?.toString()?.trim();
+      console.log("Farm Land Area:", landArea);
 
-            if (
-              value &&
-              unit &&
-              !value.toLowerCase().includes(unit.toLowerCase())
-            ) {
-              builtUpArea = `${value} ${unit}`;
-            } else {
-              builtUpArea = value || null;
-            }
-          }
+      if (landArea) {
+        const value = landArea?.value?.toString()?.trim();
+        const unit = landArea?.unit?.toString()?.trim();
+
+        if (
+          value &&
+          unit &&
+          !value.toLowerCase().includes(unit.toLowerCase())
+        ) {
+          builtUpArea = `${value} ${unit}`;
         } else {
-          // All other types: areas array has { label: 'Built-Up Area', value: '1200' }
-          builtUpArea =
-            parsedAreas.find((a) => a?.label?.toLowerCase() === "built-up area")
-              ?.value || null;
-          carpetArea =
-            parsedAreas.find((a) => a?.label?.toLowerCase() === "carpet area")
-              ?.value || null;
-
-          console.log("Parsed builtUpArea:", builtUpArea);
-          console.log("Parsed carpetArea:", carpetArea);
+          builtUpArea = value || null;
         }
+      }
+    } else {
+      // All other types: areas array has { label: 'Built-Up Area', value: '1200' }
+      builtUpArea =
+        parsedAreas.find((a) => a?.label?.toLowerCase() === "built-up area")
+          ?.value || null;
+      carpetArea =
+        parsedAreas.find((a) => a?.label?.toLowerCase() === "carpet area")
+          ?.value || null;
 
-        const seoSlug = toSlug(property_name);
+      console.log("Parsed builtUpArea:", builtUpArea);
+      console.log("Parsed carpetArea:", carpetArea);
+    }
 
-        // ── Build dynamic image columns ──────────────────────────────────────
-        // Normalizes every image field into a JSON array string for DB storage.
-        // Handles all shapes the React Native app may send:
-        //   string[]          → JSON.stringify as-is           e.g. ["url1","url2"]
-        //   single string     → wrap in array                  e.g. "url1" → ["url1"]
-        //   JSON array string → parse then re-stringify        e.g. '["url1"]' → ["url1"]
-        //   empty string / undefined / null → store as []
-        const normalizeImageVal = (val) => {
-          if (!val) return "[]";
-          if (Array.isArray(val)) {
-            const clean = val.filter((v) => typeof v === "string" && v.trim());
-            return JSON.stringify(clean);
-          }
-          if (typeof val === "string") {
-            const trimmed = val.trim();
-            if (!trimmed) return "[]";
-            if (trimmed.startsWith("[")) {
-              try {
-                const parsed = JSON.parse(trimmed);
-                if (Array.isArray(parsed)) {
-                  return JSON.stringify(
-                    parsed.filter((v) => typeof v === "string" && v.trim()),
-                  );
-                }
-              } catch {}
-            }
-            return JSON.stringify([trimmed]);
-          }
-          return "[]";
-        };
+    const validationError = listingValidationError({
+      contact,
+      pincode,
+      address,
+      latitude,
+      longitude,
+      frontView: req.body.frontView,
+      offerPrice: ofprice,
+      area: builtUpArea || carpetArea,
+    });
+    if (validationError) {
+      return res.status(400).json({ success: false, message: validationError });
+    }
 
-        const imageColumns = ALL_IMAGE_KEYS.map((key) =>
-          normalizeImageVal(req.body[key]),
-        );
+    const seoSlug = toSlug(property_name);
 
-        // ── INSERT ───────────────────────────────────────────────────────────
-        const imageColumnNames = ALL_IMAGE_KEYS.join(",\n          ");
-        const imagePlaceholders = ALL_IMAGE_KEYS.map(() => "?").join(
-          ",\n          ",
-        );
+    const propertyTypeJson = toPropertyTypeJson(bhk_type);
 
-        const insertSQL = `
-          INSERT INTO properties (
-            projectpartnerid,
-            propertyType,
-            propertyCategory,
-            listingType,
-            propertyKind,
-            propertyName,
-            totalSalesPrice,
-            totalOfferPrice,
-            contact,
-            projectBy,
-            state,
-            city,
-            address,
-            pincode,
-            latitude,
-            longitude,
-            builtUpArea,
-            carpetArea,
-            ${imageColumnNames},
-            propertyVideo,
-            videoLink,
-            instagramReelLink,
-            seoSlug,
-            created_at,
-            updated_at${details.columns.map((c) => `,\n            ${c}`).join("")}
-          )
-          VALUES (
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-            ${imagePlaceholders},
-            ?,?,?,?,NOW(),NOW()${",?".repeat(details.columns.length)}
-          )
-        `;
+    const emiPrincipal = Number(ofprice) || Number(price);
+    const emi = emiPrincipal > 0 ? calculateEMI(emiPrincipal) : null;
 
-        const values = [
-          projectpartnerid,
-          bhk_type,
-          property_type,
-          listing.listingType,
-          listing.propertyKind,
-          property_name,
-          price,
-          ofprice,
-          contact,
-          ownername,
-          state,
-          city,
-          address,
-          pincode,
-          latitude,
-          longitude,
-          builtUpArea, // "1.5 Acre" for farm, "1200" for others
-          carpetArea, // null for farm/plot types
-          ...imageColumns,
-          propertyVideo,
-          videoLinks.videoLink,
-          videoLinks.instagramReelLink,
-          seoSlug,
-          ...details.values,
-        ];
-
-        db.query(insertSQL, values, (err, result) => {
-          if (err) {
-            console.error("Insert error:", err);
-            return res.status(500).json({
-              success: false,
-              message: "Insert failed",
-              error: err.message,
-            });
-          }
-
-          const newPropertyId = result.insertId;
-
-          // ── Generate propertyCityId ──────────────────────────────────────
-          db.query(
-            "SELECT cityNACL FROM cities WHERE city = ? LIMIT 1",
-            [city],
-            (err2, cityResult) => {
-              if (err2) {
-                return res.status(500).json({
-                  success: false,
-                  message: "City lookup failed",
-                  error: err2,
-                });
-              }
-              if (cityResult.length === 0) {
-                return res.status(404).json({
-                  success: false,
-                  message: "City not found in database",
-                });
-              }
-
-              const cityNACL = cityResult[0].cityNACL;
-              const propertyCityId = `${cityNACL}-${newPropertyId}`;
-
-              db.query(
-                "UPDATE properties SET propertyCityId = ? WHERE propertyid = ?",
-                [propertyCityId, newPropertyId],
-                (err3) => {
-                  if (err3) {
-                    return res.status(500).json({
-                      success: false,
-                      message: "Failed to update propertyCityId",
-                      error: err3,
-                    });
-                  }
-
-                  return res.status(201).json({
-                    success: true,
-                    message: "Property created successfully",
-                    id: newPropertyId,
-                    propertyCityId,
-                  });
-                },
+    // ── Build dynamic image columns ──────────────────────────────────────
+    // Normalizes every image field into a JSON array string for DB storage.
+    // Handles all shapes the React Native app may send:
+    //   string[]          → JSON.stringify as-is           e.g. ["url1","url2"]
+    //   single string     → wrap in array                  e.g. "url1" → ["url1"]
+    //   JSON array string → parse then re-stringify        e.g. '["url1"]' → ["url1"]
+    //   empty string / undefined / null → store as []
+    const normalizeImageVal = (val) => {
+      if (!val) return "[]";
+      if (Array.isArray(val)) {
+        const clean = val.filter((v) => typeof v === "string" && v.trim());
+        return JSON.stringify(clean);
+      }
+      if (typeof val === "string") {
+        const trimmed = val.trim();
+        if (!trimmed) return "[]";
+        if (trimmed.startsWith("[")) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed)) {
+              return JSON.stringify(
+                parsed.filter((v) => typeof v === "string" && v.trim()),
               );
-            },
-          );
-        });
-      },
+            }
+          } catch {}
+        }
+        return JSON.stringify([trimmed]);
+      }
+      return "[]";
+    };
+
+    const imageColumns = ALL_IMAGE_KEYS.map((key) =>
+      normalizeImageVal(req.body[key]),
     );
+
+    // ── INSERT ───────────────────────────────────────────────────────────
+    const imageColumnNames = ALL_IMAGE_KEYS.join(",\n          ");
+    const imagePlaceholders = ALL_IMAGE_KEYS.map(() => "?").join(
+      ",\n          ",
+    );
+
+    const insertSQL = `
+      INSERT INTO properties (
+        projectpartnerid,
+        propertyType,
+        propertyCategory,
+        listingType,
+        propertyKind,
+        propertyName,
+        totalSalesPrice,
+        totalOfferPrice,
+        emi,
+        contact,
+        projectBy,
+        state,
+        city,
+        address,
+        pincode,
+        latitude,
+        longitude,
+        builtUpArea,
+        carpetArea,
+        ${imageColumnNames},
+        propertyVideo,
+        videoLink,
+        instagramReelLink,
+        seoSlug,
+        created_at,
+        updated_at${details.columns.map((c) => `,\n            ${c}`).join("")}
+      )
+      VALUES (
+        ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+        ${imagePlaceholders},
+        ?,?,?,?,NOW(),NOW()${",?".repeat(details.columns.length)}
+      )
+    `;
+
+    const values = [
+      partnerId,
+      propertyTypeJson,
+      property_type,
+      listing.listingType,
+      listing.propertyKind,
+      property_name,
+      price,
+      ofprice,
+      emi,
+      contact,
+      ownername,
+      state,
+      city,
+      address,
+      pincode,
+      latitude,
+      longitude,
+      builtUpArea, // "1.5 Acre" for farm, "1200" for others
+      carpetArea, // null for farm/plot types
+      ...imageColumns,
+      propertyVideo,
+      videoLinks.videoLink,
+      videoLinks.instagramReelLink,
+      seoSlug,
+      ...details.values,
+    ];
+
+    // Insert + propertyCityId update succeed or fail together
+    const conn = await db.promise().getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [insertResult] = await conn.query(insertSQL, values);
+      const newPropertyId = insertResult.insertId;
+      const propertyCityId = `${cityNACL}-${newPropertyId}`;
+
+      await conn.query(
+        "UPDATE properties SET propertyCityId = ? WHERE propertyid = ?",
+        [propertyCityId, newPropertyId],
+      );
+
+      await conn.commit();
+
+      return res.status(201).json({
+        success: true,
+        message: "Property created successfully",
+        id: newPropertyId,
+        propertyCityId,
+      });
+    } catch (txError) {
+      await conn.rollback();
+      console.error("addPropertyNew transaction rolled back:", txError);
+      return res.status(500).json({
+        success: false,
+        message: "Insert failed",
+        error: txError.message,
+      });
+    } finally {
+      conn.release();
+    }
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Server error" });

@@ -207,3 +207,57 @@ export const pickListingExtras = (body = {}) => {
 
   return { columns, values };
 };
+
+/** Every photo column a partner listing can store (JSON arrays). */
+export const LISTING_IMAGE_KEYS = [
+  "frontView", "sideView", "hallView", "kitchenView", "bedroomView",
+  "bathroomView", "balconyView", "nearestLandmark", "developedAmenities",
+  "interiorView", "entranceView", "roadView", "parkingView", "officeArea",
+  "cabinView", "washroomView", "warehouseArea", "loadingArea",
+  "showroomInterior", "displayArea", "terraceSitout", "farmGardenArea",
+  "extraImages",
+];
+
+/** BHK / configuration as stored everywhere: JSON array, NULL when empty. */
+export const toPropertyTypeJson = (value) => {
+  const list = (Array.isArray(value) ? value : [value])
+    .map((v) => String(v ?? "").trim())
+    .filter(Boolean);
+  return list.length ? JSON.stringify(list) : null;
+};
+
+const hasPhoto = (value) =>
+  Array.isArray(value) ? value.some(Boolean) : Boolean(value);
+
+/** Rules every new partner listing must meet. Returns a message or null. */
+export const listingValidationError = ({
+  contact, pincode, address, latitude, longitude, frontView, offerPrice, area,
+}) => {
+  if (!/^[6-9]\d{9}$/.test(String(contact ?? "").trim())) return "Enter a valid 10-digit contact number";
+  if (!/^\d{6}$/.test(String(pincode ?? "").trim())) return "Enter a valid 6-digit pincode";
+  if (!String(address ?? "").trim()) return "Address is required";
+  if (!latitude || !longitude) return "Please pin the location on the map";
+  if (!offerPrice) return "Offer price is required";
+  if (!String(area ?? "").trim()) return "Property area is required";
+  if (!hasPhoto(frontView)) return "At least one front view photo is required";
+  return null;
+};
+/** Photo list from a column value: array, JSON text, or double-encoded JSON. */
+export const parseImageList = (value) => {
+  let parsed = value;
+  for (let i = 0; i < 3 && typeof parsed === "string"; i++) {
+    const text = parsed.trim();
+    if (!text) return [];
+    if (!text.startsWith("[") && !text.startsWith('"')) {
+      return /^https?:\/\/|^\//.test(text) ? [text] : [];
+    }
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(parsed)
+    ? parsed.filter((v) => typeof v === "string" && v.trim())
+    : [];
+};

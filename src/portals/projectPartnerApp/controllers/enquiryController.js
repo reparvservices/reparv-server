@@ -1,6 +1,7 @@
 import axios from "axios";
 import db from "#db";
 import moment from "moment-timezone";
+import { readProjectPartner } from "../../../core/middleware/verifyToken.js";
 
 export const getAll = (req, res) => {
   try {
@@ -668,21 +669,45 @@ export const getAllDigitalEnquiry = (req, res) => {
 };
 
 //get remark
+// Follow-up history of one enquiry. Only the project partner who owns the
+// enquiry (directly or through its property) can read it.
 export const getRemarkList = (req, res) => {
   const enquiryId = req.params.id;
-  const sql =
-    "SELECT * FROM propertyfollowup WHERE enquirerid = ? ORDER BY propertyfollowup.created_at";
-  db.query(sql, [enquiryId], (err, result) => {
-    if (err) {
-      console.error("Error fetching :", err);
-      return res.status(500).json({ message: "Database error", error: err });
-    }
-    const formatted = result.map((row) => ({
-      ...row,
-      visitdate: row.visitdate,
-    }));
+  const partnerId = req.projectPartnerUser?.id || readProjectPartner(req)?.id;
+  if (!partnerId) {
+    return res.status(401).json({ message: "Please log in again." });
+  }
 
-    res.json(formatted);
+  const ownerSql = `
+    SELECT 1 FROM enquirers e
+    LEFT JOIN properties p ON p.propertyid = e.propertyid
+    WHERE e.enquirersid = ? AND (e.projectpartnerid = ? OR p.projectpartnerid = ?)
+    LIMIT 1`;
+  db.query(ownerSql, [enquiryId, partnerId, partnerId], (ownerErr, owner) => {
+    if (ownerErr) {
+      console.error("Error checking enquiry owner:", ownerErr);
+      return res.status(500).json({ message: "Database error" });
+    }
+    if (!owner.length) {
+      return res.status(404).json({ message: "Enquiry not found." });
+    }
+
+    const sql =
+      "SELECT * FROM propertyfollowup WHERE enquirerid = ? ORDER BY propertyfollowup.created_at";
+    db.query(sql, [enquiryId], (err, result) => {
+      if (err) {
+        console.error("Error fetching :", err);
+        return res.status(500).json({ message: "Database error" });
+      }
+      // Same shape as the admin endpoint the app used before
+      const formatted = result.map((row) => ({
+        ...row,
+        visitdate: row.visitdate
+          ? moment(row.visitdate).format("DD MMM YYYY")
+          : null,
+      }));
+      res.json(formatted);
+    });
   });
 };
 

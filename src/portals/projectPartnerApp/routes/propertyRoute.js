@@ -9,6 +9,12 @@ import {
   uploadBrochureAndVideoLink,
 } from "../controllers/propertyController.js";
 import { generateUploadUrl } from "../controllers/uploadController.js";
+import {
+  requireProjectPartner,
+  requireSameProjectPartner,
+} from "../../../core/middleware/verifyToken.js";
+import { requireActivePartnerSubscription } from "../../../core/middleware/requireActivePartnerSubscription.js";
+import { requirePropertyOwner } from "../../../core/middleware/requirePropertyOwner.js";
 
 const router = express.Router();
 
@@ -54,11 +60,19 @@ const upload = multer({
 });
 
 /* ---------- ROUTES ---------- */
-router.get("/getAll/:id", getAll);
+// This path prefix is public in verifyToken, so each route checks access itself
+const ownerWrite = [
+  requireProjectPartner,
+  requireActivePartnerSubscription,
+  requirePropertyOwner,
+];
+
+router.get("/getAll/:id", requireProjectPartner, requireSameProjectPartner, getAll);
 
 // Legacy add route
 router.post(
   "/post",
+  requireProjectPartner,
   upload.fields([
     { name: "frontView", maxCount: 3 },
     { name: "sideView", maxCount: 3 },
@@ -73,10 +87,10 @@ router.post(
   ]),
   addProperty,
 );
-router.put("/update/:propertyid", updateProperty);
-router.put("/edit/:id", update);
+router.put("/update/:propertyid", ...ownerWrite, updateProperty);
+router.put("/edit/:id", ...ownerWrite, update);
 // New add route — supports extraImages + lat/lng in body
-router.post("/add", addPropertyNew);
+router.post("/add", requireProjectPartner, requireActivePartnerSubscription, addPropertyNew);
 
 // Edit route
 router.put(
@@ -97,7 +111,7 @@ router.put(
 );
 
 router.post("/generate-upload-url", generateUploadUrl);
-router.post("/brochure/upload/:id", uploadBrochureAndVideoLink);
+router.post("/brochure/upload/:id", ...ownerWrite, uploadBrochureAndVideoLink);
 /* ---------- MULTER ERROR HANDLER ---------- */
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {

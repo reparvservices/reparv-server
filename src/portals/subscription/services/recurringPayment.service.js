@@ -7,7 +7,10 @@ import {
   getExpectedSubscriptionChargeAmount,
   paymentMatchesSubscriptionCharge,
 } from "../utils/subscriptionChargeAmount.js";
-import { mapRazorpaySubscriptionToLocalStatus } from "../utils/subscriptionStatus.js";
+import {
+  mapRazorpaySubscriptionToLocalStatus,
+  isSubscriptionInPaidPeriod,
+} from "../utils/subscriptionStatus.js";
 
 const paiseToRupees = (paise) => {
   const n = Number(paise);
@@ -196,6 +199,10 @@ export async function refreshSubscriptionBillingState(userSubscriptionId, rzSubs
   const currentStatus = String(existing[0]?.status || "").toLowerCase();
   if (currentStatus === "cancelled") {
     localStatus = "cancelled";
+  }
+  // An immediate cancel already ended access; a later sync must not restore it
+  if (currentStatus === "expired" && String(rzSubscription.status).toLowerCase() === "cancelled") {
+    return;
   }
 
   await dbPromise.query(
@@ -419,6 +426,9 @@ export async function handleSubscriptionStatusWebhook(payload, event) {
   const subId = subscriptionRowId(subRow);
 
   if (event === "subscription.cancelled") {
+    if (String(subRow.status || "").toLowerCase() === "expired") {
+      return { ok: true, status: "expired", ignored: true };
+    }
     await refreshSubscriptionBillingState(subId, subEntity);
     await dbPromise.query(
       `UPDATE user_subscriptions SET status = 'cancelled', updated_at = NOW() WHERE id = ?`,
@@ -429,7 +439,10 @@ export async function handleSubscriptionStatusWebhook(payload, event) {
 
   let localStatus = subRow.status;
   if (event === "subscription.halted") localStatus = "halted";
-  else if (event === "subscription.completed") localStatus = "expired";
+  else if (event === "subscription.completed") {
+    // Razorpay sends this right after the last charge; that period is still paid
+    localStatus = isSubscriptionInPaidPeriod(subEntity) ? subRow.status : "expired";
+  }
   else if (event === "subscription.activated" || event === "subscription.resumed") {
     localStatus = "active";
   }

@@ -77,8 +77,8 @@ export async function getSubscriptionAnalytics({ year: yearRaw, month: monthRaw 
     dbPromise.query(
       `SELECT
          COUNT(*) AS total_all,
-         SUM(LOWER(us.status) = 'active') AS active,
-         SUM(LOWER(us.status) = 'trial') AS trial,
+         SUM(LOWER(us.status) IN ('active', 'trial') AND (us.end_date IS NULL OR us.end_date >= NOW()) AND LOWER((${PLAN_TYPE_SELECT_SQL})) <> 'trial') AS active,
+         SUM(LOWER(us.status) IN ('active', 'trial') AND (us.end_date IS NULL OR us.end_date >= NOW()) AND LOWER((${PLAN_TYPE_SELECT_SQL})) = 'trial') AS trial,
          SUM(LOWER(us.status) = 'pending') AS pending,
          SUM(LOWER(us.status) = 'cancelled') AS cancelled,
          SUM(LOWER(us.status) = 'expired') AS expired,
@@ -89,7 +89,8 @@ export async function getSubscriptionAnalytics({ year: yearRaw, month: monthRaw 
            THEN 1 ELSE 0
          END) AS started_this_year
        FROM user_subscriptions us
-       INNER JOIN (${CANONICAL_USER_SUBSCRIPTION_IDS_SQL}) canonical ON canonical.id = us.id`,
+       INNER JOIN (${CANONICAL_USER_SUBSCRIPTION_IDS_SQL}) canonical ON canonical.id = us.id
+       LEFT JOIN subscription_plans sp ON sp.id = us.plan_id`,
       [yearStart, yearEnd],
     ),
     dbPromise.query(
@@ -130,10 +131,11 @@ export async function getSubscriptionAnalytics({ year: yearRaw, month: monthRaw 
     dbPromise.query(
       `SELECT us.role,
               COUNT(*) AS total,
-              SUM(LOWER(us.status) = 'active') AS active,
-              SUM(LOWER(us.status) = 'trial') AS trial
+              SUM(LOWER(us.status) IN ('active', 'trial') AND (us.end_date IS NULL OR us.end_date >= NOW()) AND LOWER((${PLAN_TYPE_SELECT_SQL})) <> 'trial') AS active,
+              SUM(LOWER(us.status) IN ('active', 'trial') AND (us.end_date IS NULL OR us.end_date >= NOW()) AND LOWER((${PLAN_TYPE_SELECT_SQL})) = 'trial') AS trial
        FROM user_subscriptions us
        INNER JOIN (${CANONICAL_USER_SUBSCRIPTION_IDS_SQL}) canonical ON canonical.id = us.id
+       LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
        GROUP BY us.role`,
     ),
     dbPromise.query(

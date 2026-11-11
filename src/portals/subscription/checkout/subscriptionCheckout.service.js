@@ -11,6 +11,7 @@ import {
   isRazorpayConfigured,
 } from "#utils/subscriptionRazorpayPlan.js";
 import { isTrialPlanRecord } from "../services/subscriptionTrial.service.js";
+import { retireSupersededSubscriptions } from "../utils/retireSupersededSubscriptions.js";
 import {
   findUserSubscriptionByRazorpayId,
   findUserSubscriptionByUserRole,
@@ -124,6 +125,10 @@ function assertCheckoutMatches(notes, { role, userId, localPlanId }) {
     throw httpError("Payment does not match the selected partner or plan");
   }
 }
+
+/** Monthly autopay runs for 12 charges; a yearly plan charges once per term. */
+const autopayChargeCount = (planRow) =>
+  String(planRow.billing_cycle).toLowerCase() === "yearly" ? 1 : 12;
 
 const addPlanDuration = (startDate, duration, billingCycle) => {
   const end = new Date(startDate);
@@ -337,10 +342,21 @@ export async function completePartnerPaymentOrder(payload) {
   const planRow = await loadPaidPartnerPlan(localPlanId, role);
   const startDate = new Date();
   const duration = Math.max(1, safeInt(planRow.duration) || 1);
-  const endDate = addPlanDuration(startDate, duration, planRow.billing_cycle);
+  // Renewing the same plan early adds to the time already paid for
+  const [renewing] = await dbQuery(
+    `SELECT MAX(end_date) AS end_date FROM user_subscriptions
+     WHERE user_id = ? AND role = ? AND plan_id = ?
+       AND LOWER(status) = 'active' AND end_date > ?`,
+    [userId, role, localPlanId, startDate],
+  );
+  const endDate = addPlanDuration(
+    renewing?.end_date ? new Date(renewing.end_date) : startDate,
+    duration,
+    planRow.billing_cycle,
+  );
   const computedFinalAmount = Number(order.amount) / 100;
 
-  await activateOrderSubscriptionRow({
+  const activatedRowId = await activateOrderSubscriptionRow({
     userId,
     role,
     planId: localPlanId,
@@ -349,6 +365,10 @@ export async function completePartnerPaymentOrder(payload) {
     discountAmount: 0,
     finalAmount: computedFinalAmount,
   });
+
+  await retireSupersededSubscriptions({ userId, role, keepId: activatedRowId }).catch((err) =>
+    console.error("Retire older subscriptions:", err),
+  );
 
   try {
     const subRow = await findUserSubscriptionByUserRole(userId, role);
@@ -405,12 +425,11 @@ export async function startPartnerRecurringSubscription(payload) {
   const planRow = await loadPaidPartnerPlan(localPlanId, role);
   const razorpayPlanId = await ensureRazorpayPlanId(planRow, role);
 
-  const duration = Math.max(1, safeInt(planRow.duration) || 1);
   let rzSubscription;
   try {
     rzSubscription = await razorpay.subscriptions.create({
       plan_id: razorpayPlanId,
-      total_count: duration,
+      total_count: autopayChargeCount(planRow),
       customer_notify: 1,
       notes: {
         local_plan_id: String(planRow.id),
@@ -436,7 +455,7 @@ export async function startPartnerRecurringSubscription(payload) {
     );
     rzSubscription = await razorpay.subscriptions.create({
       plan_id: freshPlanId,
-      total_count: duration,
+      total_count: autopayChargeCount(planRow),
       customer_notify: 1,
       notes: {
         local_plan_id: String(planRow.id),
@@ -543,7 +562,7 @@ export async function completePartnerRecurringSubscription(payload) {
     );
   const computedFinalAmount = planAmount(planRow);
 
-  await activateRecurringSubscriptionRow({
+  const activatedRowId = await activateRecurringSubscriptionRow({
     userId,
     role,
     planId: localPlanId,
@@ -554,6 +573,10 @@ export async function completePartnerRecurringSubscription(payload) {
     discountAmount: 0,
     finalAmount: computedFinalAmount,
   });
+
+  await retireSupersededSubscriptions({ userId, role, keepId: activatedRowId }).catch((err) =>
+    console.error("Retire older subscriptions:", err),
+  );
 
   try {
     const subRow = await findUserSubscriptionByRazorpayId(subscriptionId);

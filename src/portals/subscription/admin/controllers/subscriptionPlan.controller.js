@@ -117,6 +117,8 @@ export const getPlansByPartnerType = async (req, res) => {
         sp.plan_name AS planName,
         sp.duration,
         sp.price AS totalPrice,
+        sp.base_price AS basePrice,
+        sp.gst_amount AS gstAmount,
         sp.billing_cycle,
         sp.status,
         sp.razorpay_plan_id,
@@ -489,6 +491,18 @@ export const deletePlan = async (req, res) => {
     }
 
     const planRow = rows[0];
+    const [inUse] = await dbPromise.query(
+      `SELECT COUNT(*) AS n FROM user_subscriptions
+       WHERE plan_id = ? AND LOWER(status) IN ('active', 'trial', 'halted', 'cancelled')
+         AND (end_date IS NULL OR end_date >= NOW())`,
+      [id],
+    );
+    if (inUse[0].n > 0) {
+      return res.status(409).json({
+        message: `${inUse[0].n} partner(s) are on this plan. Set it to Inactive instead of deleting it.`,
+      });
+    }
+
     if (String(planRow.plan_type).toLowerCase() === "enterprise") {
       const result = await deleteEnterprisePlanGroup(planRow);
       return res.status(200).json({

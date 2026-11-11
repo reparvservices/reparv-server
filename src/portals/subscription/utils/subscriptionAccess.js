@@ -24,7 +24,8 @@ export function isPartnerSubscriptionAccessActive(sub) {
 /**
  * Pick the row that represents a partner's current subscription.
  * A newer pending checkout row must not hide an active paid/trial row,
- * so rows that grant access win (latest end date first); otherwise the newest row.
+ * so rows that grant access win (most recently started first, so a plan bought
+ * during a long trial takes over); otherwise the newest row.
  * @param {Array} rows user_subscriptions rows (with plan_type when available)
  */
 export function pickCurrentSubscription(rows) {
@@ -32,9 +33,12 @@ export function pickCurrentSubscription(rows) {
   const granting = rows
     .filter((row) => isPartnerSubscriptionAccessActive(row))
     .sort((a, b) => {
-      const endA = a.end_date ? new Date(a.end_date).getTime() : Infinity;
-      const endB = b.end_date ? new Date(b.end_date).getTime() : Infinity;
-      return endB - endA;
+      const time = (v) => (v ? new Date(v).getTime() : 0);
+      return (
+        time(b.start_date) - time(a.start_date) ||
+        time(b.end_date) - time(a.end_date) ||
+        Number(b.id) - Number(a.id)
+      );
     });
   if (granting.length) return granting[0];
   return [...rows].sort((a, b) => {

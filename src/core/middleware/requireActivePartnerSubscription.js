@@ -1,4 +1,5 @@
 import dbPromise from "#db/promise";
+import { readProjectPartner } from "./verifyToken.js";
 import { isPartnerSubscriptionAccessActive } from "../../portals/subscription/utils/subscriptionAccess.js";
 import {
   requiredFeatureForApi,
@@ -34,6 +35,17 @@ const GATED_PREFIXES = [
   "/projectpartner/",
   "/salesapp/",
   "/territoryapp/",
+];
+
+/**
+ * Admin endpoints a project partner may call for their own team/properties
+ * (allowed in adminAccess.js). Gated only when the caller is a project partner;
+ * admins and the public sign-up forms (/admin/.../add) pass straight through.
+ */
+const PARTNER_ADMIN_PREFIXES = [
+  "/admin/salespersons/",
+  "/admin/territorypartner/",
+  "/admin/properties/",
 ];
 
 /** Safe read methods — allow browse without subscription (feature-lock UX). */
@@ -79,13 +91,22 @@ async function activePlansIncludeFeature(activeRows, feature) {
  */
 export async function requireActivePartnerSubscription(req, res, next) {
   try {
-    const path = req.path || "";
+    // originalUrl keeps the full path when used on a router
+    const path = (req.originalUrl || req.path || "").split("?")[0];
 
-    if (!GATED_PREFIXES.some((p) => path.startsWith(p))) {
+    const isPartnerAdminCall = PARTNER_ADMIN_PREFIXES.some((p) => path.startsWith(p));
+    if (isPartnerAdminCall) {
+      if (req.adminUser || !req.projectPartnerUser?.id) return next();
+    } else if (!GATED_PREFIXES.some((p) => path.startsWith(p))) {
       return next();
     }
     if (EXEMPT_PREFIXES.some((p) => path.startsWith(p))) {
       return next();
+    }
+
+    // App routes on the public list skip verifyToken, so read the login here
+    if (!req.projectPartnerUser && /^\/project-?partner\//.test(path)) {
+      req.projectPartnerUser = readProjectPartner(req) || undefined;
     }
 
     const partner = resolvePartner(req);

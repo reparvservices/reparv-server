@@ -1,4 +1,5 @@
 import express from "express";
+import { requirePropertyOwner } from "../../../core/middleware/requirePropertyOwner.js";
 import multer from "multer";
 import {
   getAll,
@@ -77,9 +78,9 @@ router.post("/check-property-name", checkPropertyName);
  * Frontend sends image URLs in req.body
  */
 router.post("/v2/add", v2AddProperty);
-router.put("/v2/edit/:id", v2Update);
+router.put("/v2/edit/:id", requirePropertyOwner, v2Update);
 router.put(
-  "/images/v2/edit/:id",
+  "/images/v2/edit/:id", requirePropertyOwner,
   v2UpdateImages,
 );
 
@@ -100,7 +101,7 @@ router.post(
 );
 
 router.put(
-  "/edit/:id",
+  "/edit/:id", requirePropertyOwner,
   upload.fields([
     { name: "frontView", maxCount: 3 },
     { name: "nearestLandmark", maxCount: 3 },
@@ -116,7 +117,7 @@ router.put(
 );
 
 router.put(
-  "/images/edit/:id",
+  "/images/edit/:id", requirePropertyOwner,
   upload.fields([
     { name: "frontView", maxCount: 3 },
     { name: "nearestLandmark", maxCount: 3 },
@@ -131,12 +132,12 @@ router.put(
   updateImages,
 );
 
-router.put("/status/:id", status);
-router.put("/seo/:id", seoDetails);
-router.put("/reject/:id", addRejectReason);
-router.put("/commission/:id", setPropertyCommission);
-router.put("/approve/:id", approve);
-router.delete("/delete/:id", del);
+router.put("/status/:id", requirePropertyOwner, status);
+router.put("/seo/:id", requirePropertyOwner, seoDetails);
+router.put("/reject/:id", requirePropertyOwner, addRejectReason);
+router.put("/commission/:id", requirePropertyOwner, setPropertyCommission);
+router.put("/approve/:id", requirePropertyOwner, approve);
+router.delete("/delete/:id", requirePropertyOwner, del);
 router.get("/propertyinfo/:id", propertyInfo);
 
 router.post(
@@ -167,7 +168,7 @@ router.put(
 
 // Property Location
 router.get("/location/get/:id", getPropertyLocation);
-router.put("/location/edit/:id", changePropertyLocation);
+router.put("/location/edit/:id", requirePropertyOwner, changePropertyLocation);
 
 // ---------------- BROCHURE UPLOAD ----------------
 const brochureUpload = multer({
@@ -190,7 +191,7 @@ const brochureUpload = multer({
 });
 
 router.put(
-  "/brochure/upload/:id",
+  "/brochure/upload/:id", requirePropertyOwner,
   brochureUpload.single("brochureFile"),
   uploadBrochureAndVideoLink,
 );

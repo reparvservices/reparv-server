@@ -21,13 +21,18 @@ const PROJECT_PARTNER_API_FEATURES = [
   [/^\/project-partner\/enquir/, PARTNER_FEATURES.LEADS],
   [/^\/project-partner\/(customers|builders|employees|roles|departments)(\/|$)/, PARTNER_FEATURES.CRM],
   [/^\/project-partner\/(sales|territory)/, PARTNER_FEATURES.TEAM],
-  [/^\/project-partner\/calender/, PARTNER_FEATURES.SITE_VISITS],
+  [/^\/project-partner\/(calender|event)(\/|$)/, PARTNER_FEATURES.SITE_VISITS],
+  // Admin endpoints the partner panel uses for its own team and properties
+  // (see PROJECT_PARTNER_ADMIN_RULES in core/middleware/adminAccess.js)
+  [/^\/admin\/(salespersons|territorypartner)\//, PARTNER_FEATURES.TEAM],
+  [/^\/admin\/properties\//, PARTNER_FEATURES.PROPERTIES],
   // Mobile app (reparv-project-partner-app) — same features as the web panel
   [/^\/projectpartner\/property/, PARTNER_FEATURES.PROPERTIES],
   [/^\/projectpartner\/enquiries/, PARTNER_FEATURES.LEADS],
   [/^\/projectpartner\/(builders|employee|departments|roles)(\/|$)/, PARTNER_FEATURES.CRM],
   [/^\/projectpartner\/partner(\/|$)/, PARTNER_FEATURES.TEAM],
   [/^\/projectpartner\/event(\/|$)/, PARTNER_FEATURES.SITE_VISITS],
+  [/^\/projectpartner\/post(\/|$)/, PARTNER_FEATURES.COMMUNITY],
 ];
 
 export function requiredFeatureForApi(path, role) {

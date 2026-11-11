@@ -27,6 +27,7 @@ const publicRoutes = [
   "/frontend/blog/details/",
   "/frontend/slider",
   "/frontend/testimonial",
+  "/frontend/advertisements",
   "/frontend/emi",
   "/frontend/project-partner",
   "/frontend/weekend-visits",
@@ -173,6 +174,32 @@ function assignPartnerFromBearer(req, decoded, path) {
   }
   req.salesUser = decoded;
   return true;
+}
+
+/** Verified project partner from the cookie or Bearer token, else null. */
+export function readProjectPartner(req) {
+  const token = req.cookies?.projectPartnerToken || readBearerToken(req);
+  if (!token) return null;
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET);
+  } catch (error) {
+    console.warn("Invalid project partner token:", error.message);
+    return null;
+  }
+}
+
+/** Requires a project partner login, for routes under a public path prefix. */
+export function requireProjectPartner(req, res, next) {
+  req.projectPartnerUser = req.projectPartnerUser || readProjectPartner(req);
+  if (req.projectPartnerUser) return next();
+  return res.status(401).json({ message: "Unauthorized. Please log in." });
+}
+
+/** The partner id in the URL must be the logged-in partner. */
+export function requireSameProjectPartner(req, res, next) {
+  const target = req.params.id ?? req.params.userId;
+  if (String(req.projectPartnerUser?.id) === String(target)) return next();
+  return res.status(403).json({ message: "You can only access your own properties." });
 }
 
 export function verifyToken(req, res, next) {

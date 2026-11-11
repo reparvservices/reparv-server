@@ -4,6 +4,10 @@ import {
   withListingFields,
   pickBasicDetails,
   isBuyListingType,
+  LISTING_IMAGE_KEYS,
+  toPropertyTypeJson,
+  listingValidationError,
+  parseImageList,
   BUY_LISTING_REMOVED_MESSAGE,
 } from "#utils/propertyListing.js";
 import moment from "moment-timezone";
@@ -438,21 +442,27 @@ export const v2AddProperty = async (req, res) => {
     videoLink,
     instagramReelLink,
 
-    frontView = [],
-    sideView = [],
-    kitchenView = [],
-    hallView = [],
-    bedroomView = [],
-    bathroomView = [],
-    balconyView = [],
-    nearestLandmark = [],
-    developedAmenities = [],
+    propertyType,
   } = req.body;
 
   if (!propertyCategory || !propertyName || !state || !city) {
     return res.status(400).json({
       message: "Property name, category, city, and state are required",
     });
+  }
+
+  const validationError = listingValidationError({
+    contact,
+    pincode,
+    address,
+    latitude,
+    longitude,
+    frontView: req.body.frontView,
+    offerPrice: totalOfferPrice,
+    area: builtUpArea || carpetArea,
+  });
+  if (validationError) {
+    return res.status(400).json({ message: validationError });
   }
 
   const listing = resolveListingFields({
@@ -496,56 +506,50 @@ export const v2AddProperty = async (req, res) => {
     try {
       await conn.beginTransaction();
 
-      const insertSQL = `
-        INSERT INTO properties (
-          projectpartnerid, propertyCategory, listingType, propertyKind,
-          propertyName, totalSalesPrice,
-          totalOfferPrice, builtUpArea, carpetArea,
-          state, city, pincode, address, latitude, longitude,
-          projectBy, contact, email, videoLink, instagramReelLink,
-          frontView, sideView, kitchenView, hallView,
-          bedroomView, bathroomView, balconyView,
-          nearestLandmark, developedAmenities, seoSlug,
-          updated_at, created_at${details.columns.map((c) => `, ${c}`).join("")}
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${", ?".repeat(details.columns.length)})
-      `;
+      const emiPrincipal = Number(totalOfferPrice) || Number(totalSalesPrice);
+      const imageValue = (v) =>
+        JSON.stringify((Array.isArray(v) ? v : v ? [v] : []).filter(Boolean));
 
-      const [insertResult] = await conn.query(insertSQL, [
-        partnerId,
+      const row = {
+        projectpartnerid: partnerId,
         propertyCategory,
-        listing.listingType,
-        listing.propertyKind,
+        listingType: listing.listingType,
+        propertyKind: listing.propertyKind,
         propertyName,
-        totalSalesPrice || null,
-        totalOfferPrice || null,
-        builtUpArea || null,
-        carpetArea || null,
+        propertyType: toPropertyTypeJson(propertyType),
+        totalSalesPrice: totalSalesPrice || null,
+        totalOfferPrice: totalOfferPrice || null,
+        emi: emiPrincipal > 0 ? calculateEMI(emiPrincipal) : null,
+        builtUpArea: builtUpArea || null,
+        carpetArea: carpetArea || null,
         state,
         city,
-        pincode || null,
-        address || null,
-        latitude || null,
-        longitude || null,
-        projectBy || null,
-        contact || null,
-        email || null,
-        videoLinks.videoLink,
-        videoLinks.instagramReelLink,
-        JSON.stringify(frontView),
-        JSON.stringify(sideView),
-        JSON.stringify(kitchenView),
-        JSON.stringify(hallView),
-        JSON.stringify(bedroomView),
-        JSON.stringify(bathroomView),
-        JSON.stringify(balconyView),
-        JSON.stringify(nearestLandmark),
-        JSON.stringify(developedAmenities),
-        toSlug(propertyName),
-        currentdate,
-        currentdate,
-        ...details.values,
-      ]);
+        pincode: pincode || null,
+        address: address || null,
+        latitude: latitude || null,
+        longitude: longitude || null,
+        projectBy: projectBy || null,
+        contact: contact || null,
+        email: email || null,
+        videoLink: videoLinks.videoLink,
+        instagramReelLink: videoLinks.instagramReelLink,
+        seoSlug: toSlug(propertyName),
+        updated_at: currentdate,
+        created_at: currentdate,
+      };
+      LISTING_IMAGE_KEYS.forEach((key) => {
+        row[key] = imageValue(req.body[key]);
+      });
+      details.columns.forEach((column, i) => {
+        row[column] = details.values[i];
+      });
+
+      const columns = Object.keys(row);
+      const [insertResult] = await conn.query(
+        `INSERT INTO properties (${columns.join(", ")})
+         VALUES (${columns.map(() => "?").join(", ")})`,
+        columns.map((column) => row[column]),
+      );
 
       const newPropertyId = insertResult.insertId;
       if (!newPropertyId)
@@ -979,12 +983,8 @@ export const v2Update = async (req, res) => {
 
       // Helper: merge old + new images
       const mergeImages = (existingField, newField) => {
-        try {
-          const oldImages = JSON.parse(existingField || "[]");
-          return JSON.stringify(newField.length > 0 ? newField : oldImages);
-        } catch {
-          return JSON.stringify(newField || []);
-        }
+        const next = parseImageList(newField);
+        return JSON.stringify(next.length ? next : parseImageList(existingField));
       };
 
       try {
@@ -2027,36 +2027,21 @@ export const v2UpdateImages = async (req, res) => {
           if (newImages[field] && newImages[field].length > 0) {
             return JSON.stringify(newImages[field]); // new S3 URLs
           }
-          return existing[field]; // keep old
+          // JSON columns come back already parsed
+          return existing[field] && typeof existing[field] === "object"
+            ? JSON.stringify(existing[field])
+            : existing[field]; // keep old
         };
 
-        const frontView = getUpdatedField("frontView");
-        const sideView = getUpdatedField("sideView");
-        const kitchenView = getUpdatedField("kitchenView");
-        const hallView = getUpdatedField("hallView");
-        const bedroomView = getUpdatedField("bedroomView");
-        const bathroomView = getUpdatedField("bathroomView");
-        const balconyView = getUpdatedField("balconyView");
-        const nearestLandmark = getUpdatedField("nearestLandmark");
-        const developedAmenities = getUpdatedField("developedAmenities");
-
         const updateSQL = `
-          UPDATE properties SET 
-            frontView = ?, sideView = ?, kitchenView = ?, hallView = ?, bedroomView = ?, bathroomView = ?, 
-            balconyView = ?, nearestLandmark = ?, developedAmenities = ?, updated_at = ?
+          UPDATE properties SET
+            ${LISTING_IMAGE_KEYS.map((key) => `${key} = ?`).join(", ")},
+            updated_at = ?
           WHERE propertyid = ?
         `;
 
         const values = [
-          frontView,
-          sideView,
-          kitchenView,
-          hallView,
-          bedroomView,
-          bathroomView,
-          balconyView,
-          nearestLandmark,
-          developedAmenities,
+          ...LISTING_IMAGE_KEYS.map(getUpdatedField),
           currentdate,
           Id,
         ];

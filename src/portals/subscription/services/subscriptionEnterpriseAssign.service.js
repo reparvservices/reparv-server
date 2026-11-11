@@ -1,5 +1,6 @@
 import dbPromise from "#db/promise";
 import { addPlanDuration } from "../utils/planDuration.js";
+import { retireSupersededSubscriptions } from "../utils/retireSupersededSubscriptions.js";
 import { ensureEnterpriseActivationInvoice } from "./enterpriseActivationInvoice.service.js";
 
 const VALID_ROLES = new Set(["sales", "territory", "project"]);
@@ -62,9 +63,9 @@ export async function assignEnterpriseSubscription(body = {}) {
       `SELECT * FROM subscription_plans
        WHERE role = ? AND plan_name = ?
          AND LOWER(plan_type) = 'enterprise' AND status = 'Active'
-       ORDER BY id ASC
+       ORDER BY LOWER(billing_cycle) = ? DESC, id ASC
        LIMIT 1`,
-      [r, String(planName).trim()],
+      [r, String(planName).trim(), cycle],
     );
     planRow = byName[0];
   }
@@ -97,7 +98,7 @@ export async function assignEnterpriseSubscription(body = {}) {
       ? Number(finalAmount)
       : Number(planRow.price) || 0;
 
-  await dbPromise.query(
+  const [insertResult] = await dbPromise.query(
     `INSERT INTO user_subscriptions
       (user_id, role, plan_id, payment_type, razorpay_subscription_id, start_date,
        next_billing_date, end_date, status, discount_amount, final_amount, created_at, updated_at)
@@ -118,11 +119,12 @@ export async function assignEnterpriseSubscription(body = {}) {
 
   await syncLegacyPaymentStatus(r, uid);
 
-  const [subRows] = await dbPromise.query(
-    `SELECT id FROM user_subscriptions WHERE user_id = ? AND role = ? LIMIT 1`,
-    [uid, r],
-  );
-  const userSubscriptionId = subRows[0]?.id;
+  const userSubscriptionId = insertResult.insertId;
+  await retireSupersededSubscriptions({
+    userId: uid,
+    role: r,
+    keepId: userSubscriptionId,
+  }).catch((err) => console.error("[enterprise-assign] retire older plans:", err));
   let activationInvoice = null;
   if (userSubscriptionId) {
     try {

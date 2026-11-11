@@ -71,12 +71,22 @@ export const buildPartnerSubscriptionHandler =
 
       const active = isPartnerSubscriptionAccessActive(sub);
 
-      // Features the current plan unlocks in the partner panel (lowercased names)
-      const allFeatures = active && isAllFeaturePlan(sub.plan_type);
+      // Features unlocked in the partner panel (lowercased names). Every plan
+      // that currently grants access counts, the same rule the server uses to
+      // allow or block actions (requireActivePartnerSubscription), so the
+      // panel/app locks always match what the server allows.
+      const grantingRows = active
+        ? rows.filter(
+            (row) =>
+              !(trialEnded && row.id === sub.id) &&
+              isPartnerSubscriptionAccessActive(row),
+          )
+        : [];
+      const allFeatures = grantingRows.some((row) => isAllFeaturePlan(row.plan_type));
       let features = [];
       if (active && !allFeatures) {
         try {
-          features = [...(await getPlanFeatureNames([sub.plan_id]))];
+          features = [...(await getPlanFeatureNames(grantingRows.map((row) => row.plan_id)))];
         } catch (featErr) {
           console.warn("getPlanFeatureNames:", featErr?.message || featErr);
         }

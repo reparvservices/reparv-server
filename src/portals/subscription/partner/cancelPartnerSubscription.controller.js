@@ -34,6 +34,7 @@ export function buildCancelPartnerSubscriptionHandler(role) {
         userId,
         role,
         cancelAtCycleEnd,
+        allowEnterprise: false,
       });
 
       return res.status(200).json(result);

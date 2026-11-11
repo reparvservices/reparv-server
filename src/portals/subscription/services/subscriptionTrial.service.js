@@ -1,5 +1,8 @@
 import dbPromise from "#db/promise";
-import { isPartnerSubscriptionAccessActive } from "../utils/subscriptionAccess.js";
+import {
+  isPartnerSubscriptionAccessActive,
+  pickCurrentSubscription,
+} from "../utils/subscriptionAccess.js";
 import { hasPartnerConsumedTrial } from "../utils/partnerTrialConsumed.js";
 import { PLAN_TYPE_SELECT_SQL } from "../utils/planTypeSql.js";
 
@@ -30,12 +33,10 @@ async function loadLatestSubscription(userId, role) {
     `SELECT us.*, (${PLAN_TYPE_SELECT_SQL}) AS plan_type
      FROM user_subscriptions us
      LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
-     WHERE us.user_id = ? AND us.role = ?
-     ORDER BY COALESCE(us.updated_at, us.created_at) DESC, us.id DESC
-     LIMIT 1`,
+     WHERE us.user_id = ? AND us.role = ?`,
     [userId, role],
   );
-  return rows[0] || null;
+  return pickCurrentSubscription(rows);
 }
 
 /**

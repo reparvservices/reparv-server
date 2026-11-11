@@ -19,7 +19,9 @@ export const generateSignedUrl = async (req, res) => {
         .json({ message: "fileName and fileType required" });
     }
 
-    const key = `${folder || "uploads"}/${Date.now()}-${fileName}`;
+    // Spaces, # and ? in a file name break the saved image URL
+    const safeName = String(fileName).replace(/[^A-Za-z0-9._-]+/g, "-");
+    const key = `${folder || "uploads"}/${Date.now()}-${safeName}`;
 
     const command = new PutObjectCommand({
       Bucket: process.env.AWS_BUCKET_NAME,

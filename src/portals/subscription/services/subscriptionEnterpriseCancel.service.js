@@ -87,7 +87,7 @@ export async function cancelEnterpriseSubscription({
   }
 
   const statusLower = String(sub.status || "").toLowerCase();
-  if (statusLower === "cancelled") {
+  if (statusLower === "cancelled" && cancelAtCycleEnd) {
     const e = new Error("Subscription is already cancelled");
     e.statusCode = 400;
     throw e;
@@ -97,7 +97,7 @@ export async function cancelEnterpriseSubscription({
     e.statusCode = 400;
     throw e;
   }
-  if (statusLower !== "active") {
+  if (!["active", "cancelled"].includes(statusLower)) {
     const e = new Error("Only active enterprise subscriptions can be cancelled");
     e.statusCode = 400;
     throw e;

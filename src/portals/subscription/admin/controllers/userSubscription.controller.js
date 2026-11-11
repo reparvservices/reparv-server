@@ -55,7 +55,7 @@ export const listUserSubscriptions = async (req, res) => {
       params.push(role);
     }
     if (status === "trial") {
-      where.push(`LOWER((${PLAN_TYPE_SELECT_SQL})) = 'trial'`);
+      where.push(`LOWER((${PLAN_TYPE_SELECT_SQL})) = 'trial' AND LOWER(us.status) IN ('active', 'trial') AND (us.end_date IS NULL OR us.end_date >= NOW())`);
     } else if (
       status &&
       ["active", "pending", "expired", "cancelled", "halted"].includes(status)
@@ -91,7 +91,7 @@ export const listUserSubscriptions = async (req, res) => {
     const [summaryRows] = await dbPromise.query(
       `SELECT
          COUNT(*) AS total,
-         SUM(LOWER((${PLAN_TYPE_SELECT_SQL})) = 'trial') AS trial,
+         SUM(LOWER((${PLAN_TYPE_SELECT_SQL})) = 'trial' AND LOWER(us.status) IN ('active', 'trial') AND (us.end_date IS NULL OR us.end_date >= NOW())) AS trial,
          SUM(
            LOWER(us.status) = 'active'
            AND LOWER((${PLAN_TYPE_SELECT_SQL})) NOT IN ('trial', 'enterprise')
