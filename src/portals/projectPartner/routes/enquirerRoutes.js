@@ -16,6 +16,11 @@ import {
   updateEnquirerProperty,
   toDigitalBroker,
 } from "../controllers/enquirerController.js";
+import {
+  requireEnquiryOwner,
+  requireOwnPropertyInBody,
+  requireOwnTeamMemberInBody,
+} from "../../../core/middleware/requireEnquiryOwner.js";
 
 const router = express.Router();
 
@@ -36,21 +41,23 @@ const upload = multer({
 
 // Routes
 router.get("/get/:source", getAll);
-router.get("/:id", getById);
-router.get("/remark/list/:id", getRemarkList);
+const owner = requireEnquiryOwner("id");
+
+router.get("/:id", owner, getById);
+router.get("/remark/list/:id", owner, getRemarkList);
 router.post("/properties", getProperties);
-router.get("/property/list/:id", getPropertyList);
-router.put("/status/:id", status);
-router.put("/assign/:id", assignEnquiry);
-router.post("/visitscheduled/:id", visitScheduled);
-router.post("/followup/:id", followUp);
-router.post("/cancelled/:id", cancelled);
+router.get("/property/list/:id", owner, getPropertyList);
+router.put("/status/:id", owner, status);
+router.put("/assign/:id", owner, requireOwnTeamMemberInBody("sales", "salespersonid"), assignEnquiry);
+router.post("/visitscheduled/:id", owner, visitScheduled);
+router.post("/followup/:id", owner, followUp);
+router.post("/cancelled/:id", owner, cancelled);
 
 // Token upload route uses memory upload; controller handles S3
-router.post("/token/:id", upload.single("paymentimage"), token);
+router.post("/token/:id", owner, upload.single("paymentimage"), token);
 
-router.put("/property/update/:id", updateEnquirerProperty);
-router.put("/convert/to/digital-broker/:id", toDigitalBroker);
-router.delete("/delete/:id", del);
+router.put("/property/update/:id", owner, requireOwnPropertyInBody("propertyId"), updateEnquirerProperty);
+router.put("/convert/to/digital-broker/:id", owner, toDigitalBroker);
+router.delete("/delete/:id", owner, del);
 
 export default router;

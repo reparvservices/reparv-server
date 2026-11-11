@@ -199,7 +199,7 @@ export function requireProjectPartner(req, res, next) {
 export function requireSameProjectPartner(req, res, next) {
   const target = req.params.id ?? req.params.userId;
   if (String(req.projectPartnerUser?.id) === String(target)) return next();
-  return res.status(403).json({ message: "You can only access your own properties." });
+  return res.status(403).json({ message: "You can only access your own data." });
 }
 
 export function verifyToken(req, res, next) {

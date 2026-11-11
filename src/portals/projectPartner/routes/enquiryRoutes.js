@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
 import { addCSVEnquiry, addEnquiry, updateEnquiry } from "../controllers/enquiryController.js";
+import { requireEnquiryOwner, requireOwnPropertyInBody } from "../../../core/middleware/requireEnquiryOwner.js";
 
 const router = express.Router();
 
@@ -24,6 +25,11 @@ router.post("/add/enquiry", addEnquiry);
 // CSV upload uses memoryStorage; controller will handle S3
 router.post("/csv/add/", upload.single("csv"), addCSVEnquiry);
 
-router.put("/update/enquiry/:id", updateEnquiry);
+router.put(
+  "/update/enquiry/:id",
+  requireEnquiryOwner("id"),
+  requireOwnPropertyInBody("propertyid"),
+  updateEnquiry,
+);
 
 export default router;
