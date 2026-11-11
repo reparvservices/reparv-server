@@ -1,9 +1,9 @@
-import axios from "axios";
 import db from "#db";
 import moment from "moment-timezone";
 import { sanitize } from "#utils/sanitize.js";
 import { uploadToS3 } from "#utils/imageUpload.js";
 import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
+import { sendKinexWhatsapp } from "../../../core/utils/kinexWhatsapp.js";
 
 // * Fetch All Enquiries with Enquiry Lister Details
 export const getAll = (req, res) => {
@@ -480,7 +480,6 @@ export const assignEnquiry = async (req, res) => {
           }
 
           // WhatsApp message logic
-          const apikey = "1c26ea744ef248f080ee1c5270081c0b";
           const msg = `🌟 *REPARV* - New Enquiry Alert 🌟
 
         Hello ${salesperson},
@@ -495,16 +494,8 @@ export const assignEnquiry = async (req, res) => {
         Thank you,  
         Team REPARV`;
 
-          const encodedMsg = encodeURIComponent(msg);
-          const apiUrl = `http://wapi.kinextechnologies.in/wapp/api/send?apikey=${apikey}&mobile=${salespersoncontact}&msg=${encodedMsg}`;
-
-          try {
-            const response = await axios.get(apiUrl);
-            console.log("WhatsApp API response:", response.data);
-          } catch (error) {
-            console.error("WhatsApp send error:", error.message);
-            // optional: log but do not block assignment
-          }
+          // Alert never blocks the assignment (key: KINEX_WAPI_KEY in .env)
+          await sendKinexWhatsapp(salespersoncontact, msg);
 
           return res.status(200).json({
             message: `Enquiry assigned successfully to ${salesperson}`,
