@@ -1,4 +1,5 @@
 import mysql from "mysql2";
+import { wrapCallbackQuery } from "./resilience.js";
 
 const db = mysql.createPool({
   connectionLimit: Number(process.env.DB_POOL_LIMIT) || 20,
@@ -13,6 +14,9 @@ const db = mysql.createPool({
   port: Number(process.env.DB_PORT) || 3306,
   connectTimeout: 20000,
 });
+
+// Fail dead sockets fast and retry read-only queries once on transient network errors.
+db.query = wrapCallbackQuery(db.query);
 
 // Many queries GROUP BY a table's primary key while selecting non-aggregated
 // columns from LEFT JOINed tables that are functionally dependent on it
