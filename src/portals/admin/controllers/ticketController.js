@@ -19,7 +19,7 @@ export const getAll = (req, res) => {
     sql = `SELECT tickets.*, users.name AS admin_name, departments.department, emp.name AS employee_name, emp.uid, 
            ticketAdder.name AS ticketadder_name, ticketAdder.contact AS ticketadder_contact, roles.role AS ticketadder_role
            FROM tickets 
-           INNER JOIN employees AS ticketAdder ON ticketAdder.uid = tickets.ticketadder
+           INNER JOIN employees AS ticketAdder ON ticketAdder.uid = tickets.ticketadder COLLATE utf8mb4_general_ci
            LEFT JOIN users ON tickets.adminid = users.id 
            LEFT JOIN departments ON tickets.departmentid = departments.departmentid
            LEFT JOIN employees AS emp ON tickets.employeeid = emp.id
@@ -30,7 +30,7 @@ export const getAll = (req, res) => {
            employees.name AS employee_name, employees.uid , 
            builders.contact_person AS ticketadder_name, builders.contact AS ticketadder_contact
            FROM tickets 
-           INNER JOIN builders ON builders.uid = tickets.ticketadder
+           INNER JOIN builders ON builders.uid = tickets.ticketadder COLLATE utf8mb4_general_ci
            LEFT JOIN users ON tickets.adminid = users.id 
            LEFT JOIN departments ON tickets.departmentid = departments.departmentid
            LEFT JOIN employees ON tickets.employeeid = employees.id
@@ -41,7 +41,7 @@ export const getAll = (req, res) => {
            salespersons.fullname AS ticketadder_name, salespersons.contact AS ticketadder_contact,
            projectpartner.fullname AS project_partner
            FROM tickets 
-           INNER JOIN salespersons ON salespersons.adharno = tickets.ticketadder
+           INNER JOIN salespersons ON salespersons.adharno = tickets.ticketadder COLLATE utf8mb4_general_ci
            LEFT JOIN users ON tickets.adminid = users.id 
            LEFT JOIN departments ON tickets.departmentid = departments.departmentid
            LEFT JOIN employees ON tickets.employeeid = employees.id
@@ -52,7 +52,7 @@ export const getAll = (req, res) => {
            employees.name AS employee_name, employees.uid , 
            onboardingpartner.fullname AS ticketadder_name, onboardingpartner.contact AS ticketadder_contact
            FROM tickets 
-           INNER JOIN onboardingpartner ON onboardingpartner.adharno = tickets.ticketadder
+           INNER JOIN onboardingpartner ON onboardingpartner.adharno = tickets.ticketadder COLLATE utf8mb4_general_ci
            LEFT JOIN users ON tickets.adminid = users.id 
            LEFT JOIN departments ON tickets.departmentid = departments.departmentid
            LEFT JOIN employees ON tickets.employeeid = employees.id
@@ -62,7 +62,7 @@ export const getAll = (req, res) => {
            admin.name AS admin_name, admin.contact,
            departments.department, employees.name AS employee_name, employees.uid 
            FROM tickets 
-           INNER JOIN users AS creator ON creator.adharno = tickets.ticketadder
+           INNER JOIN users AS creator ON creator.adharno = tickets.ticketadder COLLATE utf8mb4_general_ci
            LEFT JOIN users AS admin ON tickets.adminid = admin.id 
            LEFT JOIN departments ON tickets.departmentid = departments.departmentid
            LEFT JOIN employees ON tickets.employeeid = employees.id
@@ -73,7 +73,7 @@ export const getAll = (req, res) => {
            territorypartner.fullname AS ticketadder_name, territorypartner.contact AS ticketadder_contact,
            projectpartner.fullname AS project_partner
            FROM tickets 
-           INNER JOIN territorypartner ON territorypartner.adharno = tickets.ticketadder
+           INNER JOIN territorypartner ON territorypartner.adharno = tickets.ticketadder COLLATE utf8mb4_general_ci
            LEFT JOIN users ON tickets.adminid = users.id 
            LEFT JOIN departments ON tickets.departmentid = departments.departmentid
            LEFT JOIN employees ON tickets.employeeid = employees.id
@@ -84,7 +84,7 @@ export const getAll = (req, res) => {
            employees.name AS employee_name, employees.uid , 
            projectpartner.fullname AS ticketadder_name, projectpartner.contact AS ticketadder_contact
            FROM tickets 
-           INNER JOIN projectpartner ON projectpartner.adharno = tickets.ticketadder
+           INNER JOIN projectpartner ON projectpartner.adharno = tickets.ticketadder COLLATE utf8mb4_general_ci
            LEFT JOIN users ON tickets.adminid = users.id 
            LEFT JOIN departments ON tickets.departmentid = departments.departmentid
            LEFT JOIN employees ON tickets.employeeid = employees.id
@@ -94,7 +94,7 @@ export const getAll = (req, res) => {
            employees.name AS employee_name, employees.uid , 
            promoter.fullname AS ticketadder_name, promoter.contact AS ticketadder_contact
            FROM tickets 
-           INNER JOIN promoter ON promoter.adharno = tickets.ticketadder
+           INNER JOIN promoter ON promoter.adharno = tickets.ticketadder COLLATE utf8mb4_general_ci
            LEFT JOIN users ON tickets.adminid = users.id 
            LEFT JOIN departments ON tickets.departmentid = departments.departmentid
            LEFT JOIN employees ON tickets.employeeid = employees.id
