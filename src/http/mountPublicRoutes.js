@@ -36,6 +36,7 @@ import geocodeRoutes from "../portals/shared/routes/geocodeRoutes.js";
 import s3Routes from "../portals/shared/routes/s3Routes.js";
 import otpRoutes from "../portals/shared/routes/otpRoutes.js";
 import Feed from "../portals/shared/routes/feedRoute.js";
+import { requireFeedIdentity } from "../core/middleware/requireFeedIdentity.js";
 import FollowRoute from "../portals/shared/routes/followRoute.js";
 import ForgetPasswordRoute from "../portals/shared/routes/Forgotpasswordroutes.js";
 import sitemapRoutes from "../portals/shared/routes/sitemapRoutes.js";
@@ -84,8 +85,8 @@ export function mountPublicRoutes(app) {
   app.get("/agent", getAgentPage);
   app.use("/api/ai", aiPublicRoutes);
 
-  app.use("/api/feed/", Feed);
-  app.use("/api/follow/", FollowRoute);
+  app.use("/api/feed/", requireFeedIdentity, Feed);
+  app.use("/api/follow/", requireFeedIdentity, FollowRoute);
   app.use("/api/auth/forgot-password/", ForgetPasswordRoute);
   app.use("/", sitemapRoutes);
 }

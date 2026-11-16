@@ -724,6 +724,8 @@ export const getComments = (req, res) => {
            THEN (SELECT fullname FROM salespersons     WHERE salespersonsid = c.author_id)
          WHEN c.author_role = 'territory_partner'
            THEN (SELECT fullname FROM territorypartner WHERE id             = c.author_id)
+         WHEN c.author_role = 'customer'
+           THEN CONCAT(COALESCE(NULLIF(c.partner_name, ''), 'A customer'), ' (Customer)')
          ELSE c.partner_name
        END AS author_name,
 
@@ -734,6 +736,8 @@ export const getComments = (req, res) => {
            THEN (SELECT userimage FROM salespersons     WHERE salespersonsid = c.author_id)
          WHEN c.author_role = 'territory_partner'
            THEN (SELECT userimage FROM territorypartner WHERE id             = c.author_id)
+         WHEN c.author_role = 'customer'
+           THEN (SELECT userimage FROM guestUsers WHERE id = c.author_id)
          ELSE NULL
        END AS author_image
 
@@ -1416,6 +1420,8 @@ export const getNotifications = (req, res) => {
            THEN (SELECT fullname  FROM salespersons     WHERE salespersonsid = n.actor_id)
          WHEN 'territory_partner'
            THEN (SELECT fullname  FROM territorypartner WHERE id             = n.actor_id)
+         WHEN 'customer'
+           THEN (SELECT CONCAT(COALESCE(NULLIF(fullname, ''), 'A customer'), ' (Customer)') FROM guestUsers WHERE id = n.actor_id)
          ELSE NULL
        END AS actor_name,
 
@@ -1426,6 +1432,8 @@ export const getNotifications = (req, res) => {
            THEN (SELECT userimage FROM salespersons     WHERE salespersonsid = n.actor_id)
          WHEN 'territory_partner'
            THEN (SELECT userimage FROM territorypartner WHERE id             = n.actor_id)
+         WHEN 'customer'
+           THEN (SELECT userimage FROM guestUsers WHERE id = n.actor_id)
          ELSE NULL
        END AS actor_image
 

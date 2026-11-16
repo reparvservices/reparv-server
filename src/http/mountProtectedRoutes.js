@@ -214,6 +214,7 @@ import customerEmi from "../portals/customerApp/routes/EmiRoute.js";
 import customerSignUp from "../portals/customerApp/routes/userRoute.js";
 import customerPropertyRoute from "../portals/customerApp/routes/propertyRoute.js";
 import customerTrendRoute from "../portals/customerApp/routes/trendRoute.js";
+import customerFeedRoute from "../portals/customerApp/routes/feedRoute.js";
 import customerEnquiryRoute from "../portals/customerApp/routes/enquiryRoute.js";
 import customerTicketRoute from "../portals/customerApp/routes/ticketRoute.js";
 import notificationRoutes from "../portals/customerApp/routes/notificationRoutes.js";
@@ -460,6 +461,7 @@ export function mountProtectedRoutes(app) {
   app.use("/customerapp/user", customerSignUp);
   app.use("/customerapp/property", customerPropertyRoute);
   app.use("/customerapp/customerTrendRoute", customerTrendRoute);
+  app.use("/customerapp/feed", customerFeedRoute);
   app.use("/customerapp/enquiry", customerEnquiryRoute);
   app.use("/customerapp/ticket", customerTicketRoute);
   app.use("/customerapp/notifications", notificationRoutes);

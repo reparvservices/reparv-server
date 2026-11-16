@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { handleOrderPaidWebhook } from "../../subscription/checkout/subscriptionCheckout.service.js";
 import {
   handleSubscriptionChargedWebhook,
   handleSubscriptionPaymentFailedWebhook,
@@ -48,6 +49,10 @@ export const receiveRazorpayWebhook = async (req, res) => {
     let result = { ok: true, event: eventName, handled: false };
 
     switch (eventName) {
+      case "order.paid":
+        // One-time checkout: recovers payments whose verify call never reached the server
+        result = await handleOrderPaidWebhook(payload);
+        break;
       case "subscription.charged":
         result = { ...(await handleSubscriptionChargedWebhook(payload)), handled: true };
         break;

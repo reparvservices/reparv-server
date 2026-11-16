@@ -3,7 +3,7 @@
  * Used by the public checkout mounted at `/api/subscription/payment`.
  */
 import Razorpay from "razorpay";
-import crypto from "crypto";
+import { verifyCheckoutSignature } from "#utils/razorpaySignature.js";
 import db from "#db";
 import sendSubscriptionEmail from "#utils/subscriptionMailer.js";
 import {
@@ -12,6 +12,12 @@ import {
 } from "#utils/subscriptionRazorpayPlan.js";
 import { isTrialPlanRecord } from "../services/subscriptionTrial.service.js";
 import { retireSupersededSubscriptions } from "../utils/retireSupersededSubscriptions.js";
+import {
+  claimPayment,
+  markApplied,
+  releaseClaim,
+  createSqlClaimStore,
+} from "../utils/paymentClaims.js";
 import {
   findUserSubscriptionByRazorpayId,
   findUserSubscriptionByUserRole,
@@ -81,6 +87,38 @@ const httpError = (message, statusCode = 400) => {
   e.statusCode = statusCode;
   return e;
 };
+
+const claimStore = createSqlClaimStore(dbQuery);
+
+/**
+ * Run `run()` only if this call wins the claim on `paymentId`, so one captured payment can
+ * activate/extend a subscription exactly once even when the client verify call, a retry and
+ * the order.paid webhook arrive together.
+ */
+async function withPaymentClaim(paymentId, owner, run, onAlreadyApplied) {
+  const state = await claimPayment(claimStore, paymentId, owner);
+  if (state === "applied") return onAlreadyApplied();
+  if (state === "other_user") throw httpError("This payment has already been used", 409);
+  if (state === "processing") {
+    const e = httpError("This payment is still being processed. Please retry in a few seconds.", 409);
+    e.meta = { retry: true };
+    throw e;
+  }
+  let result;
+  try {
+    result = await run();
+  } catch (err) {
+    await releaseClaim(claimStore, paymentId); // let a retry run
+    throw err;
+  }
+  try {
+    await markApplied(claimStore, paymentId);
+  } catch (err) {
+    // Activation already happened; the payment ledger row still blocks a replay.
+    console.error("[payment-claim] could not mark applied:", err?.message || err);
+  }
+  return result;
+}
 
 /** Plan price in rupees, always taken from the database (never from the client). */
 const planAmount = (planRow) => Number(planRow.price) || 0;
@@ -302,19 +340,32 @@ export async function completePartnerPaymentOrder(payload) {
     throw e;
   }
 
-  const hmac = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET);
-  hmac.update(`${orderId}|${paymentId}`);
-  const generatedSignature = hmac.digest("hex");
-  if (generatedSignature !== signature) {
+  if (!verifyCheckoutSignature(process.env.RAZORPAY_KEY_SECRET, orderId, paymentId, signature)) {
     const e = new Error("Invalid signature");
     e.statusCode = 400;
     throw e;
   }
 
+  return applyOrderPayment({ role, userId, localPlanId, orderId, paymentId, email });
+}
+
+/**
+ * Activate a captured one-time order payment. Called by the client verify endpoint (after the
+ * signature check) and by the order.paid webhook; the payment claim makes it idempotent.
+ */
+export async function applyOrderPayment({ role, userId, localPlanId, orderId, paymentId, email = "" }) {
   if (await wasPaymentAlreadyApplied(paymentId, { role, userId })) {
     return alreadyAppliedResponse(role, userId, localPlanId);
   }
+  return withPaymentClaim(
+    paymentId,
+    { role, userId },
+    () => activateOrderPayment({ role, userId, localPlanId, orderId, paymentId, email }),
+    () => alreadyAppliedResponse(role, userId, localPlanId),
+  );
+}
 
+async function activateOrderPayment({ role, userId, localPlanId, orderId, paymentId, email }) {
   // Partner + plan are whatever this order was created for
   const order = await razorpay.orders.fetch(orderId);
   if (order?.notes?.checkout !== "partner_subscription") {
@@ -516,10 +567,7 @@ export async function completePartnerRecurringSubscription(payload) {
     throw e;
   }
 
-  const hmac = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET);
-  hmac.update(`${paymentId}|${subscriptionId}`);
-  const generatedSignature = hmac.digest("hex");
-  if (generatedSignature !== signature) {
+  if (!verifyCheckoutSignature(process.env.RAZORPAY_KEY_SECRET, paymentId, subscriptionId, signature)) {
     const e = new Error("Invalid signature");
     e.statusCode = 400;
     throw e;
@@ -528,7 +576,15 @@ export async function completePartnerRecurringSubscription(payload) {
   if (await wasPaymentAlreadyApplied(paymentId, { role, userId })) {
     return alreadyAppliedResponse(role, userId, localPlanId);
   }
+  return withPaymentClaim(
+    paymentId,
+    { role, userId },
+    () => activateRecurringPayment({ role, userId, localPlanId, paymentId, subscriptionId, email }),
+    () => alreadyAppliedResponse(role, userId, localPlanId),
+  );
+}
 
+async function activateRecurringPayment({ role, userId, localPlanId, paymentId, subscriptionId, email }) {
   const rzSubscription = await razorpay.subscriptions.fetch(subscriptionId);
   // Partner + plan are whatever this Razorpay subscription was created for
   assertCheckoutMatches(rzSubscription.notes, { role, userId, localPlanId });
@@ -618,4 +674,39 @@ export async function completePartnerRecurringSubscription(payload) {
       end_date: endDate,
     },
   };
+}
+
+/**
+ * Razorpay `order.paid` webhook: activates the subscription even when the app was closed (or the
+ * network dropped) between paying and calling verify-payment. Only orders created by
+ * `startPartnerPaymentOrder` are handled; everything else is ignored.
+ */
+export async function handleOrderPaidWebhook(payload) {
+  const paymentEntity = payload?.payment?.entity;
+  const orderEntity = payload?.order?.entity;
+  const orderId = orderEntity?.id || paymentEntity?.order_id;
+  const paymentId = paymentEntity?.id;
+  if (!orderId || !paymentId) return { ok: true, handled: false, note: "no order/payment id" };
+
+  const order = await razorpay.orders.fetch(orderId);
+  if (order?.notes?.checkout !== "partner_subscription") {
+    return { ok: true, handled: false, note: "not a partner subscription order" };
+  }
+
+  const role = String(order.notes.role || "").toLowerCase();
+  const userId = safeInt(order.notes.local_user_id);
+  const localPlanId = safeInt(order.notes.local_plan_id);
+
+  try {
+    await applyOrderPayment({ role, userId, localPlanId, orderId, paymentId });
+    return { ok: true, handled: true };
+  } catch (err) {
+    // Business rejections (already used, mismatch...) must not make Razorpay retry forever;
+    // a transient failure (5xx) should, so rethrow those.
+    if (err?.statusCode && err.statusCode < 500) {
+      console.warn("[razorpay webhook] order.paid not applied:", err.message);
+      return { ok: false, handled: true, note: err.message };
+    }
+    throw err;
+  }
 }
