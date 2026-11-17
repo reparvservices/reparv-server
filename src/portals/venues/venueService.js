@@ -37,8 +37,8 @@ export const httpError = (statusCode, message, meta) => Object.assign(new Error(
 /** Today in India (the venues' calendar), as YYYY-MM-DD. */
 export const todayIST = (now = Date.now()) => new Date(now + 5.5 * 3600_000).toISOString().slice(0, 10);
 
-const LISTING_COLS = `id, owner_role, owner_id, type, title, slug, description, city, state, address,
-  latitude, longitude, capacity, bedrooms, amenities, rules, images, price_model, base_price,
+const LISTING_COLS = `id, owner_role, owner_id, type, custom_type, title, slug, description, city, state, address,
+  latitude, longitude, capacity, bedrooms, amenities, rules, images, videos, social_links, price_model, base_price,
   weekend_price, cleaning_fee, gst_percent, deposit_percent, commission_percent, cancellation_policy,
   min_nights, max_nights, status, reject_reason, created_at, updated_at`;
 
@@ -53,6 +53,9 @@ const publicListing = (l) => l && ({
   ...l,
   amenities: parseJson(l.amenities, []),
   images: parseJson(l.images, []),
+  videos: parseJson(l.videos, []),
+  social_links: parseJson(l.social_links, {}),
+  type_label: l.type === "other" && l.custom_type ? l.custom_type : l.type,
   cancellation_text: policyText(l.cancellation_policy),
 });
 function parseJson(v, fallback) {

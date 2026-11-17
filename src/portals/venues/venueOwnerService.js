@@ -20,6 +20,43 @@ const int = (v, min, max, label) => {
 const text = (v, max) => (v == null ? null : String(v).trim().slice(0, max) || null);
 const slugify = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
 
+
+/** Allowed social/web links: key -> hosts it may point to (null = any https site). */
+export const SOCIAL_HOSTS = {
+  youtube: ["youtube.com", "youtu.be"],
+  instagram: ["instagram.com"],
+  facebook: ["facebook.com", "fb.com", "fb.watch"],
+  x: ["x.com", "twitter.com"],
+  linkedin: ["linkedin.com"],
+  website: null,
+};
+
+const hostMatches = (host, allowed) => allowed.some((h) => host === h || host.endsWith("." + h));
+
+/** An https URL (or throws). Optional host allowlist. */
+function cleanUrl(value, label, hosts = null) {
+  let u;
+  try {
+    u = new URL(String(value).trim());
+  } catch {
+    throw httpError(400, `${label} must be a valid link.`);
+  }
+  if (u.protocol !== "https:") throw httpError(400, `${label} must start with https://`);
+  const host = u.hostname.toLowerCase().replace(/^www\./, "");
+  if (hosts && !hostMatches(host, hosts)) throw httpError(400, `${label} must be a ${hosts[0]} link.`);
+  return u.toString().slice(0, 500);
+}
+
+export function cleanSocialLinks(input) {
+  const out = {};
+  for (const [key, hosts] of Object.entries(SOCIAL_HOSTS)) {
+    const v = input?.[key];
+    if (v === undefined || v === null || String(v).trim() === "") continue;
+    out[key] = cleanUrl(v, key[0].toUpperCase() + key.slice(1) + " link", hosts);
+  }
+  return out;
+}
+
 /** Validate a partner-supplied listing. `partial` = update (only validate the fields present). */
 export function validateListing(body, partial = false) {
   const out = {};
@@ -28,6 +65,16 @@ export function validateListing(body, partial = false) {
 
   if (need("title")) { out.title = text(body.title, 200); if (!out.title) throw httpError(400, "title is required."); }
   if (need("type")) { if (!TYPES.includes(body.type)) throw httpError(400, `type must be one of ${TYPES.join(", ")}.`); out.type = body.type; }
+  if (has("type") || has("custom_type")) {
+    const isOther = (body.type ?? out.type) === "other";
+    if (isOther) {
+      const name = text(body.custom_type, 60);
+      if (!name || name.length < 2) throw httpError(400, "Please enter the type of venue (for example 'Rooftop party space').");
+      out.custom_type = name;
+    } else if (has("type")) {
+      out.custom_type = null;
+    }
+  }
   if (need("price_model")) { if (!MODELS.includes(body.price_model)) throw httpError(400, "price_model must be night or slot."); out.price_model = body.price_model; }
   if (need("base_price")) out.base_price = int(body.base_price, 100, 10_000_000, "base_price");
   if (need("capacity")) out.capacity = int(body.capacity, 1, 5000, "capacity");
@@ -48,6 +95,11 @@ export function validateListing(body, partial = false) {
   if (has("longitude")) out.longitude = body.longitude === null || body.longitude === "" ? null : Math.max(-180, Math.min(180, Number(body.longitude)));
   if (has("amenities")) out.amenities = JSON.stringify((Array.isArray(body.amenities) ? body.amenities : []).map((a) => String(a).slice(0, 60)).slice(0, 40));
   if (has("images")) out.images = JSON.stringify((Array.isArray(body.images) ? body.images : []).map((a) => String(a).slice(0, 500)).filter((u) => /^https?:\/\/|^\//.test(u)).slice(0, 20));
+  if (has("videos")) {
+    const list = Array.isArray(body.videos) ? body.videos : [];
+    out.videos = JSON.stringify(list.slice(0, 3).map((v, i) => cleanUrl(v, `Video ${i + 1}`)));
+  }
+  if (has("social_links")) out.social_links = JSON.stringify(cleanSocialLinks(body.social_links));
   if ((out.min_nights ?? 1) > (out.max_nights ?? 90)) throw httpError(400, "min_nights cannot exceed max_nights.");
   return out;
 }
