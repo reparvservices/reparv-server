@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { handleOrderPaidWebhook } from "../../subscription/checkout/subscriptionCheckout.service.js";
+import { handleVenueOrderPaidWebhook } from "../../venues/venueService.js";
 import {
   handleSubscriptionChargedWebhook,
   handleSubscriptionPaymentFailedWebhook,
@@ -52,6 +53,8 @@ export const receiveRazorpayWebhook = async (req, res) => {
       case "order.paid":
         // One-time checkout: recovers payments whose verify call never reached the server
         result = await handleOrderPaidWebhook(payload);
+        // Not a subscription order: it may be a venue booking payment
+        if (!result.handled) result = await handleVenueOrderPaidWebhook(payload);
         break;
       case "subscription.charged":
         result = { ...(await handleSubscriptionChargedWebhook(payload)), handled: true };

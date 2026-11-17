@@ -2,6 +2,7 @@
 import db from "#db";
 import { ensurePropertiesSchema } from "../db/ensurePropertiesSchema.js";
 import cron from "node-cron";
+import { expireHolds as expireVenueHolds } from "../../portals/venues/venueService.js";
 import dayjs from "dayjs";
 import fetch from "node-fetch"; // For Node <18; on Node 18+ global fetch works
 import utc from "dayjs/plugin/utc.js";
@@ -287,6 +288,11 @@ export const expireEndedSubscriptions = () => {
     },
   );
 };
+
+// Venue bookings: free expired holds, complete finished stays
+cron.schedule("*/5 * * * *", () =>
+  expireVenueHolds().catch((err) => console.error("[venues] expiry job failed:", err.message)),
+);
 
 // Daily shortly after midnight, plus once at startup to catch up
 cron.schedule("15 0 * * *", expireEndedSubscriptions);

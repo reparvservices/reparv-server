@@ -215,6 +215,7 @@ import customerSignUp from "../portals/customerApp/routes/userRoute.js";
 import customerPropertyRoute from "../portals/customerApp/routes/propertyRoute.js";
 import customerTrendRoute from "../portals/customerApp/routes/trendRoute.js";
 import customerFeedRoute from "../portals/customerApp/routes/feedRoute.js";
+import { customerVenueRouter, customerBookingRouter, partnerVenueRouter, adminVenueRouter } from "../portals/venues/venueRoutes.js";
 import customerEnquiryRoute from "../portals/customerApp/routes/enquiryRoute.js";
 import customerTicketRoute from "../portals/customerApp/routes/ticketRoute.js";
 import notificationRoutes from "../portals/customerApp/routes/notificationRoutes.js";
@@ -462,6 +463,10 @@ export function mountProtectedRoutes(app) {
   app.use("/customerapp/property", customerPropertyRoute);
   app.use("/customerapp/customerTrendRoute", customerTrendRoute);
   app.use("/customerapp/feed", customerFeedRoute);
+  app.use("/customerapp/venues", customerVenueRouter);
+  app.use("/customerapp/venue-bookings", customerBookingRouter);
+  app.use("/projectpartner/venues", partnerVenueRouter);
+  app.use("/admin/venues", adminVenueRouter);
   app.use("/customerapp/enquiry", customerEnquiryRoute);
   app.use("/customerapp/ticket", customerTicketRoute);
   app.use("/customerapp/notifications", notificationRoutes);
