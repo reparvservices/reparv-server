@@ -55,13 +55,28 @@ export const getCount = (req, res) => {
   db.query(
     query,
     [id, id, id, id, id, email, id, id, id, id, id, id],
-    (err, results) => {
+    async (err, results) => {
       if (err) {
         console.error("Optimized Query Error:", err);
         return res.status(500).json({ error: err.message });
       }
 
-      res.json(results[0]);
+      // Venue Booking listings are a property type too. Counted separately so a database
+      // without the venue tables still returns every other number.
+      let totalVenue = 0;
+      try {
+        const [[row]] = await db
+          .promise()
+          .query(
+            "SELECT COUNT(*) AS n FROM venue_listings WHERE owner_role = 'project' AND owner_id = ?",
+            [id],
+          );
+        totalVenue = Number(row?.n) || 0;
+      } catch {
+        /* venue tables not installed */
+      }
+
+      res.json({ ...results[0], totalVenue });
     },
   );
 };

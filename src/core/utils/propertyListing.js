@@ -234,7 +234,7 @@ export const listingValidationError = ({
   contact, pincode, address, latitude, longitude, frontView, offerPrice, area,
 }) => {
   if (!/^[6-9]\d{9}$/.test(String(contact ?? "").trim())) return "Enter a valid 10-digit contact number";
-  if (!/^\d{6}$/.test(String(pincode ?? "").trim())) return "Enter a valid 6-digit pincode";
+  if (!/^[1-9]\d{5}$/.test(String(pincode ?? "").trim())) return "Enter a valid 6-digit pincode";
   if (!String(address ?? "").trim()) return "Address is required";
   if (!latitude || !longitude) return "Please pin the location on the map";
   if (!offerPrice) return "Offer price is required";

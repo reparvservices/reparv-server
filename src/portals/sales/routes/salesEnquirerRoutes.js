@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
 import path from "path";
+import { requireSalesEnquiryOwner } from "../../../core/middleware/requireEnquiryOwner.js";
 import {
   getAll,
   getById,
@@ -15,6 +16,8 @@ import {
   getByStatus,
   getAvailableTPsForDate,
   getProperties,
+  getRemarkList,
+  getPropertyList,
 } from "../controllers/enquirerController.js";
 
 const router = express.Router();
@@ -35,16 +38,20 @@ const upload = multer({
 });
 
 router.get("/get/:source", getAll);
+router.get("/remark/list/:id", getRemarkList);
+router.get("/property/list/:id", getPropertyList);
 router.get("/:id", getById);
 router.get("/property/city/:id", getPropertyCity);
 router.post("/properties", getProperties);
 router.get("/territorypartner/available/get/:city", getTerritoryPartners);
-router.post("/assign/to/partner/:id", assignEnquiry);
-router.put("/status/:id", status);
-router.post("/visitscheduled/:id", visitScheduled);
-router.post("/followup/:id", followUp);
-router.post("/cancelled/:id", cancelled);
-router.post("/token/:id", upload.single("paymentimage"), token);
+// Every action on an enquiry requires it to be assigned to the signed-in sales partner
+const owner = requireSalesEnquiryOwner("id");
+router.post("/assign/to/partner/:id", owner, assignEnquiry);
+router.put("/status/:id", owner, status);
+router.post("/visitscheduled/:id", owner, visitScheduled);
+router.post("/followup/:id", owner, followUp);
+router.post("/cancelled/:id", owner, cancelled);
+router.post("/token/:id", owner, upload.single("paymentimage"), token);
 //filter
 router.get("/enquirybystatus/:id", getByStatus);
 router.get("/territorypartner/get-available-tps/:city", getAvailableTPsForDate);

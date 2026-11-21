@@ -6,6 +6,9 @@ import {
   add,
   edit,
   getById,
+  setStatus,
+  setCredentials,
+  remove,
 } from "../controllers/salespersonController.js";
 
 const router = express.Router();
@@ -49,5 +52,10 @@ router.put(
   ]),
   edit,
 );
+
+// Manage a sales partner of this project partner
+router.put("/status/:id", setStatus);
+router.put("/credentials/:id", setCredentials);
+router.delete("/delete/:id", remove);
 
 export default router;

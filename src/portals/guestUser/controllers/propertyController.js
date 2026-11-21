@@ -1,4 +1,5 @@
 import db from "#db";
+import { assignListingFee } from "../../listingFees/listingFeeService.js";
 import moment from "moment-timezone";
 import fs from "fs";
 import path from "path";
@@ -69,7 +70,7 @@ export const getById = (req, res) => {
 
 // get all images
 export const getImages = (req, res) => {
-  const partnerId = req.user.id;
+  const partnerId = req.guestUser?.id;
   if (!partnerId) {
     return res.status(400).json({ message: "Unauthorized Access" });
   }
@@ -255,10 +256,22 @@ export const addProperty = async (req, res) => {
 
       await commitTransaction();
 
+      // Same rule as the website: first listing free, later ones need the admin's fee.
+      let fee;
+      try {
+        fee = await assignListingFee({ userId: partnerId, propertyId: newPropertyId });
+      } catch (feeError) {
+        console.error("listing fee assignment failed, removing the new listing:", feeError);
+        await query("DELETE FROM properties WHERE propertyid = ?", [newPropertyId]).catch(() => {});
+        return res.status(500).json({ message: "Could not save your listing. Please try again." });
+      }
+
       return res.status(201).json({
         message: "Property added successfully",
         id: newPropertyId,
         propertyCityId,
+        payment_required: fee.payment_required,
+        fee: fee.fee,
       });
 
     } catch (txError) {

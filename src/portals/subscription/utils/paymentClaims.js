@@ -56,7 +56,10 @@ const CREATE_TABLE_SQL = `
 /** @param {(sql: string, params?: any[]) => Promise<any>} query */
 export function createSqlClaimStore(query) {
   let ready = null;
-  const ensureTable = () => (ready ??= query(CREATE_TABLE_SQL).catch((err) => {
+  const ensureTable = () => (ready ??= (process.env.SKIP_SCHEMA_MIGRATIONS === "true"
+    ? Promise.resolve()
+    : query(CREATE_TABLE_SQL)
+  ).catch((err) => {
     ready = null;
     throw err;
   }));

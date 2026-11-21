@@ -11,6 +11,7 @@ import {
   BUY_LISTING_REMOVED_MESSAGE,
 } from "#utils/propertyListing.js";
 import moment from "moment-timezone";
+import { collectPropertyColumns } from "#utils/propertyColumns.js";
 import fs from "fs";
 import path from "path";
 import csv from "csv-parser";
@@ -157,11 +158,13 @@ export const getById = (req, res) => {
   }
 
   const sql = `
-    SELECT 
+    SELECT
       properties.*,
-      builders.company_name, 
-      onboardingpartner.fullname, 
-      onboardingpartner.contact, 
+      properties.contact AS propertyContact,
+      properties.email AS propertyEmail,
+      builders.company_name,
+      onboardingpartner.fullname,
+      onboardingpartner.contact,
       onboardingpartner.email,
       onboardingpartner.city AS partnerCity
     FROM properties
@@ -470,21 +473,20 @@ export const v2AddProperty = async (req, res) => {
     propertyKind,
     propertyCategory,
   });
-  // Basic-info fields that depend on the property type (all optional)
-  const details = pickBasicDetails(req.body);
-
-  const videoLinks = parsePropertyVideoLinks({ videoLink, instagramReelLink });
-  if (videoLinks.error) {
-    return res.status(400).json({ message: videoLinks.error });
+  // Every field the listing forms have, saved the same way for admin, partner and website
+  const collected = collectPropertyColumns(req.body, { mode: "add", privileged: true });
+  if (collected.error) {
+    return res.status(400).json({ message: collected.error });
   }
 
   try {
     // 1. Duplicate check
     const [existing] = await db
       .promise()
-      .query("SELECT propertyid FROM properties WHERE propertyName = ?", [
-        propertyName,
-      ]);
+      .query(
+        "SELECT propertyid FROM properties WHERE propertyName = ? OR seoSlug = ? LIMIT 1",
+        [propertyName, toSlug(propertyName)],
+      );
 
     if (existing.length > 0) {
       return res.status(409).json({ message: "Property name already exists!" });
@@ -516,32 +518,15 @@ export const v2AddProperty = async (req, res) => {
         listingType: listing.listingType,
         propertyKind: listing.propertyKind,
         propertyName,
-        propertyType: toPropertyTypeJson(propertyType),
-        totalSalesPrice: totalSalesPrice || null,
-        totalOfferPrice: totalOfferPrice || null,
-        emi: emiPrincipal > 0 ? calculateEMI(emiPrincipal) : null,
-        builtUpArea: builtUpArea || null,
-        carpetArea: carpetArea || null,
         state,
         city,
-        pincode: pincode || null,
-        address: address || null,
-        latitude: latitude || null,
-        longitude: longitude || null,
-        projectBy: projectBy || null,
-        contact: contact || null,
-        email: email || null,
-        videoLink: videoLinks.videoLink,
-        instagramReelLink: videoLinks.instagramReelLink,
+        emi: emiPrincipal > 0 ? calculateEMI(emiPrincipal) : null,
         seoSlug: toSlug(propertyName),
         updated_at: currentdate,
         created_at: currentdate,
       };
-      LISTING_IMAGE_KEYS.forEach((key) => {
-        row[key] = imageValue(req.body[key]);
-      });
-      details.columns.forEach((column, i) => {
-        row[column] = details.values[i];
+      collected.columns.forEach((column, i) => {
+        row[column] = collected.values[i];
       });
 
       const columns = Object.keys(row);
@@ -860,8 +845,14 @@ export const v2Update = async (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const Id = req.params.id;
 
-  if (!Id) {
+  if (!Id || !Number.isInteger(Number(Id)) || Number(Id) <= 0) {
     return res.status(400).json({ message: "Invalid property ID" });
+  }
+
+  // Reject a bad email / contact / pincode before any database work
+  const earlyCheck = collectPropertyColumns(req.body, { mode: "edit", privileged: true });
+  if (earlyCheck.error) {
+    return res.status(400).json({ message: earlyCheck.error });
   }
 
   const {
@@ -966,7 +957,7 @@ export const v2Update = async (req, res) => {
   db.query(
     "SELECT * FROM properties WHERE propertyid = ?",
     [Id],
-    (err, result) => {
+    async (err, result) => {
       if (err)
         return res.status(500).json({ message: "Database error", error: err });
 
@@ -974,6 +965,25 @@ export const v2Update = async (req, res) => {
         return res.status(404).json({ message: "Property not found" });
 
       const existing = result[0];
+
+      // A rename must stay unique, same as when adding
+      if (propertyName !== existing.propertyName) {
+        try {
+          const [clash] = await db
+            .promise()
+            .query(
+              "SELECT propertyid FROM properties WHERE (propertyName = ? OR seoSlug = ?) AND propertyid <> ? LIMIT 1",
+              [propertyName, toSlug(propertyName), Id],
+            );
+          if (clash.length) {
+            return res.status(409).json({ message: "Property name already exists!" });
+          }
+        } catch (clashError) {
+          console.error("Rename check failed:", clashError);
+          return res.status(500).json({ message: "Could not check the property name" });
+        }
+      }
+
       const listing = resolveListingFields({
         listingType,
         propertyKind,
@@ -988,101 +998,28 @@ export const v2Update = async (req, res) => {
       };
 
       try {
-        const updateSQL = `
-          UPDATE properties SET 
-            builderid=?, projectBy=?, possessionDate=?, propertyCategory=?, listingType=?, propertyKind=?, propertyApprovedBy=?, propertyName=?, address=?, state=?, city=?, pincode=?, location=?,
-            distanceFromCityCenter=?, latitude=?, longitude=?, contact=?, email=?, totalSalesPrice=?, totalOfferPrice=?, emi=?, stampDuty=?, registrationFee=?, gst=?, advocateFee=?, 
-            msebWater=?, maintenance=?, other=?, tags=?, propertyType=?, builtYear=?, ownershipType=?,
-            builtUpArea=?, carpetArea=?, parkingAvailability=?, totalFloors=?, floorNo=?, loanAvailability=?,
-            propertyFacing=?, reraRegistered=?, furnishing=?, waterSupply=?, powerBackup=?, locationFeature=?, sizeAreaFeature=?, parkingFeature=?, terraceFeature=?,
-            ageOfPropertyFeature=?, amenitiesFeature=?, propertyStatusFeature=?, smartHomeFeature=?,
-            securityBenefit=?, primeLocationBenefit=?, rentalIncomeBenefit=?, qualityBenefit=?, capitalAppreciationBenefit=?, ecofriendlyBenefit=?,
-            frontView=?, sideView=?, kitchenView=?, hallView=?, bedroomView=?, bathroomView=?, balconyView=?,
-            nearestLandmark=?, developedAmenities=?, videoLink=?, instagramReelLink=?, updated_at=?
-          WHERE propertyid = ?
-        `;
-
-        const values = [
-          builderid,
-          sanitize(projectBy),
-          sanitize(formattedPossessionDate),
+        // Every field the listing forms have, saved the same way for admin, partner and website
+        const collected = collectPropertyColumns(req.body, { mode: "edit", privileged: true });
+        if (collected.error) {
+          return res.status(400).json({ message: collected.error });
+        }
+        const emiPrincipal = Number(totalOfferPrice) || Number(totalSalesPrice);
+        const changes = {
           propertyCategory,
-          listing.listingType,
-          listing.propertyKind,
-          propertyApprovedBy,
+          listingType: listing.listingType,
+          propertyKind: listing.propertyKind,
           propertyName,
-          address,
           state,
           city,
-          pincode,
-          location,
-          distanceFromCityCenter,
-          latitude,
-          longitude,
-          contact,
-          email,
-          totalSalesPrice,
-          totalOfferPrice,
-          emi,
-          stampDuty,
-          registrationFee,
-          gst,
-          advocateFee,
-          msebWater,
-          maintenance,
-          other,
-          tags,
-          propertyTypeJson,
-          builtYear,
-          ownershipType,
-          builtUpArea,
-          carpetArea,
-          parkingAvailability,
-          totalFloors,
-          floorNo,
-          loanAvailability,
-          propertyFacing,
-          reraRegistered,
-          furnishing,
-          waterSupply,
-          powerBackup,
-          locationFeature,
-          sizeAreaFeature,
-          parkingFeature,
-          terraceFeature,
-          ageOfPropertyFeature,
-          amenitiesFeature,
-          propertyStatusFeature,
-          smartHomeFeature,
-          securityBenefit,
-          primeLocationBenefit,
-          rentalIncomeBenefit,
-          qualityBenefit,
-          capitalAppreciationBenefit,
-          ecofriendlyBenefit,
-
-          // image handling
-          mergeImages(existing.frontView, frontView),
-          mergeImages(existing.sideView, sideView),
-          mergeImages(existing.kitchenView, kitchenView),
-          mergeImages(existing.hallView, hallView),
-          mergeImages(existing.bedroomView, bedroomView),
-          mergeImages(existing.bathroomView, bathroomView),
-          mergeImages(existing.balconyView, balconyView),
-          mergeImages(existing.nearestLandmark, nearestLandmark),
-          mergeImages(existing.developedAmenities, developedAmenities),
-
-          // video links: keep stored value unless the field was sent
-          videoLinkUpdates.fields.videoLink !== undefined
-            ? videoLinkUpdates.fields.videoLink
-            : existing.videoLink,
-          videoLinkUpdates.fields.instagramReelLink !== undefined
-            ? videoLinkUpdates.fields.instagramReelLink
-            : existing.instagramReelLink,
-
-          currentdate,
-          Id,
-        ];
+          ...(emiPrincipal > 0 ? { emi: calculateEMI(emiPrincipal) } : {}),
+          updated_at: currentdate,
+        };
+        collected.columns.forEach((column, i) => {
+          changes[column] = collected.values[i];
+        });
+        const updateColumns = Object.keys(changes);
+        const updateSQL = `UPDATE properties SET ${updateColumns.map((c) => `${c} = ?`).join(", ")} WHERE propertyid = ?`;
+        const values = [...updateColumns.map((c) => changes[c]), Id];
 
         db.query(updateSQL, values, (err) => {
           if (err) {

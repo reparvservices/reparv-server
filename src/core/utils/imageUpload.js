@@ -21,6 +21,9 @@ const BUCKET = process.env.AWS_BUCKET_NAME;
 
 // ─── Standard upload — for small files (images < 5MB) ───
 export const uploadToS3 = async (file) => {
+  // Optional attachments: no file means nothing to upload (callers treat null as "not provided")
+  if (!file) return null;
+
   const fileName = `uploads/${Date.now()}-${file.originalname}`;
 
   await s3.send(

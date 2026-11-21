@@ -4,6 +4,21 @@ import { sanitize } from "#utils/sanitize.js";
 import { uploadToS3 } from "#utils/imageUpload.js";
 import { convertSingleImageToWebp } from "#utils/convertSingleImageToWebp.js";
 import { sendKinexWhatsapp } from "../../../core/utils/kinexWhatsapp.js";
+import {
+  recordFollowupAndStatus,
+  ENQUIRY_STATUSES,
+  validateDealAmounts,
+  checkEnquiryCanTakeDeal,
+} from "../../../core/utils/enquiryActions.js";
+
+// Panel source name -> value stored in enquirers.source (Ads, Onsite, Direct, CSV and Digital Broker have their own queries)
+const ENQUIRY_SOURCE_VALUES = {
+  "Landing Page": "Landing Page",
+  Instagram: "ig",
+  Facebook: "fb",
+  "Meta Ads": "meta",
+  "AI Agent": "AI Agent",
+};
 
 // * Fetch All Enquiries with Enquiry Lister Details
 export const getAll = (req, res) => {
@@ -188,8 +203,30 @@ export const getAll = (req, res) => {
         )
       ORDER BY enquirers.enquirersid DESC`;
     params = [userId];
-  } 
-  
+  }
+
+  // Other named sources (landing page, social and AI-agent leads): filter by that source
+  else if (ENQUIRY_SOURCE_VALUES[enquirySource]) {
+    sql = `
+      SELECT
+        enquirers.*,
+        properties.frontView, properties.seoSlug, properties.commissionAmount,
+        territorypartner.fullname AS territoryName,
+        territorypartner.contact AS territoryContact
+      FROM enquirers
+      LEFT JOIN properties ON enquirers.propertyid = properties.propertyid
+      LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
+      WHERE enquirers.source = ?
+        AND enquirers.status != 'Token'
+        AND (
+          properties.projectpartnerid = ?
+          OR enquirers.projectpartnerid = ?
+          OR enquirers.projectbroker = ?
+        )
+      ORDER BY enquirers.enquirersid DESC`;
+    params = [ENQUIRY_SOURCE_VALUES[enquirySource], userId, userId, userId];
+  }
+
   // Default (All Enquiries)
   else {
     sql = `
@@ -502,8 +539,12 @@ export const getRemarkList = (req, res) => {
 /* Change status */
 export const status = (req, res) => {
   const { enquiryStatus } = req.body;
-  if (enquiryStatus === "") {
-    return res.status(400).json({ message: "Please Select Status!" });
+  // Only real funnel statuses: a missing or made-up value would hide the enquiry from every list.
+  // "Token" (a deal) is recorded through the token endpoint, which captures the deal amounts.
+  if (!ENQUIRY_STATUSES.includes(enquiryStatus)) {
+    return res.status(400).json({
+      message: `Choose a valid status (${ENQUIRY_STATUSES.join(", ")}). Use "Add token" to record a deal.`,
+    });
   }
 
   const Id = parseInt(req.params.id);
@@ -717,27 +758,22 @@ export const visitScheduled = (req, res) => {
         return res.status(404).json({ message: "Enquirer not found" });
       }
 
-      const insertSQL = `
+      // Save the visit and move the enquiry to "Visit Scheduled" together
+      recordFollowupAndStatus({
+        insertSql: `
       INSERT INTO propertyfollowup (enquirerid, visitdate, remark, status, updated_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)`;
-
-      db.query(
-        insertSQL,
-        [Id, visitDate, visitRemark, enquiryStatus, currentdate, currentdate],
-        (err, insertResult) => {
-          if (err) {
-            console.error("Error inserting visit:", err);
-            return res
-              .status(500)
-              .json({ message: "Database error", error: err });
-          }
-
-          res.status(201).json({
-            message: "Visit added successfully",
-            Id: insertResult.insertId,
-          });
-        }
-      );
+      VALUES (?, ?, ?, ?, ?, ?)`,
+        insertParams: [Id, visitDate, visitRemark, "Visit Scheduled", currentdate, currentdate],
+        enquiryId: Id,
+        status: "Visit Scheduled",
+      })
+        .then((insertId) =>
+          res.status(201).json({ message: "Visit scheduled successfully", Id: insertId }),
+        )
+        .catch((insertErr) => {
+          console.error("Error inserting visit:", insertErr);
+          res.status(500).json({ message: "Database error", error: insertErr });
+        });
     }
   );
 };
@@ -762,6 +798,13 @@ export const token = async (req, res) => {
   }
 
   try {
+    // STEP 0: Check everything that can be checked BEFORE uploading the payment image,
+    // so a rejected deal leaves no file behind and can't be recorded twice
+    const amounts = validateDealAmounts({ dealamount, tokenamount });
+    if (amounts.error) return res.status(400).json({ message: amounts.error });
+    const dealable = await checkEnquiryCanTakeDeal(Id);
+    if (dealable.error) return res.status(dealable.error.status).json({ message: dealable.error.message });
+
     // STEP 1: Upload payment image to S3 (compressed if image)
     let paymentImageUrl = null;
 
@@ -842,15 +885,16 @@ export const token = async (req, res) => {
               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
 
-            db.query(
-              insertSQL,
-              [
+            // Record the deal and move the enquiry to "Token" together
+            recordFollowupAndStatus({
+              insertSql: insertSQL,
+              insertParams: [
                 Id,
                 paymenttype,
                 tokenamount,
                 remark,
                 dealamount,
-                enquiryStatus,
+                "Token",
                 finalCommissionAmount,
                 reparvCommission,
                 salesCommission,
@@ -860,15 +904,13 @@ export const token = async (req, res) => {
                 currentdate,
                 currentdate,
               ],
-              (err, insertResult) => {
-                if (err)
-                  return res
-                    .status(500)
-                    .json({ message: "Insert error", error: err });
-
+              enquiryId: Id,
+              status: "Token",
+            })
+              .then((insertId) =>
                 res.status(201).json({
                   message: "Token added successfully",
-                  followupId: insertResult.insertId,
+                  followupId: insertId,
                   commissionBreakdown: {
                     totalCommission: finalCommissionAmount,
                     salesCommission,
@@ -876,9 +918,11 @@ export const token = async (req, res) => {
                     territoryCommission,
                   },
                   paymentImage: paymentImageUrl,
-                });
-              }
-            );
+                }),
+              )
+              .catch((insertErr) =>
+                res.status(500).json({ message: "Insert error", error: insertErr }),
+              );
           }
         );
       }
@@ -927,34 +971,22 @@ export const followUp = (req, res) => {
         return res.status(404).json({ message: "Enquiry not found" });
       }
 
-      const insertSQL = `
+      // Save the remark and move the enquiry to "Follow Up" together
+      recordFollowupAndStatus({
+        insertSql: `
       INSERT INTO propertyfollowup (enquirerid, remark, visitdate, status, updated_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)`;
-
-      db.query(
-        insertSQL,
-        [
-          Id,
-          followUpRemark,
-          sanitize(formattedVisitDate),
-          enquiryStatus,
-          currentdate,
-          currentdate,
-        ],
-        (err, insertResult) => {
-          if (err) {
-            console.error("Error inserting visit:", err);
-            return res
-              .status(500)
-              .json({ message: "Database error", error: err });
-          }
-
-          res.status(201).json({
-            message: "Follow Up remark added successfully",
-            Id: insertResult.insertId,
-          });
-        }
-      );
+      VALUES (?, ?, ?, ?, ?, ?)`,
+        insertParams: [Id, followUpRemark, sanitize(formattedVisitDate), "Follow Up", currentdate, currentdate],
+        enquiryId: Id,
+        status: "Follow Up",
+      })
+        .then((insertId) =>
+          res.status(201).json({ message: "Follow up added successfully", Id: insertId }),
+        )
+        .catch((insertErr) => {
+          console.error("Error inserting follow up:", insertErr);
+          res.status(500).json({ message: "Database error", error: insertErr });
+        });
     }
   );
 };
@@ -985,27 +1017,22 @@ export const cancelled = (req, res) => {
         return res.status(404).json({ message: "Enquiry not found" });
       }
 
-      const insertSQL = `
+      // Save the reason and move the enquiry to "Cancelled" together
+      recordFollowupAndStatus({
+        insertSql: `
       INSERT INTO propertyfollowup (enquirerid, remark, status, updated_at, created_at)
-      VALUES (?, ?, ?, ?, ?)`;
-
-      db.query(
-        insertSQL,
-        [Id, cancelledRemark, enquiryStatus, currentdate, currentdate],
-        (err, insertResult) => {
-          if (err) {
-            console.error("Error while Add Remark:", err);
-            return res
-              .status(500)
-              .json({ message: "Database error", error: err });
-          }
-
-          res.status(201).json({
-            message: "Remark added successfully",
-            Id: insertResult.insertId,
-          });
-        }
-      );
+      VALUES (?, ?, ?, ?, ?)`,
+        insertParams: [Id, cancelledRemark, "Cancelled", currentdate, currentdate],
+        enquiryId: Id,
+        status: "Cancelled",
+      })
+        .then((insertId) =>
+          res.status(201).json({ message: "Enquiry cancelled", Id: insertId }),
+        )
+        .catch((insertErr) => {
+          console.error("Error while cancelling:", insertErr);
+          res.status(500).json({ message: "Database error", error: insertErr });
+        });
     }
   );
 };

@@ -10,11 +10,14 @@ import {
 
 const EXEMPT_PREFIXES = [
   "/project-partner/login",
+  "/project-partner/logout",
   "/project-partner/subscription",
   "/project-partner/profile",
   "/sales/login",
+  "/sales/logout",
   "/sales/subscription",
   "/territory-partner/login",
+  "/territory-partner/logout",
   "/territory-partner/subscription",
   // Mobile apps: sign-in, OTP, password, profile and buying a plan stay open
   "/projectpartner/auth",
@@ -79,6 +82,19 @@ async function activeSubscriptionRows(userId, role) {
   return rows.filter((row) => isPartnerSubscriptionAccessActive(row));
 }
 
+/**
+ * A sales partner created by a project partner works under that partner's plan and has no
+ * subscription of their own: their access follows the project partner's active plan.
+ * A sales partner with no project partner (one who buys their own plan) is checked on their own.
+ */
+async function accessRowsFor(partner, req) {
+  const own = await activeSubscriptionRows(partner.userId, partner.role);
+  if (own.length || partner.role !== "sales") return own;
+  const projectPartnerId = Number(req.salesUser?.projectpartnerid);
+  if (!Number.isInteger(projectPartnerId) || projectPartnerId < 1) return own;
+  return activeSubscriptionRows(projectPartnerId, "project");
+}
+
 /** Does one of the partner's active plans include this feature? */
 async function activePlansIncludeFeature(activeRows, feature) {
   if (activeRows.some((row) => isAllFeaturePlan(row.plan_type))) return true;
@@ -119,7 +135,7 @@ export async function requireActivePartnerSubscription(req, res, next) {
       return next();
     }
 
-    const activeRows = await activeSubscriptionRows(partner.userId, partner.role);
+    const activeRows = await accessRowsFor(partner, req);
     if (!activeRows.length) {
       return res.status(402).json({
         success: false,

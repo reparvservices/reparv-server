@@ -84,3 +84,34 @@ test("refund tiers per policy", () => {
   assert.equal(refundFor("strict", 10000, "2026-12-20", "2026-12-10").percent, 0);
   assert.equal(refundFor("moderate", 10000, "2026-12-01", "2026-12-10").percent, 0); // already started
 });
+
+test("a full-day slot venue can be booked for several days; half-day slots stay one day", () => {
+  const multi = normaliseStay(hall, { start_date: "2026-12-10", end_date: "2026-12-13", slot: "full" }, TODAY);
+  assert.deepEqual([multi.ok, multi.start, multi.end, multi.nights, multi.slot], [true, "2026-12-10", "2026-12-13", 3, "full"]);
+  // without an end date it is still a single day
+  assert.deepEqual(normaliseStay(hall, { start_date: "2026-12-10", slot: "full" }, TODAY).nights, 1);
+  // half-day slots ignore the end date
+  const half = normaliseStay(hall, { start_date: "2026-12-10", end_date: "2026-12-13", slot: "morning" }, TODAY);
+  assert.deepEqual([half.end, half.nights], ["2026-12-11", 1]);
+  assert.equal(normaliseStay(hall, { start_date: "2026-12-10", end_date: "2026-12-10", slot: "full" }, TODAY).ok, false);
+  assert.equal(normaliseStay(hall, { start_date: "2026-12-10", end_date: "nope", slot: "full" }, TODAY).ok, false);
+  assert.equal(normaliseStay({ ...hall, max_nights: 5 }, { start_date: "2026-12-10", end_date: "2026-12-20", slot: "full" }, TODAY).ok, false);
+});
+
+test("multi-day slot quote: one line per day, weekends priced separately", () => {
+  const villa = { ...hall, base_price: 10000, weekend_price: 15000, cleaning_fee: 1000 };
+  // Thu 3 Dec .. Sun 6 Dec  = Thu, Fri, Sat
+  const q = quoteStay(villa, { start: "2026-12-03", end: "2026-12-06", slot: "full" });
+  assert.equal(q.lines.length, 3);
+  assert.deepEqual(q.lines.map((l) => l.amount), [10000, 15000, 15000]);
+  assert.equal(q.stay_total, 40000);
+  assert.equal(q.subtotal, 41000);
+  // a single day is unchanged
+  assert.equal(quoteStay(hall, { start: "2026-12-07", end: "2026-12-08", slot: "full" }).lines.length, 1);
+});
+
+test("a multi-day full booking clashes with any slot on those days", () => {
+  const stay = { start: "2026-12-10", end: "2026-12-13", slot: "full" };
+  assert.equal(staysOverlap(stay, { start: "2026-12-11", end: "2026-12-12", slot: "morning" }), true);
+  assert.equal(staysOverlap(stay, { start: "2026-12-13", end: "2026-12-14", slot: "full" }), false);
+});

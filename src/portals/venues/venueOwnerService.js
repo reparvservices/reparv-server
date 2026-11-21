@@ -185,7 +185,14 @@ export const listOwnerBookings = (owner) =>
 // ───────────────────────────── admin ─────────────────────────────
 
 export const adminListListings = (status) =>
-  rows(`SELECT * FROM venue_listings ${status ? "WHERE status = ?" : ""} ORDER BY id DESC LIMIT 300`, status ? [status] : []);
+  rows(
+    `SELECT l.*, COALESCE(pp.fullname, g.fullname) AS owner_name, COALESCE(pp.contact, g.contact) AS owner_contact, pp.city AS owner_city
+       FROM venue_listings l
+       LEFT JOIN projectpartner pp ON l.owner_role = 'project' AND pp.id = l.owner_id
+       LEFT JOIN guestUsers g ON l.owner_role = 'customer' AND g.id = l.owner_id
+       ${status ? "WHERE l.status = ?" : ""} ORDER BY l.id DESC LIMIT 300`,
+    status ? [status] : [],
+  );
 
 export async function adminDecide(id, { action, reason, commission_percent }) {
   const [l] = await rows(`SELECT id, status FROM venue_listings WHERE id = ?`, [id]);
@@ -202,6 +209,55 @@ export async function adminDecide(id, { action, reason, commission_percent }) {
     await rows(`UPDATE venue_listings SET status = 'rejected', reject_reason = ? WHERE id = ?`, [why, id]);
   } else throw httpError(400, "action must be approve or reject.");
   return (await rows(`SELECT * FROM venue_listings WHERE id = ?`, [id]))[0];
+}
+
+/**
+ * Admin add / edit of a venue listing, for the same venue form the project partner uses.
+ * The listing belongs to a project partner (named by the admin); validation is shared.
+ */
+export async function adminCreateListing(ownerId, body, publish = false) {
+  const id = Number(ownerId);
+  if (!Number.isInteger(id) || id < 1) throw httpError(400, "Select the project partner who owns this venue.");
+  const [pp] = await rows(`SELECT id FROM projectpartner WHERE id = ?`, [id]);
+  if (!pp) throw httpError(404, "Project partner not found.");
+
+  const f = validateListing(body);
+  f.slug = slugify(f.title);
+  const cols = Object.keys(f);
+  const status = publish ? "live" : "draft";
+  if (publish) {
+    const imgs = JSON.parse(f.images || "[]");
+    if (!imgs.length) throw httpError(400, "Add at least one photo before publishing.");
+  }
+  const [res] = await dbPromise.query(
+    `INSERT INTO venue_listings (owner_role, owner_id, status, ${cols.join(",")}) VALUES ('project', ?, ?, ${cols.map(() => "?").join(",")})`,
+    [id, status, ...cols.map((c) => f[c])],
+  );
+  return adminGetListing(res.insertId);
+}
+
+export async function adminGetListing(id) {
+  const [l] = await rows(
+    `SELECT l.*, COALESCE(pp.fullname, g.fullname) AS owner_name, COALESCE(pp.contact, g.contact) AS owner_contact, pp.city AS owner_city
+       FROM venue_listings l
+       LEFT JOIN projectpartner pp ON l.owner_role = 'project' AND pp.id = l.owner_id
+       LEFT JOIN guestUsers g ON l.owner_role = 'customer' AND g.id = l.owner_id
+      WHERE l.id = ?`,
+    [id],
+  );
+  if (!l) throw httpError(404, "Listing not found.");
+  return l;
+}
+
+export async function adminUpdateListing(id, body) {
+  const existing = await adminGetListing(id);
+  const f = validateListing(body, true);
+  const cols = Object.keys(f);
+  if (!cols.length) return existing;
+  // an admin edit keeps the listing's status; a rejected listing goes back to draft so it can be re-submitted
+  const status = existing.status === "rejected" ? ", status = 'draft', reject_reason = NULL" : "";
+  await rows(`UPDATE venue_listings SET ${cols.map((c) => `${c} = ?`).join(", ")}${status} WHERE id = ?`, [...cols.map((c) => f[c]), id]);
+  return adminGetListing(id);
 }
 
 export const adminListBookings = () =>

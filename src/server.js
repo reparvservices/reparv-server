@@ -1,9 +1,18 @@
 import http from "http";
 import "dotenv/config";
-import "./core/utils/cron.js";
+// Must load before any module that creates a DB, mail, HTTP or Razorpay client.
+import "./core/utils/localSafetyGuards.js";
 import app from "./app.js";
 
 const PORT = process.env.PORT || 3000;
+
+// Scheduled jobs send messages and change subscriptions, so they are opt-out
+// for local runs against production (DISABLE_CRON=true).
+if (process.env.DISABLE_CRON === "true") {
+  console.warn("[local-guard] DISABLE_CRON on: scheduled jobs are not started.");
+} else {
+  await import("./core/utils/cron.js");
+}
 
 const server = http.createServer(app);
 

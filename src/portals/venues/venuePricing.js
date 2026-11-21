@@ -43,6 +43,16 @@ export function normaliseStay(listing, { start_date, end_date, slot }, today) {
   if (listing.price_model === "slot") {
     const s = SLOTS.includes(slot) ? slot : null;
     if (!s) return { ok: false, message: "Choose a slot: full, morning or evening." };
+    // A full-day booking may cover several consecutive days (end_date = the day after the last day).
+    // Morning / evening slots are always a single day.
+    if (s === "full" && end_date !== undefined && end_date !== null && end_date !== "") {
+      if (!isValidDate(end_date)) return { ok: false, message: "A valid end date (YYYY-MM-DD) is required." };
+      const days = diffDays(start_date, end_date);
+      if (days < 1) return { ok: false, message: "The last day must be on or after the first day." };
+      const max = listing.max_nights || 30;
+      if (days > max) return { ok: false, message: `Maximum booking is ${max} days.` };
+      return { ok: true, start: start_date, end: end_date, slot: "full", nights: days };
+    }
     return { ok: true, start: start_date, end: addDays(start_date, 1), slot: s, nights: 1 };
   }
 
@@ -73,8 +83,10 @@ export function quoteStay(listing, stay) {
   if (listing.price_model === "slot") {
     const slotBase = stay.slot === "full" ? base : Math.ceil(base * 0.6);
     const slotWeekend = stay.slot === "full" ? weekend : Math.ceil(weekend * 0.6);
-    const price = isWeekendNight(stay.start) ? slotWeekend : slotBase;
-    lines.push({ date: stay.start, label: `${stay.slot} slot`, amount: price });
+    // one line per day (a half-day slot is always a single day)
+    for (const d of eachDate(stay.start, stay.end)) {
+      lines.push({ date: d, label: `${stay.slot} slot`, amount: isWeekendNight(d) ? slotWeekend : slotBase });
+    }
   } else {
     for (const d of eachDate(stay.start, stay.end)) {
       lines.push({ date: d, label: isWeekendNight(d) ? "weekend night" : "night", amount: isWeekendNight(d) ? weekend : base });

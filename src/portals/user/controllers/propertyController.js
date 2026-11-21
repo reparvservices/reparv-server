@@ -4,14 +4,18 @@ import {
   pickBrochureFileUpdate,
 } from "#utils/videoLinks.js";
 import db from "#db";
+import { assignListingFee } from "../../listingFees/listingFeeService.js";
 import {
   resolveListingFields,
   pickBasicDetails,
   isBuyListingType,
   BUY_LISTING_REMOVED_MESSAGE,
   pickListingExtras,
+  LISTING_IMAGE_KEYS,
+  listingValidationError,
 } from "#utils/propertyListing.js";
 import moment from "moment-timezone";
+import { collectPropertyColumns } from "#utils/propertyColumns.js";
 import { sanitize } from "#utils/sanitize.js";
 import { parsePropertyType } from "#utils/parsePropertyType.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -26,6 +30,47 @@ function toSlug(text) {
     .replace(/\s+/g, "-") // Replace spaces with hyphens
     .replace(/-+/g, "-"); // Replace multiple hyphens with single
 }
+
+/** Photo sections beyond the nine original columns (terrace, interior, office area, extra ...) */
+const ORIGINAL_PHOTO_KEYS = new Set([
+  "frontView", "sideView", "kitchenView", "hallView", "bedroomView",
+  "bathroomView", "balconyView", "nearestLandmark", "developedAmenities",
+]);
+const EXTRA_PHOTO_KEYS = LISTING_IMAGE_KEYS.filter((k) => !ORIGINAL_PHOTO_KEYS.has(k));
+const toUrlList = (v) => (Array.isArray(v) ? v : v ? [v] : []).filter((x) => typeof x === "string" && x.trim());
+
+/** Charges, specifications, highlights and benefits the add form can send (all optional) */
+const FEATURE_TEXT_COLUMNS = [
+  "stampDuty", "registrationFee", "gst", "advocateFee", "msebWater", "maintenance", "other", "tags",
+  "possessionDate", "builtYear", "ownershipType", "totalFloors", "floorNo", "parkingAvailability",
+  "loanAvailability", "propertyFacing", "reraRegistered", "furnishing", "waterSupply", "powerBackup",
+  "sizeAreaFeature", "parkingFeature", "terraceFeature", "ageOfPropertyFeature", "propertyStatusFeature",
+];
+const FEATURE_LIST_COLUMNS = [
+  "locationFeature", "amenitiesFeature", "smartHomeFeature", "securityBenefit", "primeLocationBenefit",
+  "rentalIncomeBenefit", "qualityBenefit", "capitalAppreciationBenefit", "ecofriendlyBenefit",
+];
+const pickFeatureDetails = (body = {}, alreadyChosen = []) => {
+  const taken = new Set(alreadyChosen);
+  const columns = [];
+  const values = [];
+  FEATURE_TEXT_COLUMNS.forEach((key) => {
+    const v = body[key];
+    if (taken.has(key) || v === undefined || v === null || String(v).trim() === "") return;
+    columns.push(key);
+    values.push(String(v).trim().slice(0, 500));
+  });
+  FEATURE_LIST_COLUMNS.forEach((key) => {
+    const list = (Array.isArray(body[key]) ? body[key] : [])
+      .map((v) => String(v).trim().slice(0, 100))
+      .filter(Boolean)
+      .slice(0, 30);
+    if (taken.has(key) || !list.length) return;
+    columns.push(key);
+    values.push(JSON.stringify(list));
+  });
+  return { columns, values };
+};
 
 const calculateEMI = (principal, rate = 9, years = 20) => {
   const monthlyRate = rate / 12 / 100;
@@ -150,7 +195,7 @@ export const getById = (req, res) => {
 
 // get all images
 export const getImages = (req, res) => {
-  const partnerId = req.user.id;
+  const partnerId = req.guestUser?.id;
   if (!partnerId) {
     return res.status(400).json({ message: "Unauthorized Access" });
   }
@@ -184,33 +229,8 @@ export const addProperty = async (req, res) => {
     return res.status(401).json({ message: "Unauthorized Access" });
   }
 
-  const {
-    propertyCategory,
-    listingType,
-    propertyKind,
-    propertyName,
-    totalSalesPrice,
-    totalOfferPrice,
-    builtUpArea,
-    carpetArea,
-    address,
-    state,
-    city,
-    projectBy,
-    contact,
-    email,
-
-    // IMAGE URL ARRAYS FROM FRONTEND (S3)
-    frontView = [],
-    sideView = [],
-    kitchenView = [],
-    hallView = [],
-    bedroomView = [],
-    bathroomView = [],
-    balconyView = [],
-    nearestLandmark = [],
-    developedAmenities = [],
-  } = req.body;
+  const { propertyCategory, listingType, propertyKind, propertyName, totalSalesPrice, totalOfferPrice, state, city } =
+    req.body;
 
   if (!propertyName || !propertyCategory || !city || !state) {
     return res.status(400).json({
@@ -218,40 +238,37 @@ export const addProperty = async (req, res) => {
     });
   }
 
-  // Sell / Buy / Rent + Residential / Commercial / Agriculture
-  const listing = resolveListingFields({
-    listingType,
-    propertyKind,
-    propertyCategory,
+  // Same rules as the admin and partner panels
+  const validationError = listingValidationError({
+    contact: req.body.contact,
+    pincode: req.body.pincode,
+    address: req.body.address,
+    latitude: req.body.latitude,
+    longitude: req.body.longitude,
+    frontView: req.body.frontView,
+    offerPrice: totalOfferPrice,
+    area: req.body.builtUpArea || req.body.carpetArea,
   });
-  // Basic-info fields that depend on the property type (all optional)
-  const basics = pickBasicDetails(req.body);
-  const extras = pickListingExtras(req.body);
-  if (extras.error) {
-    return res.status(400).json({ message: extras.error });
+  if (validationError) {
+    return res.status(400).json({ message: validationError });
   }
-  const videoLinks = pickPropertyVideoLinkUpdates(req.body);
-  const videoFile = pickPropertyVideoFileUpdate(req.body);
-  const brochure = pickBrochureFileUpdate(req.body);
-  const videoError = videoLinks.error || videoFile.error || brochure.error;
-  if (videoError) {
-    return res.status(400).json({ message: videoError });
+
+  const listing = resolveListingFields({ listingType, propertyKind, propertyCategory });
+
+  // Every field the listing forms have, saved the same way for admin, partner and website
+  const collected = collectPropertyColumns(req.body, { mode: "add", privileged: false });
+  if (collected.error) {
+    return res.status(400).json({ message: collected.error });
   }
-  const videoFields = { ...videoLinks.fields, ...videoFile.fields, ...brochure.fields };
-  const details = {
-    columns: [...basics.columns, ...extras.columns, ...Object.keys(videoFields)],
-    values: [...basics.values, ...extras.values, ...Object.values(videoFields)],
-  };
 
   try {
-    // 1 Check duplicate property name (or a name that maps to the same page URL)
+    // Duplicate property name (or a name that maps to the same page URL)
     const [existing] = await db
       .promise()
       .query(
         "SELECT propertyid FROM properties WHERE propertyName = ? OR seoSlug = ? LIMIT 1",
         [propertyName, toSlug(propertyName)],
       );
-
     if (existing.length > 0) {
       return res.status(409).json({ message: "Property name already exists!" });
     }
@@ -260,76 +277,60 @@ export const addProperty = async (req, res) => {
     const [cityResult] = await db
       .promise()
       .query("SELECT cityNACL FROM cities WHERE city = ? LIMIT 1", [city]);
-
     if (!cityResult.length) {
       return res.status(404).json({ message: "City not found in database" });
     }
-
     const cityNACL = cityResult[0].cityNACL;
 
-    // 2 Insert property (store URL arrays as JSON strings)
-    const insertSQL = `
-      INSERT INTO properties (
-        guestUserId, propertyCategory, listingType, propertyKind, propertyName,
-        totalSalesPrice, totalOfferPrice, builtUpArea, carpetArea, address,
-        state, city, projectBy, contact, email, seoSlug,
-        frontView, sideView, kitchenView, hallView,
-        bedroomView, bathroomView, balconyView,
-        nearestLandmark, developedAmenities,
-        updated_at, created_at${details.columns.map((c) => `, ${c}`).join("")}
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${", ?".repeat(details.columns.length)})
-    `;
-
-    const values = [
-      partnerId,
+    const emiPrincipal = Number(totalOfferPrice) || Number(totalSalesPrice);
+    const row = {
+      guestUserId: partnerId,
       propertyCategory,
-      listing.listingType,
-      listing.propertyKind,
+      listingType: listing.listingType,
+      propertyKind: listing.propertyKind,
       propertyName,
-      totalSalesPrice || null,
-      totalOfferPrice || null,
-      builtUpArea || null,
-      carpetArea || null,
-      address || null,
       state,
       city,
-      projectBy || null,
-      contact || null,
-      email || null,
-      toSlug(propertyName),
-      JSON.stringify(frontView),
-      JSON.stringify(sideView),
-      JSON.stringify(kitchenView),
-      JSON.stringify(hallView),
-      JSON.stringify(bedroomView),
-      JSON.stringify(bathroomView),
-      JSON.stringify(balconyView),
-      JSON.stringify(nearestLandmark),
-      JSON.stringify(developedAmenities),
+      emi: emiPrincipal > 0 ? calculateEMI(emiPrincipal) : null,
+      seoSlug: toSlug(propertyName),
+      updated_at: currentdate,
+      created_at: currentdate,
+    };
+    collected.columns.forEach((column, i) => {
+      row[column] = collected.values[i];
+    });
+    const columns = Object.keys(row);
 
-      currentdate,
-      currentdate,
-      ...details.values,
-    ];
-
-    const [insertResult] = await db.promise().query(insertSQL, values);
+    const [insertResult] = await db
+      .promise()
+      .query(
+        `INSERT INTO properties (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+        columns.map((c) => row[c]),
+      );
     const newPropertyId = insertResult.insertId;
 
     const propertyCityId = `${cityNACL}-${newPropertyId}`;
-
-    // 4 Update propertyCityId
     await db
       .promise()
-      .query("UPDATE properties SET propertyCityId = ? WHERE propertyid = ?", [
-        propertyCityId,
-        newPropertyId,
-      ]);
+      .query("UPDATE properties SET propertyCityId = ? WHERE propertyid = ?", [propertyCityId, newPropertyId]);
+
+    // First listing free, later ones need the fee the admin set. A listing must never slip through
+    // undecided, so if this fails the new row is removed again.
+    let fee;
+    try {
+      fee = await assignListingFee({ userId: partnerId, propertyId: newPropertyId });
+    } catch (feeError) {
+      console.error("listing fee assignment failed, removing the new listing:", feeError);
+      await db.promise().query("DELETE FROM properties WHERE propertyid = ?", [newPropertyId]).catch(() => {});
+      return res.status(500).json({ message: "Could not save your listing. Please try again." });
+    }
 
     return res.status(201).json({
       message: "Property added successfully",
       id: newPropertyId,
       propertyCityId,
+      payment_required: fee.payment_required,
+      fee: fee.fee,
     });
   } catch (error) {
     console.error("addProperty error:", error);
@@ -479,13 +480,6 @@ export const update = async (req, res) => {
   if (isBuyListingType(req.body?.listingType)) {
     return res.status(400).json({ message: BUY_LISTING_REMOVED_MESSAGE });
   }
-  const videoError =
-    pickPropertyVideoLinkUpdates(req.body).error ||
-    pickPropertyVideoFileUpdate(req.body).error ||
-    pickBrochureFileUpdate(req.body).error;
-  if (videoError) {
-    return res.status(400).json({ message: videoError });
-  }
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const partnerId = req.guestUser?.id;
 
@@ -498,295 +492,69 @@ export const update = async (req, res) => {
     return res.status(400).json({ message: "Invalid property ID" });
   }
 
-  const {
-    propertyCategory,
-    listingType,
-    propertyKind,
-    propertyName,
-    address,
-    state,
-    city,
-    pincode,
-    location,
-    distanceFromCityCenter,
-    latitude,
-    longitude,
+  const { propertyCategory, listingType, propertyKind, propertyName, totalSalesPrice, totalOfferPrice, state, city } =
+    req.body;
 
-    totalSalesPrice,
-    totalOfferPrice,
-    stampDuty,
-    registrationFee,
-    gst,
-    advocateFee,
-    msebWater,
-    maintenance,
-    other,
-    tags,
-
-    possessionDate,
-    builtYear,
-    ownershipType,
-    builtUpArea,
-    carpetArea,
-    parkingAvailability,
-    totalFloors,
-    floorNo,
-    loanAvailability,
-    propertyFacing,
-    reraRegistered,
-    furnishing,
-    waterSupply,
-    powerBackup,
-
-    locationFeature,
-    sizeAreaFeature,
-    parkingFeature,
-    terraceFeature,
-    ageOfPropertyFeature,
-    amenitiesFeature,
-    propertyStatusFeature,
-    smartHomeFeature,
-
-    securityBenefit,
-    primeLocationBenefit,
-    rentalIncomeBenefit,
-    qualityBenefit,
-    capitalAppreciationBenefit,
-    ecofriendlyBenefit,
-
-    projectBy,
-    contact,
-    email,
-
-    // IMAGE URL ARRAYS (S3)
-    frontView,
-    sideView,
-    kitchenView,
-    hallView,
-    bedroomView,
-    bathroomView,
-    balconyView,
-    nearestLandmark,
-    developedAmenities,
-  } = req.body;
-
-  // Minimal required fields (same as addProperty)
   if (!propertyName || !propertyCategory || !city || !state) {
     return res.status(400).json({
       message: "Property name, category, city, and state are required",
     });
   }
 
+  const collected = collectPropertyColumns(req.body, { mode: "edit", privileged: false });
+  if (collected.error) {
+    return res.status(400).json({ message: collected.error });
+  }
+
   try {
-    // 1 Fetch existing property
     const [rows] = await db
       .promise()
       .query("SELECT * FROM properties WHERE propertyid = ?", [Id]);
-
     if (!rows.length) {
       return res.status(404).json({ message: "Property not found" });
     }
-
     const existing = rows[0];
-    const listing = resolveListingFields({
-      listingType,
-      propertyKind,
+    // A customer can only edit their own listing
+    if (Number(existing.guestUserId) !== Number(partnerId)) {
+      return res.status(403).json({ message: "You can only edit your own listings" });
+    }
+
+    // A name change must stay unique
+    if (propertyName !== existing.propertyName) {
+      const [clash] = await db
+        .promise()
+        .query(
+          "SELECT propertyid FROM properties WHERE (propertyName = ? OR seoSlug = ?) AND propertyid <> ? LIMIT 1",
+          [propertyName, toSlug(propertyName), Id],
+        );
+      if (clash.length) {
+        return res.status(409).json({ message: "Property name already exists!" });
+      }
+    }
+
+    const listing = resolveListingFields({ listingType, propertyKind, propertyCategory, existing });
+    const emiPrincipal = Number(totalOfferPrice) || Number(totalSalesPrice);
+    const changes = {
       propertyCategory,
-      existing,
-    });
-
-    // IMAGE MERGE (keep old if not sent)
-    const keepOrReplace = (incoming, existingValue) =>
-      Array.isArray(incoming) ? JSON.stringify(incoming) : existingValue;
-
-    // Array fields -> JSON strings (or keep existing if not provided)
-    const keepOrReplaceArrayField = (incoming, existingValue) =>
-      Array.isArray(incoming) ? JSON.stringify(incoming) : existingValue;
-
-    // 2 Update property
-    const updateSQL = `
-      UPDATE properties SET
-        propertyCategory=?,
-        listingType=?,
-        propertyKind=?,
-        propertyName=?,
-        address=?,
-        state=?,
-        city=?,
-        pincode=?,
-        location=?,
-        distanceFromCityCenter=?,
-        latitude=?,
-        longitude=?,
-
-        totalSalesPrice=?,
-        totalOfferPrice=?,
-        stampDuty=?,
-        registrationFee=?,
-        gst=?,
-        advocateFee=?,
-        msebWater=?,
-        maintenance=?,
-        other=?,
-        tags=?,
-
-        possessionDate=?,
-        builtYear=?,
-        ownershipType=?,
-        builtUpArea=?,
-        carpetArea=?,
-        parkingAvailability=?,
-        totalFloors=?,
-        floorNo=?,
-        loanAvailability=?,
-        propertyFacing=?,
-        reraRegistered=?,
-        furnishing=?,
-        waterSupply=?,
-        powerBackup=?,
-
-        locationFeature=?,
-        sizeAreaFeature=?,
-        parkingFeature=?,
-        terraceFeature=?,
-        ageOfPropertyFeature=?,
-        amenitiesFeature=?,
-        propertyStatusFeature=?,
-        smartHomeFeature=?,
-
-        securityBenefit=?,
-        primeLocationBenefit=?,
-        rentalIncomeBenefit=?,
-        qualityBenefit=?,
-        capitalAppreciationBenefit=?,
-        ecofriendlyBenefit=?,
-
-        projectBy=?,
-        contact=?,
-        email=?,
-
-        frontView=?,
-        sideView=?,
-        kitchenView=?,
-        hallView=?,
-        bedroomView=?,
-        bathroomView=?,
-        balconyView=?,
-        nearestLandmark=?,
-        developedAmenities=?,
-
-        updated_at=?
-      WHERE propertyid=?
-    `;
-
-    const values = [
-      propertyCategory,
-      listing.listingType,
-      listing.propertyKind,
+      listingType: listing.listingType,
+      propertyKind: listing.propertyKind,
       propertyName,
-      address || null,
       state,
       city,
-      pincode || null,
-      location || null,
-      distanceFromCityCenter || null,
-      latitude || null,
-      longitude || null,
-
-      totalSalesPrice || null,
-      totalOfferPrice || null,
-      stampDuty || null,
-      registrationFee || null,
-      gst || null,
-      advocateFee || null,
-      msebWater || null,
-      maintenance || null,
-      other || null,
-      tags || null,
-
-      possessionDate || null,
-      builtYear || null,
-      ownershipType || null,
-      builtUpArea || null,
-      carpetArea || null,
-      parkingAvailability || null,
-      totalFloors || null,
-      floorNo || null,
-      loanAvailability || null,
-      propertyFacing || null,
-      reraRegistered || null,
-      furnishing || null,
-      waterSupply || null,
-      powerBackup || null,
-
-      keepOrReplaceArrayField(locationFeature, existing.locationFeature),
-      sizeAreaFeature || null,
-      parkingFeature || null,
-      terraceFeature || null,
-      ageOfPropertyFeature || null,
-      keepOrReplaceArrayField(amenitiesFeature, existing.amenitiesFeature),
-      propertyStatusFeature || null,
-      keepOrReplaceArrayField(smartHomeFeature, existing.smartHomeFeature),
-
-      keepOrReplaceArrayField(securityBenefit, existing.securityBenefit),
-      keepOrReplaceArrayField(primeLocationBenefit, existing.primeLocationBenefit),
-      keepOrReplaceArrayField(rentalIncomeBenefit, existing.rentalIncomeBenefit),
-      keepOrReplaceArrayField(qualityBenefit, existing.qualityBenefit),
-      keepOrReplaceArrayField(capitalAppreciationBenefit, existing.capitalAppreciationBenefit),
-      keepOrReplaceArrayField(ecofriendlyBenefit, existing.ecofriendlyBenefit),
-
-      projectBy || null,
-      contact || null,
-      email || null,
-
-      keepOrReplace(frontView, existing.frontView),
-      keepOrReplace(sideView, existing.sideView),
-      keepOrReplace(kitchenView, existing.kitchenView),
-      keepOrReplace(hallView, existing.hallView),
-      keepOrReplace(bedroomView, existing.bedroomView),
-      keepOrReplace(bathroomView, existing.bathroomView),
-      keepOrReplace(balconyView, existing.balconyView),
-      keepOrReplace(nearestLandmark, existing.nearestLandmark),
-      keepOrReplace(developedAmenities, existing.developedAmenities),
-
-      currentdate,
-      Id,
-    ];
-
-    await db.promise().query(updateSQL, values);
-
-    // Configuration (BHK) and description aren't in the main update above:
-    // only change them when the request sends them, so other edit forms can't wipe them.
-    const extras = pickListingExtras({
-      propertyType: req.body?.propertyType,
-      propertyDescription: req.body?.propertyDescription,
+      ...(emiPrincipal > 0 ? { emi: calculateEMI(emiPrincipal) } : {}),
+      updated_at: currentdate,
+    };
+    collected.columns.forEach((column, i) => {
+      changes[column] = collected.values[i];
     });
-    if (!extras.error && extras.columns.length) {
-      await db
-        .promise()
-        .query(
-          `UPDATE properties SET ${extras.columns.map((c) => `${c} = ?`).join(", ")} WHERE propertyid = ?`,
-          [...extras.values, Id],
-        );
-    }
+    const updateColumns = Object.keys(changes);
 
-    // Video links / uploaded video / brochure: only when sent (empty string clears)
-    const videoLinks = pickPropertyVideoLinkUpdates(req.body);
-    const videoFile = pickPropertyVideoFileUpdate(req.body);
-    const brochure = pickBrochureFileUpdate(req.body);
-    const videoFields =
-      videoLinks.error || videoFile.error || brochure.error
-        ? {}
-        : { ...videoLinks.fields, ...videoFile.fields, ...brochure.fields };
-    const videoColumns = Object.keys(videoFields);
-    if (videoColumns.length) {
-      await db
-        .promise()
-        .query(
-          `UPDATE properties SET ${videoColumns.map((c) => `${c} = ?`).join(", ")} WHERE propertyid = ?`,
-          [...Object.values(videoFields), Id],
-        );
-    }
+    await db
+      .promise()
+      .query(
+        `UPDATE properties SET ${updateColumns.map((c) => `${c} = ?`).join(", ")} WHERE propertyid = ?`,
+        [...updateColumns.map((c) => changes[c]), Id],
+      );
 
     return res.status(200).json({
       message: "Property updated successfully",

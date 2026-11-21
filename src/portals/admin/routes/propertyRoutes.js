@@ -32,6 +32,10 @@ import {
   getDetails,
   updateMediaLinks,
 } from "../controllers/propertyController.js";
+import {
+  adminV2AddProperty,
+  adminV2UpdateProperty,
+} from "../controllers/propertyV2Controller.js";
 
 const router = express.Router();
 
@@ -58,6 +62,10 @@ router.get("/:id", getById);
 router.get("/images/get/:id", getImages);
 router.delete("/images/delete/:id", deleteImages);
 router.post("/check-property-name", checkPropertyName);
+
+// Same property form as the project partner panel (JSON body, photos already on S3)
+router.post("/v2/add", adminV2AddProperty);
+router.put("/v2/edit/:id", adminV2UpdateProperty);
 
 router.post(
   "/add",

@@ -2,6 +2,12 @@ import db from "#db";
 import moment from "moment-timezone";
 import { sanitize } from "#utils/sanitize.js";
 import { uploadToS3 } from "#utils/imageUpload.js";
+import {
+  recordFollowupAndStatus,
+  ENQUIRY_STATUSES,
+  validateDealAmounts,
+  checkEnquiryCanTakeDeal,
+} from "../../../core/utils/enquiryActions.js";
 
 // Fetch All Enquiries
 export const getAll = (req, res) => {
@@ -81,18 +87,23 @@ export const getAll = (req, res) => {
 
 // **Fetch Single by ID**
 export const getById = (req, res) => {
+  const userId = req.salesUser?.id;
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized Access, Please Login Again!" });
+  }
   const Id = parseInt(req.params.id);
-  const sql = `SELECT enquirers.*, 
+  // Only an enquiry assigned to this sales partner (same rule as the list)
+  const sql = `SELECT enquirers.*,
        territorypartner.fullname AS territoryName,
        territorypartner.contact AS territoryContact,
        territoryenquiry.followup AS territoryFollowUp,
-       territoryenquiry.status AS territoryStatus 
-       FROM enquirers 
-       LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid 
+       territoryenquiry.status AS territoryStatus
+       FROM enquirers
+       LEFT JOIN territorypartner ON territorypartner.id = enquirers.territorypartnerid
        LEFT JOIN territoryenquiry ON territoryenquiry.enquirerid = enquirers.enquirersid
-       WHERE enquirersid = ?`;
+       WHERE enquirersid = ? AND (enquirers.salespersonid = ? OR enquirers.salesbroker = ?)`;
 
-  db.query(sql, [Id], (err, result) => {
+  db.query(sql, [Id, userId, userId], (err, result) => {
     if (err) {
       console.error("Error fetching :", err);
       return res.status(500).json({ message: "Database error", error: err });
@@ -102,6 +113,71 @@ export const getById = (req, res) => {
     }
     res.json(result[0]);
   });
+};
+
+// Remarks / follow-up history of an enquiry assigned to this sales partner
+export const getRemarkList = (req, res) => {
+  const userId = req.salesUser?.id;
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized Access, Please Login Again!" });
+  }
+  const sql = `
+    SELECT f.* FROM propertyfollowup f
+    JOIN enquirers e ON e.enquirersid = f.enquirerid
+    WHERE f.enquirerid = ? AND (e.salespersonid = ? OR e.salesbroker = ?)
+    ORDER BY f.created_at`;
+  db.query(sql, [req.params.id, userId, userId], (err, result) => {
+    if (err) {
+      console.error("Error fetching remarks:", err);
+      return res.status(500).json({ message: "Database error", error: err });
+    }
+    res.json(
+      result.map((row) => ({
+        ...row,
+        visitdate: row.visitdate ? moment(row.visitdate).format("DD MMM YYYY") : null,
+      })),
+    );
+  });
+};
+
+// Properties of this sales partner's project partner that match the enquiry's budget and area
+export const getPropertyList = (req, res) => {
+  const userId = req.salesUser?.id;
+  const projectPartnerId = req.salesUser?.projectpartnerid;
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized Access, Please Login Again!" });
+  }
+  db.query(
+    "SELECT * FROM enquirers WHERE enquirersid = ? AND (salespersonid = ? OR salesbroker = ?)",
+    [req.params.id, userId, userId],
+    (err, enquiryRows) => {
+      if (err) {
+        console.error("Error fetching enquiry:", err);
+        return res.status(500).json({ message: "Database error", error: err });
+      }
+      if (!enquiryRows.length) return res.status(404).json({ message: "Enquiry not found" });
+
+      const { category, state, city } = enquiryRows[0];
+      const minbudget = parseFloat(enquiryRows[0].minbudget) || 0;
+      const maxbudget = parseFloat(enquiryRows[0].maxbudget) || Number.MAX_SAFE_INTEGER;
+
+      db.query(
+        `SELECT * FROM properties
+          WHERE CAST(totalOfferPrice AS DECIMAL(15,2)) BETWEEN ? AND ?
+            AND propertyCategory = ? AND state = ? AND city = ?
+            AND projectpartnerid = ?
+          ORDER BY created_at DESC`,
+        [minbudget, maxbudget, category, state, city, projectPartnerId],
+        (propErr, properties) => {
+          if (propErr) {
+            console.error("Error fetching properties:", propErr);
+            return res.status(500).json({ message: "Database error", error: propErr });
+          }
+          res.json(properties);
+        },
+      );
+    },
+  );
 };
 
 export const getProperties = (req, res) => {
@@ -335,8 +411,12 @@ export const assignEnquiry = async (req, res) => {
 /* Change status */
 export const status = (req, res) => {
   const { enquiryStatus } = req.body;
-  if (enquiryStatus === "") {
-    return res.status(400).json({ message: "Please Select Status!" });
+  // Only real funnel statuses: a missing or made-up value would hide the enquiry from every list.
+  // "Token" (a deal) is recorded through the token endpoint, which captures the deal amounts.
+  if (!ENQUIRY_STATUSES.includes(enquiryStatus)) {
+    return res.status(400).json({
+      message: `Choose a valid status (${ENQUIRY_STATUSES.join(", ")}). Use "Add token" to record a deal.`,
+    });
   }
 
   const Id = parseInt(req.params.id);
@@ -402,27 +482,22 @@ export const visitScheduled = (req, res) => {
         return res.status(404).json({ message: "Enquirer not found" });
       }
 
-      const insertSQL = `
+      // Save the visit and move the enquiry to "Visit Scheduled" together
+      recordFollowupAndStatus({
+        insertSql: `
       INSERT INTO propertyfollowup (enquirerid, visitdate, remark, status, updated_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)`;
-
-      db.query(
-        insertSQL,
-        [Id, visitDate, visitRemark, enquiryStatus, currentdate, currentdate],
-        (err, insertResult) => {
-          if (err) {
-            console.error("Error inserting visit:", err);
-            return res
-              .status(500)
-              .json({ message: "Database error", error: err });
-          }
-
-          res.status(201).json({
-            message: "Visit added successfully",
-            Id: insertResult.insertId,
-          });
-        },
-      );
+      VALUES (?, ?, ?, ?, ?, ?)`,
+        insertParams: [Id, visitDate, visitRemark, "Visit Scheduled", currentdate, currentdate],
+        enquiryId: Id,
+        status: "Visit Scheduled",
+      })
+        .then((insertId) =>
+          res.status(201).json({ message: "Visit scheduled successfully", Id: insertId }),
+        )
+        .catch((insertErr) => {
+          console.error("Error inserting visit:", insertErr);
+          res.status(500).json({ message: "Database error", error: insertErr });
+        });
     },
   );
 };
@@ -454,6 +529,12 @@ export const token = async (req, res) => {
   }
 
   try {
+    // 0️⃣ Real money, and not already a deal (recording it twice double-counts the amount)
+    const amounts = validateDealAmounts({ dealamount, tokenamount });
+    if (amounts.error) return res.status(400).json({ message: amounts.error });
+    const dealable = await checkEnquiryCanTakeDeal(Id);
+    if (dealable.error) return res.status(dealable.error.status).json({ message: dealable.error.message });
+
     // 1️⃣ Get Enquirer
     const enquirerResult = await new Promise((resolve, reject) => {
       db.query(
@@ -514,32 +595,32 @@ export const token = async (req, res) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    const insertResult = await new Promise((resolve, reject) => {
-      db.query(
-        insertSQL,
-        [
-          Id,
-          paymenttype,
-          tokenamount,
-          remark,
-          dealamount,
-          enquiryStatus,
-          propertyId || null,
-          finalCommissionAmount,
-          reparvCommission,
-          salesCommission,
-          territoryCommission,
-          paymentImage,
-          currentdate,
-          currentdate,
-        ],
-        (err, result) => (err ? reject(err) : resolve(result)),
-      );
+    // Record the deal and move the enquiry to "Token" together
+    const followupId = await recordFollowupAndStatus({
+      insertSql: insertSQL,
+      insertParams: [
+        Id,
+        paymenttype,
+        tokenamount,
+        remark,
+        dealamount,
+        "Token",
+        propertyId || null,
+        finalCommissionAmount,
+        reparvCommission,
+        salesCommission,
+        territoryCommission,
+        paymentImage,
+        currentdate,
+        currentdate,
+      ],
+      enquiryId: Id,
+      status: "Token",
     });
 
     return res.status(201).json({
       message: "Token added successfully",
-      followupId: insertResult.insertId,
+      followupId,
       commissionBreakdown: {
         totalCommission: finalCommissionAmount,
         salesCommission,
@@ -617,8 +698,6 @@ export const followUp = (req, res) => {
   const currentdate = moment().format("YYYY-MM-DD HH:mm:ss");
   const { visitDate, followUpRemark, enquiryStatus } = req.body;
 
-  console.log(visitDate, "ss");
-
   if (!followUpRemark || !enquiryStatus) {
     return res.status(400).json({ message: "Please add remark and status!" });
   }
@@ -653,36 +732,27 @@ export const followUp = (req, res) => {
         return res.status(404).json({ message: "Enquiry not found" });
       }
 
-      const insertSQL = `
+      // Save the remark and move the enquiry to "Follow Up" together
+      recordFollowupAndStatus({
+        insertSql: `
         INSERT INTO propertyfollowup (enquirerid, visitdate, remark, status, updated_at, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
-      `;
-
-      db.query(
-        insertSQL,
-        [
-          Id,
-          sanitize(formattedVisitDate),
-          followUpRemark,
-          enquiryStatus,
-          currentdate,
-          currentdate,
-        ],
-        (err, insertResult) => {
-          if (err) {
-            console.error("Error inserting follow-up:", err);
-            return res
-              .status(500)
-              .json({ message: "Database error", error: err });
-          }
-
+      `,
+        insertParams: [Id, sanitize(formattedVisitDate), followUpRemark, "Follow Up", currentdate, currentdate],
+        enquiryId: Id,
+        status: "Follow Up",
+      })
+        .then((insertId) =>
           res.status(201).json({
-            message: "Follow Up added successfully",
-            Id: insertResult.insertId,
+            message: "Follow up added successfully",
+            Id: insertId,
             visitDate: visitDate || null,
-          });
-        },
-      );
+          }),
+        )
+        .catch((insertErr) => {
+          console.error("Error inserting follow-up:", insertErr);
+          res.status(500).json({ message: "Database error", error: insertErr });
+        });
     },
   );
 };
@@ -713,27 +783,22 @@ export const cancelled = (req, res) => {
         return res.status(404).json({ message: "Enquiry not found" });
       }
 
-      const insertSQL = `
+      // Save the reason and move the enquiry to "Cancelled" together
+      recordFollowupAndStatus({
+        insertSql: `
       INSERT INTO propertyfollowup (enquirerid, remark, status, updated_at, created_at)
-      VALUES (?, ?, ?, ?, ?)`;
-
-      db.query(
-        insertSQL,
-        [Id, cancelledRemark, enquiryStatus, currentdate, currentdate],
-        (err, insertResult) => {
-          if (err) {
-            console.error("Error while Add Remark:", err);
-            return res
-              .status(500)
-              .json({ message: "Database error", error: err });
-          }
-
-          res.status(201).json({
-            message: "Remark added successfully",
-            Id: insertResult.insertId,
-          });
-        },
-      );
+      VALUES (?, ?, ?, ?, ?)`,
+        insertParams: [Id, cancelledRemark, "Cancelled", currentdate, currentdate],
+        enquiryId: Id,
+        status: "Cancelled",
+      })
+        .then((insertId) =>
+          res.status(201).json({ message: "Enquiry cancelled", Id: insertId }),
+        )
+        .catch((insertErr) => {
+          console.error("Error while cancelling:", insertErr);
+          res.status(500).json({ message: "Database error", error: insertErr });
+        });
     },
   );
 };

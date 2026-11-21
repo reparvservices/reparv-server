@@ -214,7 +214,11 @@ export const getAll = (req, res) => {
       return res.status(500).json({ message: "Database error", error: err });
     }
 
-    const formatted = result.map((row) => ({
+    // Listings whose listing fee is not paid yet are drafts: they are not reviewable until paid.
+    // (Filtered here, not in SQL, so this keeps working before the fee migration is applied.)
+    const formatted = result
+      .filter((row) => row.fee_status !== "pending")
+      .map((row) => ({
       ...row,
       likes: Number(row.likes) || 0,
       views: Number(row.views) || 0,
@@ -319,11 +323,13 @@ export const getById = (req, res) => {
   }
 
   const sql = `
-    SELECT 
+    SELECT
       properties.*,
-      builders.company_name, 
-      onboardingpartner.fullname, 
-      onboardingpartner.contact, 
+      properties.contact AS propertyContact,
+      properties.email AS propertyEmail,
+      builders.company_name,
+      onboardingpartner.fullname,
+      onboardingpartner.contact,
       onboardingpartner.email,
       onboardingpartner.city AS partnerCity
     FROM properties
@@ -1392,6 +1398,11 @@ export const approve = (req, res) => {
 
       if (!result.length) {
         return res.status(404).json({ message: "Property not found" });
+      }
+
+      // An unpaid listing can't be approved until the user has paid the listing fee
+      if (result[0].fee_status === "pending") {
+        return res.status(409).json({ message: "The listing fee has not been paid yet." });
       }
 
       let approve = "";

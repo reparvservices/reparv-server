@@ -84,6 +84,35 @@ export const requireOwnPropertyInBody = (field) =>
     }
   };
 
+/**
+ * A sales partner may act only on enquiries assigned to them (or ones they brokered): the
+ * same rule as their enquiry list. Unknown and other partners' enquiries both give 404.
+ */
+export const requireSalesEnquiryOwner = (param = "id") =>
+  async function salesEnquiryOwnerCheck(req, res, next) {
+    try {
+      const sales = req.salesUser;
+      if (!sales?.id) {
+        return res.status(401).json({ message: "Unauthorized. Please log in." });
+      }
+      const enquiryId = Number(req.params[param]);
+      if (!Number.isInteger(enquiryId) || enquiryId <= 0) {
+        return res.status(400).json({ message: "Invalid Enquiry ID" });
+      }
+      const [rows] = await dbPromise.query(
+        "SELECT 1 FROM enquirers WHERE enquirersid = ? AND (salespersonid = ? OR salesbroker = ?) LIMIT 1",
+        [enquiryId, sales.id, sales.id],
+      );
+      if (!rows.length) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
+      return next();
+    } catch (err) {
+      console.error("requireSalesEnquiryOwner:", err);
+      return res.status(500).json({ message: "Enquiry access check failed" });
+    }
+  };
+
 const TEAM_SQL = {
   sales: "SELECT 1 FROM salespersons WHERE salespersonsid = ? AND projectpartnerid = ? LIMIT 1",
   territory: "SELECT 1 FROM territorypartner WHERE id = ? AND projectpartnerid = ? LIMIT 1",

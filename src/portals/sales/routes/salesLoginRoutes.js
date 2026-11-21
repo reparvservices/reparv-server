@@ -9,7 +9,8 @@ const router = express.Router();
 
 router.post("/login", loginRateLimit, async (req, res) => {
   try {
-    const { emailOrUsername, password } = req.body;
+    const emailOrUsername = String(req.body?.emailOrUsername || "").trim();
+    const password = String(req.body?.password || "");
 
     if (!emailOrUsername || !password) {
       return res.status(400).json({ message: "All fields are required" });
@@ -19,12 +20,11 @@ router.post("/login", loginRateLimit, async (req, res) => {
       return res.status(500).json({ message: "Server misconfiguration: JWT secret is missing." });
     }
 
+    // Find the partner by username or email (any status: an inactive one gets a clear message below)
     const user = await new Promise((resolve, reject) => {
       db.query(
-        `SELECT * FROM salespersons 
-         WHERE (username = ? OR email = ?) 
-         AND loginstatus = 'Active'`,
-        [emailOrUsername, emailOrUsername], 
+        `SELECT * FROM salespersons WHERE username = ? OR email = ? ORDER BY (loginstatus = 'Active') DESC LIMIT 1`,
+        [emailOrUsername, emailOrUsername],
         (err, results) => {
           if (err) {
             console.error("Database Error:", err);
@@ -38,10 +38,24 @@ router.post("/login", loginRateLimit, async (req, res) => {
       );
     });
 
+    // A partner added without sign-in details has no password yet (bcrypt would throw on null)
+    if (!user.password) {
+      return res.status(401).json({
+        message: "Sign-in isn't set up for this account yet. Ask your project partner to set your username and password.",
+      });
+    }
+
     //  Verify Password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: "Wrong Password" });
+    }
+
+    // Right password, but the project partner has switched this account off
+    if (user.loginstatus !== "Active") {
+      return res.status(403).json({
+        message: "Your account is inactive. Please contact your project partner.",
+      });
     }
 
     //  Generate JWT Token

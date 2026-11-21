@@ -2,29 +2,22 @@ import db from "#db";
 import moment from "moment-timezone";
 import fs from "fs";
 import path from "path";
+import bcrypt from "bcryptjs";
 import { deleteFromS3, uploadToS3 } from "#utils/imageUpload.js";
 
 export const getAll = (req, res) => {
-  const userId = req.projectPartnerUser.id;
+  const userId = req.projectPartnerUser?.id;
   if (!userId) {
     return res
       .status(401)
       .json({ message: "Unauthorized Access, Please Login Again!" });
   }
+  // Each partner with how many enquiries are assigned to them and how many became deals (Token)
   const sql = `
-      SELECT salespersons.*, pf.followUp, pf.created_at AS followUpDate
+      SELECT salespersons.*,
+        (SELECT COUNT(*) FROM enquirers e WHERE e.salespersonid = salespersons.salespersonsid) AS enquiryCount,
+        (SELECT COUNT(*) FROM enquirers e WHERE e.salespersonid = salespersons.salespersonsid AND e.status = 'Token') AS dealCount
       FROM salespersons
-      LEFT JOIN (
-        SELECT p1.*
-        FROM partnerFollowup p1
-        INNER JOIN (
-          SELECT partnerId, MAX(created_at) AS latest
-          FROM partnerFollowup
-          WHERE role = 'Sales Person'
-          GROUP BY partnerId
-        ) p2 ON p1.partnerId = p2.partnerId AND p1.created_at = p2.latest
-        WHERE p1.role = 'Sales Person'
-      ) pf ON salespersons.salespersonsid = pf.partnerId
       WHERE salespersons.projectpartnerid = ?
       ORDER BY salespersons.created_at DESC;
     `;
@@ -35,14 +28,10 @@ export const getAll = (req, res) => {
       return res.status(500).json({ message: "Database error", error: err });
     }
 
-    const formatted = result.map((row) => ({
-      ...row,
+    const formatted = result.map(({ password, ...row }) => ({
+      ...row, // never send the password hash to the browser
       created_at: moment.utc(row.created_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
       updated_at: moment.utc(row.updated_at).tz("Asia/Kolkata").format("DD MMM YYYY | hh:mm A"),
-      followUp: row.followUp || null,
-      followUpDate: row.followUpDate
-        ? moment(row.followUpDate).format("DD MMM YYYY | hh:mm A")
-        : null,
     }));
 
     res.json(formatted);
@@ -51,7 +40,7 @@ export const getAll = (req, res) => {
 
 // **Fetch All Active**
 export const getAllActive = (req, res) => {
-  const userId = req.projectPartnerUser.id;
+  const userId = req.projectPartnerUser?.id;
   if (!userId) {
     return res
       .status(401)
@@ -69,9 +58,10 @@ export const getAllActive = (req, res) => {
 };
 
 // ---------------- ADD SALES PERSON ----------------
+// (manage handlers setStatus / setCredentials / remove are at the end of this file)
 export const add = async (req, res) => {
   try {
-    const userId = req.projectPartnerUser.id;
+    const userId = req.projectPartnerUser?.id;
     if (!userId)
       return res.status(401).json({
         message: "Unauthorized Access, Please Login Again!",
@@ -96,11 +86,24 @@ export const add = async (req, res) => {
       accountholdername,
       accountnumber,
       ifsc,
+      username,
+      password,
     } = req.body;
 
     if (!fullname || !contact || !email || !intrest)
       return res.status(400).json({
         message: "FullName, Contact and Email Required!",
+      });
+
+    // Login credentials for the sales partner (the sales partner signs in with these)
+    const loginUsername = String(username || "").trim();
+    if (!loginUsername || !password)
+      return res.status(400).json({
+        message: "Username and password are required for the sales partner login.",
+      });
+    if (String(password).length < 8)
+      return res.status(400).json({
+        message: "Password must be at least 8 characters.",
       });
 
     // Generate unique referral code
@@ -134,10 +137,12 @@ export const add = async (req, res) => {
       uploadToS3(req.files?.["reraImage"]?.[0]),
     ]);
 
+    const hashedPassword = await bcrypt.hash(String(password), 10);
+
     // Check duplicates
     db.query(
-      "SELECT * FROM salespersons WHERE contact = ? OR email = ?",
-      [contact, email],
+      "SELECT * FROM salespersons WHERE contact = ? OR email = ? OR username = ?",
+      [contact, email, loginUsername],
       (checkErr, checkResult) => {
         if (checkErr)
           return res.status(500).json({
@@ -161,8 +166,8 @@ export const add = async (req, res) => {
           const insertSql = `
             INSERT INTO salespersons 
             (projectpartnerid, fullname, contact, email, intrest, refrence, referral, address, state, city, pincode, experience, rerano, adharno, panno, 
-             bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, updated_at, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             bankname, accountholdername, accountnumber, ifsc, adharimage, panimage, reraimage, username, password, loginstatus, updated_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `;
 
           db.query(
@@ -190,6 +195,9 @@ export const add = async (req, res) => {
               adharImageUrl,
               panImageUrl,
               reraImageUrl,
+              loginUsername,
+              hashedPassword,
+              "Active",
               currentdate,
               currentdate,
             ],
@@ -375,4 +383,109 @@ export const getById = (req, res) => {
       return res.json(partner);
     },
   );
+};
+
+/* ───────────── manage a sales partner (only the project partner who owns them) ───────────── */
+
+const ownedPartner = async (req, res) => {
+  const userId = req.projectPartnerUser?.id;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized Access, Please Login Again!" });
+    return null;
+  }
+  const id = parseInt(req.params.id, 10);
+  if (!id) {
+    res.status(400).json({ message: "Invalid Partner ID" });
+    return null;
+  }
+  const [rows] = await db
+    .promise()
+    .query("SELECT salespersonsid, fullname, status, loginstatus FROM salespersons WHERE salespersonsid = ? AND projectpartnerid = ?", [id, userId]);
+  if (!rows.length) {
+    res.status(404).json({ message: "Sales partner not found" });
+    return null;
+  }
+  return rows[0];
+};
+
+// Activate / deactivate. A deactivated partner can no longer sign in.
+export const setStatus = async (req, res) => {
+  try {
+    const partner = await ownedPartner(req, res);
+    if (!partner) return;
+    const next = partner.status === "Active" ? "Inactive" : "Active";
+    await db
+      .promise()
+      .query("UPDATE salespersons SET status = ?, loginstatus = ?, updated_at = ? WHERE salespersonsid = ?", [
+        next,
+        next,
+        moment().format("YYYY-MM-DD HH:mm:ss"),
+        partner.salespersonsid,
+      ]);
+    res.json({ message: `${partner.fullname} is now ${next.toLowerCase()}`, status: next });
+  } catch (error) {
+    console.error("setStatus error:", error);
+    res.status(500).json({ message: "Could not change the status" });
+  }
+};
+
+// Set a new username and/or password for the partner's sign-in
+export const setCredentials = async (req, res) => {
+  try {
+    const partner = await ownedPartner(req, res);
+    if (!partner) return;
+
+    const username = String(req.body?.username || "").trim();
+    const password = String(req.body?.password || "");
+    if (!username && !password) {
+      return res.status(400).json({ message: "Enter a username, a password, or both." });
+    }
+    if (password && password.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters." });
+    }
+
+    const sets = [];
+    const values = [];
+    if (username) {
+      const [taken] = await db
+        .promise()
+        .query("SELECT salespersonsid FROM salespersons WHERE username = ? AND salespersonsid <> ?", [username, partner.salespersonsid]);
+      if (taken.length) return res.status(409).json({ message: "That username is already taken." });
+      sets.push("username = ?");
+      values.push(username);
+    }
+    if (password) {
+      sets.push("password = ?");
+      values.push(await bcrypt.hash(password, 10));
+    }
+    sets.push("updated_at = ?");
+    values.push(moment().format("YYYY-MM-DD HH:mm:ss"), partner.salespersonsid);
+
+    await db.promise().query(`UPDATE salespersons SET ${sets.join(", ")} WHERE salespersonsid = ?`, values);
+    res.json({ message: "Sign-in details updated" });
+  } catch (error) {
+    console.error("setCredentials error:", error);
+    res.status(500).json({ message: "Could not update the sign-in details" });
+  }
+};
+
+// Delete only a partner with no enquiries assigned; otherwise deactivate instead.
+export const remove = async (req, res) => {
+  try {
+    const partner = await ownedPartner(req, res);
+    if (!partner) return;
+    const [[{ n }]] = await db
+      .promise()
+      .query("SELECT COUNT(*) AS n FROM enquirers WHERE salespersonid = ?", [partner.salespersonsid]);
+    if (n > 0) {
+      return res.status(409).json({
+        message: `${partner.fullname} has ${n} enquir${n === 1 ? "y" : "ies"} assigned. Deactivate them instead of deleting.`,
+      });
+    }
+    await db.promise().query("DELETE FROM salespersons WHERE salespersonsid = ?", [partner.salespersonsid]);
+    res.json({ message: "Sales partner deleted" });
+  } catch (error) {
+    console.error("remove sales partner error:", error);
+    res.status(500).json({ message: "Could not delete the sales partner" });
+  }
 };

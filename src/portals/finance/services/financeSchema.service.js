@@ -78,6 +78,7 @@ async function ensureColumn(table, column, ddl) {
 }
 
 export async function ensureFinanceSchema() {
+  if (process.env.SKIP_SCHEMA_MIGRATIONS === "true") return;
   if (schemaReady) return schemaReady;
 
   schemaReady = (async () => {

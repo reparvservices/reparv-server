@@ -11,6 +11,7 @@ async function ensureColumn(table, column, ddl) {
 }
 
 export async function ensurePropertiesSchema() {
+  if (process.env.SKIP_SCHEMA_MIGRATIONS === "true") return;
   if (schemaReady) return schemaReady;
 
   schemaReady = (async () => {

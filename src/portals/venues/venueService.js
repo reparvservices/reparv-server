@@ -21,7 +21,7 @@ export const CHECKOUT_TAG = "venue_booking";
 const CLAIM_ROLE = "venue";
 
 let razorpayClient = null;
-const getRazorpay = () =>
+export const getRazorpay = () =>
   (razorpayClient ??= new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
     key_secret: process.env.RAZORPAY_KEY_SECRET,
@@ -327,7 +327,8 @@ async function loadBooking(id) {
 export async function listCustomerBookings(customerId) {
   return rows(
     `SELECT ${BOOKING_COLS.replace(/\n/g, " ")}, (SELECT title FROM venue_listings WHERE id = venue_bookings.listing_id) AS listing_title,
-       (SELECT city FROM venue_listings WHERE id = venue_bookings.listing_id) AS listing_city
+       (SELECT city FROM venue_listings WHERE id = venue_bookings.listing_id) AS listing_city,
+       (SELECT price_model FROM venue_listings WHERE id = venue_bookings.listing_id) AS listing_price_model
      FROM venue_bookings WHERE customer_id = ? AND status <> 'expired' ORDER BY id DESC LIMIT 100`,
     [customerId],
   );

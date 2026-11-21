@@ -3,6 +3,9 @@ import { getSignedUrl as getAwsSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION,
+  // Newer SDKs add a checksum of the (empty) body to presigned URLs, which makes S3 reject the real upload
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY,
     secretAccessKey: process.env.AWS_SECRET_KEY,

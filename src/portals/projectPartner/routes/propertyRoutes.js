@@ -9,7 +9,6 @@ import {
   addProperty,
   update,
   status,
-  approve,
   del,
   updateImages,
   editAdditionalInfo,
@@ -136,7 +135,11 @@ router.put("/status/:id", requirePropertyOwner, status);
 router.put("/seo/:id", requirePropertyOwner, seoDetails);
 router.put("/reject/:id", requirePropertyOwner, addRejectReason);
 router.put("/commission/:id", requirePropertyOwner, setPropertyCommission);
-router.put("/approve/:id", requirePropertyOwner, approve);
+// Approving is the Reparv team's job (admin panel). A partner must not approve their own listing,
+// so this route answers 403 instead of changing anything.
+router.put("/approve/:id", requirePropertyOwner, (req, res) =>
+  res.status(403).json({ message: "Only the Reparv team can approve listings." }),
+);
 router.delete("/delete/:id", requirePropertyOwner, del);
 router.get("/propertyinfo/:id", propertyInfo);
 

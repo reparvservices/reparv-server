@@ -13,6 +13,13 @@ import {
   propertyInfo,
 } from "../controllers/propertyController.js";
 
+import {
+  ownsPropertyParam,
+  ownsPropertyBody,
+  ownsImageParam,
+  ownsInfoParam,
+} from "../../../core/middleware/requireListingOwner.js";
+
 const router = express.Router();
 
 /* =======================
@@ -69,9 +76,9 @@ router.use((err, req, res, next) => {
 ======================= */
 
 router.get("/", getAll);
-router.get("/:id", getById);
-router.get("/images/:id", getImages);
-router.delete("/images/delete/:id", deleteImages);
+router.get("/:id", ownsPropertyParam, getById);
+router.get("/images/:id", ownsPropertyParam, getImages);
+router.delete("/images/delete/:id", ownsImageParam, deleteImages);
 
 router.post(
   "/add",
@@ -102,16 +109,18 @@ router.put(
     { name: "bathroomView", maxCount: 3 },
     { name: "balconyView", maxCount: 3 },
   ]),
+  ownsPropertyParam,
   update
 );
 
 router.post(
   "/addimages",
   upload.array("images[]", 10),
+  ownsPropertyBody,
   addImages
 );
 
-router.get("/propertyinfo/:id", propertyInfo);
+router.get("/propertyinfo/:id", ownsPropertyParam, propertyInfo);
 
 router.post(
   "/additionalinfoadd",
@@ -123,6 +132,7 @@ router.post(
     { name: "satbara", maxCount: 1 },
     { name: "ebill", maxCount: 1 },
   ]),
+  ownsPropertyBody,
   additionalInfoAdd
 );
 
@@ -136,6 +146,7 @@ router.put(
     { name: "satbara", maxCount: 1 },
     { name: "ebill", maxCount: 1 },
   ]),
+  ownsInfoParam,
   editAdditionalInfo
 );
 
