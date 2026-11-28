@@ -28,7 +28,7 @@ export const sendPartnerJoinLeadOtp = async (req, res) => {
     if (joinEmail && (await partnerEmailAlreadyRegistered(joinEmail))) {
       return res.status(409).json({
         success: false,
-        message: "This email is already registered. Please log in or use another email.",
+        message: "An account already exists for this email. Please sign in, or use a different email.",
       });
     }
 
@@ -98,13 +98,13 @@ export const completePartnerJoinLead = async (req, res) => {
     if (await partnerContactAlreadyRegistered(contact)) {
       return res.status(409).json({
         success: false,
-        message: "This number is already registered as a Reparv Partner. Please log in.",
+        message: "An account already exists for this mobile number. Please sign in with your email and password, or use a different number.",
       });
     }
     if (await partnerEmailAlreadyRegistered(email)) {
       return res.status(409).json({
         success: false,
-        message: "This email is already registered. Please log in or use another email.",
+        message: "An account already exists for this email. Please sign in, or use a different email.",
       });
     }
 

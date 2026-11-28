@@ -54,26 +54,13 @@ export async function validateContactForPartnerJoin(contact) {
       ok: false,
       status: 409,
       message:
-        "This WhatsApp number is already registered as a Reparv Partner. Please sign in to the app.",
+        "An account already exists for this mobile number. Please sign in with your email and password, or use a different number.",
     };
   }
 
-  try {
-    const [leadRows] = await dbPromise.query(
-      "SELECT status FROM partner_join_leads WHERE contact = ? LIMIT 1",
-      [contact],
-    );
-    if (leadRows[0]?.status === "registered") {
-      return {
-        ok: false,
-        status: 409,
-        message:
-          "This number has already completed partner registration. Please sign in to the app.",
-      };
-    }
-  } catch (err) {
-    if (err?.code !== "ER_NO_SUCH_TABLE") throw err;
-  }
+  // Note: partner_join_leads.status === 'registered' is NOT used as a block here.
+  // It can be left stale when the partner account no longer exists in
+  // projectpartner (checked above), which would wrongly lock the number out.
 
   return { ok: true };
 }
